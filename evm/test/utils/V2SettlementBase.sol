@@ -36,8 +36,15 @@ abstract contract V2SettlementBase is ReleaseBase {
         super.setUp();
         _schedulePolicy(1, V2_EPOCH_BLOCKS);
         vault2 = new MockSettlementVault2();
-        settlementImplementation = new STSettlement2();
+        settlementImplementation = STSettlement2(payable(_newSettlementImplementation()));
         settlement = _deploy(owner, address(coordinator), address(vault2), _list(auditor1), 1);
+    }
+
+    /// @dev The implementation behind the proxy, phase A's. A suite reruns
+    ///      against a later implementation by overriding this
+    ///      (V2SettlementCtfRegression.t.sol).
+    function _newSettlementImplementation() internal virtual returns (address) {
+        return address(new STSettlement2());
     }
 
     /// @dev Schedules a v1 policy with mainnet's windows and the given cadence.

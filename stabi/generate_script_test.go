@@ -93,6 +93,22 @@ func (self *generatorTestBarrier) close() error {
 	return errors.Join(wakeErr, self.entry.Close(), self.release.Close())
 }
 
+// generatorTestArtifacts are the forge artifacts generate.sh reads, each with
+// the ABI file and the binding it generates from it. The STSettlement2 proxy's
+// ABI and binding come from its newest implementation, STSettlement2Ctf, and
+// the settlement v2 contracts share one combined binding.
+var generatorTestArtifacts = []struct{ artifact, abi, binding string }{
+	{"STSubnet", "STSubnet", "stsubnet.go"},
+	{"STCoordinator", "STCoordinator", "stcoordinator.go"},
+	{"STSettlementVault", "STSettlementVault", "stsettlementvault.go"},
+	{"STReserveSink", "STReserveSink", "streservesink.go"},
+	{"STValidatorEvidence", "STValidatorEvidence", "stvalidatorevidence.go"},
+	{"STSettlementVault2", "STSettlementVault2", "stsettlement2.go"},
+	{"STSettlement2Ctf", "STSettlement2", "stsettlement2.go"},
+	{"STClaimBatcher", "STClaimBatcher", "stsettlement2.go"},
+	{"STCtfCarry", "STCtfCarry", "stsettlement2.go"},
+}
+
 // newGeneratorTestEnvironment constructs a hermetic PATH plus a controllable
 // fake implementation of the two go env queries used by generate.sh.
 func newGeneratorTestEnvironment(t *testing.T) *generatorTestEnvironment {
@@ -121,8 +137,8 @@ esac
 	// Tool-discovery tests own their metadata inputs. They must not depend on
 	// a concurrent release gate's mutable Foundry build directory.
 	artifactsDir := t.TempDir()
-	for _, name := range []string{"STSubnet", "STCoordinator", "STSettlementVault", "STReserveSink", "STValidatorEvidence", "STSettlementVault2", "STSettlement2", "STClaimBatcher"} {
-		abi, err := os.ReadFile(filepath.Join(sourceDir, "..", "evm", "abi", name+".abi.json"))
+	for _, input := range generatorTestArtifacts {
+		abi, err := os.ReadFile(filepath.Join(sourceDir, "..", "evm", "abi", input.abi+".abi.json"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -132,11 +148,11 @@ esac
 		if err != nil {
 			t.Fatal(err)
 		}
-		dir := filepath.Join(artifactsDir, name+".sol")
+		dir := filepath.Join(artifactsDir, input.artifact+".sol")
 		if err := os.Mkdir(dir, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(filepath.Join(dir, name+".json"), encoded, 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(dir, input.artifact+".json"), encoded, 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -290,15 +306,11 @@ func TestGenerateChecksIndependentArtifactInputs(t *testing.T) {
 			first, second := newGeneratorTestEnvironment(t), newGeneratorTestEnvironment(t)
 			for _, environment := range []*generatorTestEnvironment{first, second} {
 				installGeneratorTestAbigen(t, filepath.Join(environment.pathDir, "abigen"), "1.17.0-stable")
-				for _, name := range []string{"STSubnet", "STCoordinator", "STSettlementVault", "STReserveSink", "STValidatorEvidence", "STSettlementVault2", "STSettlement2", "STClaimBatcher"} {
-					binding := strings.ToLower(name) + ".go"
-					if name == "STSettlementVault2" || name == "STClaimBatcher" {
-						binding = "stsettlement2.go"
-					}
+				for _, input := range generatorTestArtifacts {
 					for _, path := range []string{
-						filepath.Join(environment.artifactsDir, name+".sol", name+".json"),
-						filepath.Join(environment.sourceDir, "..", "evm", "abi", name+".abi.json"),
-						filepath.Join(environment.sourceDir, binding),
+						filepath.Join(environment.artifactsDir, input.artifact+".sol", input.artifact+".json"),
+						filepath.Join(environment.sourceDir, "..", "evm", "abi", input.abi+".abi.json"),
+						filepath.Join(environment.sourceDir, input.binding),
 					} {
 						data, err := os.ReadFile(path)
 						if err != nil {

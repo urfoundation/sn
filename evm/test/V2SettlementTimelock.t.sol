@@ -50,9 +50,9 @@ contract V2SettlementTimelockTest is V2StackBase {
     function setUp() public override {
         super.setUp();
         _registerV2Pool(NO1, V2_POOL1, V2_POOL1_UID);
-        STSettlement2PhaseC next = new STSettlement2PhaseC();
+        address next = _newPhaseCImplementation();
         vm.prank(owner);
-        settlement.upgradeToAndCall(address(next), "");
+        settlement.upgradeToAndCall(next, "");
         phaseC = STSettlement2PhaseC(payable(address(settlement)));
         address[] memory proposers = new address[](1);
         proposers[0] = owner;
@@ -63,6 +63,13 @@ contract V2SettlementTimelockTest is V2StackBase {
         settlement.transferOwnership(address(timelock));
         // Any implementation nobody reviewed: here, back to phase A.
         unreviewed = address(new STSettlement2());
+    }
+
+    /// @dev The implementation the proxy runs, phase C's. The suite reruns
+    ///      against the capture the flag upgrade by overriding this
+    ///      (V2SettlementCtfRegression.t.sol).
+    function _newPhaseCImplementation() internal virtual returns (address) {
+        return address(new STSettlement2PhaseC());
     }
 
     function _implementation() internal view returns (address) {

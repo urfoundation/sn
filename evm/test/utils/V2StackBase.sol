@@ -53,13 +53,20 @@ abstract contract V2StackBase is ReleaseBase {
         address[] memory auditors = new address[](1);
         auditors[0] = auditor1;
         ERC1967Proxy proxy = new ERC1967Proxy(
-            address(new STSettlement2()),
+            _newSettlementImplementation(),
             abi.encodeCall(
                 STSettlement2.initialize, (owner, address(coordinator), address(vault2), auditors, 1)
             )
         );
         settlement = STSettlement2(payable(address(proxy)));
         vault2.setCoordinatorOnce(address(settlement));
+    }
+
+    /// @dev The implementation the proxy starts on, phase A's. A suite reruns
+    ///      against a later implementation by overriding this
+    ///      (V2SettlementCtfRegression.t.sol).
+    function _newSettlementImplementation() internal virtual returns (address) {
+        return address(new STSettlement2());
     }
 
     /// @dev Schedules a v1 policy with mainnet's windows and the given cadence.
