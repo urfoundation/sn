@@ -770,58 +770,97 @@ order:
 3. **carry** (§4.6, "Qualifying it"). Emission reaches the CTF pool hotkey
    during epoch 1, and the pool's close captures it. Its root pays four
    fifths to the carry contract's coldkey and the rest to a winner. The root
-   names that coldkey before the contract exists, from its CREATE2 address.
-   Anyone then creates `STCtfCarry` through the same proxy. Its constructor
-   reads its `coldkey()` from the runtime's 0x080c address mapping, and that
-   must equal the mirror of its address. The carry refuses another account
-   (`InvalidColdkey`) and a recycle with nothing held (`NothingToRecycle`).
+   names that coldkey before the contract exists, from its CREATE2 address,
+   which the case derives with the zero salt, the worst case: a third party
+   fills that coldkey's `StakingHotkeys` list to 128 entries first, as R-3
+   filled vault2's, each entry a hotkey of its own staked and transferred
+   whole, and a 129th entry is refused (`TooManyStakingHotkeys`). Anyone then
+   creates `STCtfCarry` through the same proxy with a seed of 1 TAO plus the
+   500-rao existential deposit as the call's value. The case requires that:
+   - its `coldkey()`, from the runtime's 0x080c address mapping, is the
+     mirror of its address, and its other views are vault2's;
+   - its constructor staked the seed on the escrow hotkey by its own
+     `addStake`, the 256-entry cap's, not the third parties' 128: `Seeded`
+     names 1 TAO, `residual()` equals the carry's position there, the list
+     holds the 128 entries and the escrow hotkey, and the account keeps no
+     more than its existential deposit;
+   - `getRejectStakingHotkeyGrowth` and `getRejectLockedAlpha` read true;
+   - the carry refuses another account (`InvalidColdkey`) and a recycle with
+     nothing above its residual (`NothingToRecycle`);
+   - a third party's new entry is then refused
+     (`AccountRejectsStakingHotkeyGrowth`), while a stake transferred on the
+     escrow hotkey is a donation; and
+   - a coldkey swap announced into the carry's coldkey from a coldkey with a
+     hotkey of its own is refused at its announcement
+     (`AccountRejectsStakingHotkeyGrowth`).
+
    Once the root finalizes, a stranger's `recycle` claims the account. The
    case requires that:
-   - vault2's `Claimed` pays the carry's coldkey, with the carry as caller;
-   - the carry holds nothing afterwards, on the escrow hotkey or the pool
-     hotkey;
+   - vault2's `Claimed` pays the carry's coldkey, with the carry as caller,
+     although third parties filled its list;
+   - the carry keeps its residual on the escrow hotkey, which stays on its
+     list, within a rao, and nothing on the pool hotkey;
    - vault2's position on the pool hotkey grows by the `Recycled` amount,
-     recorded in `recycledFor(2)` and within 2 rao of the claimed amount; and
+     recorded in `recycledFor(2)` and within 3 rao of the claim and the
+     donation; and
    - epoch 2's close captures the returned stake with that epoch's emission,
      and conservation holds throughout.
-4. **staking-hotkey list** (§4.6, an open question about the carry). Root 2
-   grows the carry's account. Third parties then fill the carry coldkey's
-   `StakingHotkeys` list to 128 entries, as R-3 filled vault2's: each stakes
-   on a hotkey of its own and transfers that position to the carry's
-   coldkey. After that, anyone tries the carry's next claim through
-   `recycle`. The outcome is logged, not required. A refusal must leave
-   vault2's `claimed` watermark unchanged, and the case names the runtime's
-   reason for it. The case fails only if that reason is not the list.
+4. **griefing** (§4.6, what the residual cannot stop). Root 2 grows the
+   carry's account and finalizes. Then:
+   - root raises the nominator minimum to 2 TAO
+     (`sudo_set_nominator_min_required_stake`), and its sweep clears the
+     residual back to the carry's TAO and the escrow hotkey off its list. A
+     recycle is refused (`ResidualMissing`), and simulated from vault2 the
+     claim's transfer answers `AccountRejectsStakingHotkeyGrowth`. A seed of
+     the returned TAO alone is refused (`SeedTooSmall`), since
+     `seedMinimum()` is now ten times the new minimum; a stranger's `seed()`
+     with that much restores the residual (`ResidualLowered`, then the new
+     residual on the escrow hotkey, listed);
+   - a blank coldkey announces a coldkey swap naming the carry's coldkey,
+     which reserves it. A recycle is refused, and simulated from vault2 the
+     claim's transfer answers `ColdkeySwapDestinationReserved`. The case seals
+     past the reservation, the swap delays that `getColdkeySwapDelays()`
+     reads after the announcement;
+   - third parties hold vault2's list at 128 entries without the CTF pool
+     hotkey, which epoch 2's capture left empty. A recycle is refused, and
+     simulated from the carry its return answers `TooManyStakingHotkeys`.
+     vault2's permissionless `absorbStake` frees one entry; and
+   - the recycle then pays: vault2's `claimed` reaches the account's
+     cumulative, the carry keeps its residual, and conservation holds.
 
 It logs:
 
 - the gas of each creation, and the runtime size of both implementations
-  and of the carry;
+  and of the carry, with its seed and residual;
 - the gas of both upgrades, the folded call's calldata size, the UID, and the
   burn and refund;
 - the derived hotkey, its block and the parent hash;
 - the census commitment's gas, least gas limit and `eth_estimateGas` limit;
-- `recycle`'s gas, least gas limit and `eth_estimateGas` limit, and the rao
-  it lost to rounding;
+- each `recycle`'s gas, least gas limit and `eth_estimateGas` limit, with the
+  carry coldkey's list then, and the rao it lost to rounding;
 - each close's capture and its gas;
-- the carry coldkey's and vault2's `StakingHotkeys` lists before and after
-  the recycle, including whether the escrow hotkey stays on the carry's list
-  once its position is moved away; and
-- the outcome of the fill and of the second claim.
+- vault2's `StakingHotkeys` list before and after the first recycle;
+- what root's sweep returned to the carry, its list after, and the new
+  `seedMinimum()`, and `seed()`'s gas;
+- the reservation's blocks and the runtime's refusal of the claim; and
+- vault2's full list, the runtime's refusal of the return, and
+  `absorbStake`'s gas.
 
-Runtime 486's source predicts a refusal in step 4:
+Runtime 486's source predicts each outcome
+(`pallets/subtensor/src/staking/stake_utils.rs`):
 
 - A transfer from another coldkey can add a hotkey to a list only while the
-  list holds fewer than 128 entries. Otherwise the transfer fails with
-  `TooManyStakingHotkeys` (`ensure_third_party_staking_hotkeys_can_grow` in
-  `pallets/subtensor/src/staking/stake_utils.rs`).
-- A position withdrawn in full loses its entry
-  (`maybe_remove_staking_hotkey`), because 486's share pool zeroes the dust
-  that a full withdrawal leaves (`primitives/share-pool/src/lib.rs`).
-- `recycle` moves everything, so afterwards the escrow hotkey should be off
-  the carry's list.
-
-The carry has no entry point that moves stake off another hotkey. A refusal
-would therefore last for as long as the third parties' positions do. The
-carry is immutable, so this result has to be weighed before the carry is
-created.
+  list holds fewer than 128 entries (`TooManyStakingHotkeys`), and not at all
+  to a coldkey that rejects growth, unless it owns the hotkey
+  (`AccountRejectsStakingHotkeyGrowth`); a hotkey already on the list always
+  passes (`ensure_third_party_staking_hotkeys_can_grow`). A coldkey's own add
+  or move faces only the 256-entry cap.
+- A position withdrawn in full loses its entry, because 486's share pool
+  zeroes the dust that a full withdrawal leaves, and a partial one keeps it
+  (`maybe_remove_staking_hotkey`, `primitives/share-pool/src/lib.rs`).
+- Root's sweep clears positions below the nominator minimum on hotkeys their
+  coldkey does not own, to TAO (`staking/helpers.rs`).
+- A coldkey swap's announcement refuses a destination that rejects growth
+  when the source brings a new hotkey, and reserves the destination until
+  its reannouncement window ends (`swap/swap_coldkey.rs`); every transfer to
+  a reserved coldkey from another is refused.
