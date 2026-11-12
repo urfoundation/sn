@@ -525,7 +525,10 @@ pending awards would never return. The contract closes that:
     (`try_associate_hotkey`). That reveals the coldkey, not the address. Every coldkey swap into it, and every
     reservation of it (below), is then refused (`NewColdKeyIsHotkey`), before and after the creation: no swap
     can fill its list to 256 so that the seed's `addStake` is refused, bring it locked alpha, or give it
-    hotkeys.
+    hotkeys. Whoever holds the hotkey account can release it, by a hotkey swap, in the same batch as a coldkey
+    swap's announcement into it, and the association succeeds without effect when someone else holds it. So
+    the guardian sends it through `MevShield.submit_encrypted`, which nobody sees pending, and review requires
+    the guardian to hold it; if someone else took it, the carry is created under another salt.
   - The proxy's mapped account must hold TAO above its existential deposit. The EVM checks the proxy's
     spendable balance, which the runtime reports less that deposit, before CREATE2 passes the value on
     (`OutOfFund`), so a proxy holding only the forwarded seed cannot create the carry. Anyone sends it 501 rao
@@ -533,9 +536,10 @@ pending awards would never return. The contract closes that:
   - It is created while the pool hotkey holds its UID, within the registration's immunity window, since the
     auto‑stake destination needs one. A failed creation reveals the salt, so a retry takes a fresh one.
   - `sn-mainnet ctf-carry review` (`mainnet/BOOTSTRAP-CONTRACTS.md`, "Capture the flag carry") pins the
-    artifact, derives the CREATE2 address, requires each of these, and preflights the creation; once the carry
-    exists it checks the code, the residual, the auto‑stake destination, the opt‑outs and the hotkey account.
-    The amendment entry names the address after the creation.
+    artifact, derives the CREATE2 address, requires each of these, vault2's coldkey among the guardian's
+    hotkey accounts too, and preflights the creation; once the carry exists it checks the code, the residual,
+    the auto‑stake destination, the opt‑outs and both hotkey accounts. The amendment entry names the address
+    after the creation.
   - A fill of the list before the creation, which anyone who sees the transaction can still send in the same
     block, is at most 128 entries. The creation goes through, and the entries only add gas to the carry's
     moves, about 8,750 an entry on runtime 478 and later.
@@ -560,9 +564,11 @@ pending awards would never return. The contract closes that:
     nothing, so a swap could merge into its coldkey up to 256 entries that `absorbStake` cannot free, for a
     few hundred minimum stakes and 0.1 TAO with five days' notice. A new pool hotkey needs vault2's list
     below 256, so every later pool registration, the CTF pool's of §3.1 included, would be refused for good.
-    vault2's coldkey as a hotkey account refuses such a swap, which is why the guardian makes it one now. It
-    has to come first: while an announcement reserves vault2's coldkey the runtime refuses to make it a hotkey
-    account too (`ColdkeySwapDestinationReserved`), and that swap could then go through.
+    vault2's coldkey as a hotkey account refuses such a swap, which is why the guardian makes it one now,
+    encrypted as above, and checks with `getHotkeyOwner` that it holds it. It has to come first: while an
+    announcement reserves vault2's coldkey the runtime refuses to make it a hotkey account too
+    (`ColdkeySwapDestinationReserved`), and that swap could then go through; and anyone else who held it
+    could release it with such a swap. vault2's coldkey cannot change, so that would be for good.
 - **What the relay does when a recycle fails.** A refused precompile call returns no data, so the relay reads
   the state: no residual (`residual()` is 0, or `recycle` reverts `ResidualMissing`) means `seed()`; vault2's
   list at 128 without the pool hotkey means waiting a tempo, or `absorbStake` of a foreign SN25 entry worth
@@ -1022,9 +1028,9 @@ carry's, hotkey accounts and never swaps them (§4.6).
 
 *What has to ship, and by when:*
 
-0. **Now:** the guardian makes vault2's coldkey a hotkey account, before anyone reserves it or swaps into it.
-   A coldkey swap into vault2 needs five days' notice and could stop the operation's pool registration for
-   good (§4.6).
+0. **Now:** the guardian makes vault2's coldkey a hotkey account, before anyone reserves it, swaps into it or
+   takes it: through `MevShield.submit_encrypted`, then checked with `getHotkeyOwner`. A coldkey swap into
+   vault2 needs five days' notice and could stop the operation's pool registration for good (§4.6).
 1. **Before `end(6)`, about 11‑20 18:28Z:** the server's presence sampler for both roles, so that epoch 7 is a
    full shadow epoch. It has to be running when epoch 8 starts in any case.
 2. **By about 11‑21:** the two contracts, their rehearsal on the live runtime, and `upgrade-settlement2
