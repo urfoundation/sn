@@ -1724,14 +1724,23 @@ providers) adds to that account. What changes is one per‑epoch component of th
 usage statement (§8.6.4):
 
 ```
-header (urnetwork-payout-ledger-v3; epochs k ≥ E_x):
-  {"epoch":K,"providers":[…],"extenders":{"bytes":Z,"census":"sha256:…","rows":["sha256:…",…]}}
+header (urnetwork-payout-ledger-v3 for a root whose header lists an extender component; any other root keeps
+        urnetwork-payout-ledger-v2, byte for byte):
+  {"epoch":K,"providers":[…],"extenders":{"bytes":Z,"census":["sha256:…",…],"rows":["sha256:…",…]}}
+  "extenders" comes last, in the entry of each covered epoch k ≥ E_x that is not declared unrecoverable,
+  and in no other. "census" and "rows" are chunk lists like "providers" (ChunkRows = 131,072 rows in every
+  chunk but a non-empty last one; an empty list has no chunks), never null.
 extender share rows: 57-byte rows exactly as provider rows (client_id ‖ coldkey ‖ usage_bytes ‖ head_excluded),
-                     sorted by client_id, one per eligible extender with s_{j,i} > 0, usage_bytes = s_{j,i};
-                     "rows": [] when N = 0 or Z = 0
-census:              one row per extender of n known in epoch k, eligible or not, sorted by client_id:
-                     extender_id ‖ provider client_id ‖ coldkey ‖ unit (keyed /29 or /48 prefix hash) ‖ unit family ‖
-                     flags (active at end(k), gated, canary, declared own, revoked, duplicate, head-bound);
+                     sorted by client_id, one per eligible extender with s_{j,i} > 0, usage_bytes = s_{j,i},
+                     head_excluded = 0; "rows": [] when N = 0 or Z = 0
+census chunks:       98-byte rows, one per extender of n known in epoch k, eligible or not,
+                     sorted by (client_id, extender_id):
+                     extender_id (16) ‖ provider client_id (16) ‖ coldkey (32; zero without a wallet, E4) ‖
+                     unit (32; the keyed /29 or /48 prefix hash, zero without an active address) ‖
+                     unit family (1; 0 none, 4 IPv4, 6 IPv6) ‖
+                     flags (1; active at end(k) 0x01, gated 0x02, canary 0x04, declared own 0x08,
+                            revoked 0x10, duplicate 0x20, head-bound 0x40);
+                     a row is eligible when its flags are exactly "active" and it has a coldkey;
                      captured at the end boundary, operator-attested, never with an address
 ```
 
@@ -1880,14 +1889,21 @@ already requires for the deposit audit.
 
 #### 8.6.4 Verification and evidence
 
-**The ledger audit** gains one check, run after head exclusion (check 6) and before allocation (check 7)
-in each covered epoch `k ≥ E_x`:
+**The ledger audit** gains one check. Once per root, before the fixed inputs (check 3), it requires an
+extender component on exactly the covered epochs from `E_x` that are not declared unrecoverable, `E_x` being
+the first epoch of the extender pool's amendment entry in force, or of its configured line where no signed
+entry is in force (§8.6.7). A component once found valid is a fixed input like the epoch's provider rows, and
+an epoch whose rows were fixed without one cannot gain one (check 3). The rest runs after head exclusion
+(check 6) and before allocation (check 7) in each covered epoch `k ≥ E_x`:
 
-1. The header's `extenders.bytes` equals the statement's `extender_pool_bytes` (`Z`) for the epoch. The
-   share rows sum to `Z' = min(Z, W_k)`, with `W_k` taken from the epoch's own eligible provider rows, or
-   to 0 when `N = 0`.
-2. The census is well formed: chunk hashes match, rows are sorted and unique, and its head flags agree with
-   `bindingAt` at both boundaries, as in check 6.
+1. The census is well formed. Its chunk hashes match and its chunks have a chunk list's shape (check 4). Its
+   rows have known flags and unit families and nonzero ids, are sorted by (client id, extender id) with no
+   extender twice, carry a unit exactly when they are active, never give one unit two families, are never
+   both active and revoked nor a duplicate without being active, and count each provider client at most
+   once, under one coldkey. Its head flags agree with `bindingAt` at both boundaries, as in check 6.
+2. The share rows sum to `Z' = min(Z, W_k)`, with `Z` the header's `extenders.bytes` and `W_k` taken from
+   the epoch's own eligible provider rows, or to 0 when `N = 0`. The usage statement must carry the same `Z`,
+   which the deposit audit checks (below).
 3. The eligible set and its units are exactly the census rows that pass E1 and E3–E5 by the census's own
    flags, grouped by their unit hashes. The share rows are the two‑level even split of `Z'` over them, and
    each row carries the coldkey its census row names.
@@ -1911,18 +1927,31 @@ Validators recompute the arithmetic only, plus the head flags they can read from
 rows, a component whose arithmetic fails is refused, and is rebuilt only on the operator's explicit command
 naming the epoch.
 
-**Evidence in the usage statement.** Schema `urnetwork-epoch-usage-v2`, kind `epoch-usage-v2`, holds every
-v1 field plus:
+**Evidence in the usage statement.** An epoch whose committed header carries an extender component has a
+statement of schema `urnetwork-epoch-usage-v2`, published as kind `epoch-usage-v2` under the same run,
+`<no_id>-<epoch>`. Every other epoch keeps its `urnetwork-epoch-usage-v1` statement, byte for byte. A v2
+statement holds every v1 field and then, between `total_users` and `signer`, in this order
+(`docs/spec/epoch-usage-v2.schema.json`):
 
-- `intra_platform_bytes` and `intra_network_bytes`, and their sum `extender_pool_bytes` (`Z`);
-- `extender_pool_weight_bytes` (`Z'`, after the cap);
-- `extender_pool_contracts` and `extender_pool_payers`, the number of payer networks (M4);
-- `extender_census` (a reference), `extender_units` (`M`) and `eligible_extenders` (`N`);
-- `extender_chunks` (`[]` when `N = 0`).
+- `intra_platform_bytes` and `intra_network_bytes`, and their sum `extender_pool_bytes` (`Z`, before the
+  cap);
+- `extender_pool_weight_bytes` (`Z'`, after the cap: the share rows' sum);
+- `extender_pool_contracts` and `extender_pool_payers`, the number of contracts and of payer networks behind
+  `Z` (M4), positive exactly when `Z` is;
+- `extender_census`, the census chunk references in the header's order (`[]` for a census with no rows),
+  `extender_units` (`M`) and `eligible_extenders` (`N`);
+- `extender_chunks`, the share-row chunk references in the header's order (`[]` exactly when `Z' = 0`, that
+  is when `N = 0` or `Z = 0`).
 
 `total_usage_bytes` becomes the sum of the provider rows plus all of `Z`, not only `Z'` (owner decision). The
 deposit prices the extender pool's usage, and at a nonzero price it raises implied usage. Validators check
-both sums. Two statements for the same chunks with different `Z` are equivocation, as today.
+both sums: `total_usage_bytes` against the provider rows and the header's `Z`, and `extender_pool_bytes`
+against its two parts. The deposit audit holds the rest of the statement to the committed header:
+`extender_pool_bytes` is the header's `extenders.bytes`, `extender_census` and `extender_chunks` are its two
+chunk lists, `N` and `M` are counted from the census rows, and `Z'` is the share rows' sum, which is
+`min(Z, W_k)` when `N > 0` and 0 when `N = 0`. The parts of `Z` and the contract and payer counts are the
+operator's attestation. Two statements for the same chunks with different totals or a different extender
+pool are equivocation, as today.
 
 **Fixed inputs.** An epoch's extender component is built once, at the first root that covers it, like its
 provider rows (§8.3). A rebuild needs the same explicit operator command, which the validator accepts only
@@ -2070,7 +2099,7 @@ extenders evenly for keeping that path open.
 | server: billing of network and friends‑and‑family contracts (owner decisions) | Network (same‑network) and friends‑and‑family contracts leave the no‑escrow path. Until 2026‑11‑11 the connect controller sent both provide modes to `createContractNoEscrowInTx`, with no `transfer_escrow` row, no `payer_network_id` and no balance change, settling through the no‑escrow close. Since the change both reserve escrow from the sender's (dialing network's) transfer balance, as public contracts do, and platform contracts escrow the same way. All of a network's traffic shares its one transfer balance, with no separate limit. The degradation valve's zero‑escrow fallback for exhausted balances stays as it is. | 2–4 days | live since 2026‑11‑11, before `E_x` (step 0) |
 | server: same‑network rule (amends §8.2 from `E_x`) | The epoch reader classifies each contract from its live row (origin network, payer, escrow). It moves same‑network shares out of the provider rows, adds those of funded contracts to `Z`, free and paid alike, and skips unfunded contracts and declared measurement and test networks. It never re‑splits a contract: each share of the usage snapshot goes to one place, and an extender party's share on another network stays in the provider rows (Q7). The 35‑day contract horizon keeps every contract of an epoch live through its build, so settlement does not change. | 2–3 days | epoch 8 |
 | server: extender census | Captured once at the end boundary, with the users count: the active pool (E1); units from the policy's egress‑prefix setting and key; E3 deduplication; E5 flags; the payout identity through the provider‑row wallet selection; and head flags. | 3–4 days | epoch 8 |
-| server: epoch builder | `Z` and `Z'` per epoch, eligibility, the two‑level split, share rows, the census object, header v3 and statement v2. Metrics and alerts for `Z` and its parts, `M`, `N` and the extenders' share of the pool. | 4–5 days | epoch 8 |
+| server: epoch builder | `Z` and `Z'` per epoch, eligibility, the two‑level split, share rows, the census chunks, header v3 and statement v2. Metrics and alerts for `Z` and its parts, `M`, `N` and the extenders' share of the pool. | 4–5 days | epoch 8 |
 | server: contracts | A registry of platform endpoints (sidecar's edges), the intra‑platform class set at contract creation, and usage snapshot v2 (providers, `z_c`, the origin's network, the funded and measurement flags). A platform endpoint stays one of the contract's `n_c` hops, and its share is `z_c` (Q7). Settlement and the deadline close accept the new snapshot. | 5–7 days | sidecar |
 | sn: `ledger`, `protocol` | Header v3, the census and share‑row codecs, the two‑level split and the cap, the new Build and Verify check with fixed inputs, and GL‑style mutation tests, including million‑row fixtures. The server's builder uses this package, so it lands first. | 5–7 days | epoch 8 |
 | sn: `demand/usage` | Statement v2, its JSON schema, and the deposit audit reading `Z` (dormant at zero price). | 1–2 days | epoch 8 |
