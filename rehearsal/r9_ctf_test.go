@@ -522,9 +522,18 @@ func TestR9CaptureTheFlag(t *testing.T) {
 		paid := s.vaultUint(t, "claimed", id(ctfPool), id(0))
 		owed := new(big.Int).Sub(a.Cumulative, paid)
 
-		// Root's sweep: a nominator minimum of 2 TAO, at twice the seed, clears
-		// the residual back to the carry's TAO and the escrow hotkey from its list.
-		n.sudo(t, n.call(t, "AdminUtils.sudo_set_nominator_min_required_stake", types.NewU64(1_000_000_000)))
+		// Root's sweep: a nominator minimum of twice the residual's worth at the
+		// subnet's spot price clears the residual back to the carry's TAO and
+		// the escrow hotkey from its list. Twice the seed's TAO is not always
+		// enough: the seed's own buy lifted the price it is now valued at.
+		alpha := forgeArtifact(t, "src/interfaces/alpha.sol", "IAlpha")
+		priceQ9 := new(big.Int).Quo(n.read(t, alphaAddress, alpha, "getAlphaPrice", s.netuid)[0].(*big.Int), big.NewInt(tao)).Uint64()
+		worth := new(big.Int).Quo(new(big.Int).Mul(new(big.Int).SetUint64(residual), new(big.Int).SetUint64(priceQ9)), big.NewInt(tao)).Uint64()
+		nominatorMinimum := max(2*worth+1, 2*tao)
+		t.Logf("root's sweep: alpha at %d rao, the residual's %d rao of alpha worth %d rao, the nominator minimum raised to %d rao",
+			priceQ9, residual, worth, nominatorMinimum)
+		n.fundEVM(t, stranger.address, 10*nominatorMinimum)
+		n.sudo(t, n.call(t, "AdminUtils.sudo_set_nominator_min_required_stake", types.NewU64(nominatorMinimum)))
 		swept := n.stakingHotkeys(t, carryColdkey)
 		if left := n.stake(t, s.escrow, carryColdkey, s.netuid); left != 0 || onList(swept, s.escrow) {
 			t.Fatalf("root's sweep left the carry %d rao on the escrow hotkey and its list at %s", left, hotkeyList(swept, names))
@@ -573,12 +582,18 @@ func TestR9CaptureTheFlag(t *testing.T) {
 			t.Fatalf("third parties filling vault2's list added %x: %v", foreign, err)
 		}
 		full := n.refused(t, stranger, carry, carryArtifact, nil, "recycle", id(1), a, second.proof(0))
-		_, refusal = n.ethCall(carry, stakingAddress, n.staking.pack(t, "transferStake", s.vaultColdkey, hotkey, nu, nu, owed))
+		// The carry holds nothing on the CTF pool hotkey until the recycle's
+		// claim and move, and the runtime checks the stake to withdraw before the
+		// destination's list. So the return is simulated from a coldkey that holds
+		// stake there: the stranger's own, sent to vault2's full list.
+		n.send(t, stranger, stakingAddress, n.staking, nil, "addStake", hotkey, id(tao), nu)
+		held := n.stake(t, hotkey, mirror(stranger.address), s.netuid)
+		_, refusal = n.ethCall(stranger.address, stakingAddress, n.staking.pack(t, "transferStake", s.vaultColdkey, hotkey, nu, nu, id(held)))
 		if refusal == nil || !strings.Contains(refusal.Error(), "TooManyStakingHotkeys") {
-			t.Errorf("simulated from the carry, its return to vault2's full list answers %v", refusal)
+			t.Errorf("simulated from a coldkey with stake on the CTF pool hotkey, a return to vault2's full list answers %v", refusal)
 		}
 		absorb := n.send(t, relayer, s.vault, s.vaultArtifact, nil, "absorbStake", foreign)
-		t.Logf("vault2's list full refuses the recycle (%s): simulated, the carry's return answers %v; absorbStake of one foreign entry leaves it at %s, gas %d",
+		t.Logf("vault2's list full refuses the recycle (%s): simulated, a return to it answers %v; absorbStake of one foreign entry leaves it at %s, gas %d",
 			full, refusal, hotkeyList(n.stakingHotkeys(t, s.vaultColdkey), names), absorb.GasUsed)
 
 		// The recycle pays.
