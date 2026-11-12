@@ -72,7 +72,8 @@
   Preview states with query parameters: ?page=ke (the Kenya country page, /ctf/ke), ?focus=np (the hub
   filtered to open provider slots), ?country=tm (visitor country), ?expanded=af (an opened tile on
   touch sizes), ?motion=0 (no animation), ?prelaunch (the note at the top of the hub before capture the flag
-  starts, counting down to epoch 8; ?prelaunch=15 starts it 15 seconds from now, to see the last minute and the turn). Resize the window below 1100px for tablet and below 600px for mobile.
+  starts, 15 days 3 hours 38 minutes before epoch 8 on a clock of its own; ?prelaunch=15 starts it 15 seconds from
+  now, to see the last minute and the turn). Resize the window below 1100px for tablet and below 600px for mobile.
   The real page is built in web/ur.xyz (Astro) with self-hosted fonts and flag files; see SEO.md.
 -->
 <style>
@@ -153,11 +154,11 @@ a{color:#ED8FFF}a:hover{color:#F6C4FF}
 @keyframes flare{from{box-shadow:0 0 40px rgba(237,143,255,.5),inset 0 1px 0 rgba(255,225,255,.12)}}
 .start-go{display:inline-flex;align-items:center;justify-content:center;gap:.4em;color:var(--acc);font:400 calc(var(--digit) * .9)/1 Silkscreen,monospace;letter-spacing:.06em;text-transform:uppercase;text-shadow:0 0 22px rgba(237,143,255,.5)}
 .start-go i{flex:none;width:.3em;height:.3em;border-radius:50%;background:var(--acc);animation:pulse 2s infinite}
-.start[data-phase="soon"] .start-go,.start[data-phase="live"] .start-count{visibility:hidden}
+.start[data-phase="live"] .start-count{visibility:hidden}
 .start[data-phase="live"] .start-go{animation:go .9s cubic-bezier(.2,.8,.2,1)}
 @keyframes go{from{opacity:0;transform:scale(.88)}}
 .start-blocks{grid-area:blocks;margin:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
-.start-blocks b{font:400 14px/1 Silkscreen,monospace;color:var(--ink);white-space:nowrap}
+.start-blocks b{display:inline-block;min-width:8ch;font:400 14px/1 Silkscreen,monospace;color:var(--ink);white-space:nowrap}
 .start-track{position:relative;width:64px;height:3px;border-radius:2px;background:#2c2830;overflow:hidden}
 .start-bar{position:absolute;inset:0;background:rgba(237,143,255,.75);transform-origin:left center;animation:block 12s linear both}
 @keyframes block{from{transform:scaleX(0)}}
@@ -586,12 +587,14 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
 
   // ---- the note before capture the flag starts (?prelaunch, on the hub). On ur.xyz it is the island
   // react/src/components/pages/ctf/Countdown.jsx, shown while the snapshot is the prelaunch one; its start is the
-  // snapshot's prelaunch block (epoch 8's first, 9,600,028, projected at 12 s a block, so "about"). ?prelaunch=<n>
-  // previews it n seconds before the start on this clock (the last minute, the turn and the burst: ?prelaunch=15);
-  // a negative n shows it after the start. The board below stays the mock's drawn epoch.
+  // snapshot's prelaunch block (epoch 8's first, 9,600,028, projected at 12 s a block, so "about"). The preview
+  // runs on a clock of its own: ?prelaunch shows it 15 days 3 hours 38 minutes before the start, whatever the day,
+  // and ?prelaunch=<n> n seconds before (the last minute, the turn and the burst: ?prelaunch=15; a negative n after
+  // it). The board below stays the mock's drawn epoch.
   const START = { first: 8, block: 9600028, at: Date.parse('2026-11-27T18:25:24Z') };
   const PRE = qs.has('prelaunch') && !PAGE;
-  const SKEW = PRE && qs.get('prelaunch') !== '' && Number.isFinite(Number(qs.get('prelaunch'))) ? START.at - Number(qs.get('prelaunch')) * 1000 - Date.now() : 0;
+  const PRE_LEAD = qs.get('prelaunch') !== '' && Number.isFinite(Number(qs.get('prelaunch'))) ? Number(qs.get('prelaunch')) : 15 * 86400 + 3 * 3600 + 38 * 60;
+  const SKEW = PRE ? START.at - PRE_LEAD * 1000 - Date.now() : 0;
   const BLOCK_MS = 12000, HOIST_MS = 3 * 50400 * BLOCK_MS;
   const START_NOTE = 'Capture the flag starts with epoch ' + START.first + ', at block ' + int(START.block) + ', about November 27, 18:25 UTC.';
   const START_LIVE = 'Capture the flag is live from epoch ' + START.first + '.';
@@ -616,24 +619,28 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
     const u = ms >= 1.5 * 86400000 ? [Math.round(ms / 86400000), 'day'] : ms >= 1.5 * 3600000 ? [Math.round(ms / 3600000), 'hour'] : [minutes, 'minute'];
     return 'Starts in about ' + new Intl.NumberFormat('en', { style: 'unit', unit: u[1], unitDisplay: 'long' }).format(u[0]) + '.';
   }
-  let startDrawn = false;
+  let startDrawn = false, startBurst = false;
   // the note's markup; the first draw puts the flag at the foot (it glides up as the clock starts) and rolls its
-  // digits in, a later draw (another render of the page) neither
+  // digits in, a later draw (another render of the page) neither. Before the start it says nothing of after it;
+  // once live, the sentence of before (the longer) and the countdown hold their places unseen, and the pips burst
+  // once, on the first draw after the start or at the turn
   function viewStart() {
     const now = startNow();
     const c = startAt(now);
     const first = !startDrawn;
     startDrawn = true;
+    const burst = c.live && !startBurst;
+    if (burst) startBurst = true;
     const tile = function (text) {
       return '<span class="start-num">' + text.split('').map(function (d) { return '<span class="start-d"><span' + (first ? '' : ' class="s"') + '>' + d + '</span></span>'; }).join('') + '</span>';
     };
     return '<div class="start" id="ctf-start" data-phase="' + (c.live ? 'live' : 'soon') + '"' + (c.lastMinute ? ' data-last-minute=""' : '') + ' style="--hoist:' + (first ? 0 : c.hoist) + '">' +
       '<div class="start-pole" aria-hidden="true"><i class="start-notch"></i><i class="start-notch"></i><span class="start-car"><span class="start-flag"><b>' + START.first + '</b></span>' +
-      (c.live ? '<span class="start-burst">' + START_PIPS + '</span>' : '') + '</span></div>' +
-      '<p class="start-line"><span role="status">' + esc(c.live ? START_LIVE : START_NOTE) + '</span><span class="start-ghost" aria-hidden="true">' + esc(c.live ? START_NOTE : START_LIVE) + '</span></p>' +
-      '<div class="start-clock" aria-hidden="true"><span class="start-count"><span class="label" style="color:#ED8FFF">Starts in</span><span class="start-tiles">' +
+      (burst ? '<span class="start-burst">' + START_PIPS + '</span>' : '') + '</span></div>' +
+      '<p class="start-line"><span role="status">' + esc(c.live ? START_LIVE : START_NOTE) + '</span>' + (c.live ? '<span class="start-ghost" aria-hidden="true">' + esc(START_NOTE) + '</span>' : '') + '</p>' +
+      '<div class="start-clock" aria-hidden="true"><span class="start-count"><span class="label" style="color:#ED8FFF">Starts in about</span><span class="start-tiles">' +
       (c.live ? ['--', '--', '--', '--'] : c.figs).map(function (f, i) { return (i ? '<span class="start-sep">:</span>' : '') + '<span class="start-unit">' + tile(f) + '<span class="start-uname">' + START_UNITS[i] + '</span></span>'; }).join('') +
-      '</span></span><span class="start-go"><i></i>Live</span></div>' +
+      '</span></span>' + (c.live ? '<span class="start-go"><i></i>Live</span>' : '') + '</div>' +
       '<p class="start-blocks" aria-hidden="true"><span class="label">Blocks to go</span><b>≈ ' + (c.live ? '0' : int(c.blocks)) + '</b><span class="start-track">' +
       (c.live ? '' : '<i class="start-bar" style="animation-delay:-' + c.into + 'ms"></i>') + '</span></p>' +
       '<p class="sr">' + esc(startWords(now)) + '</p></div>';
@@ -657,8 +664,12 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
     if (c.live) {
       if (status.textContent !== START_LIVE) {
         status.textContent = START_LIVE;
-        el.querySelector('.start-ghost').textContent = START_NOTE;
-        el.querySelector('.start-car').insertAdjacentHTML('beforeend', '<span class="start-burst">' + START_PIPS + '</span>');
+        status.insertAdjacentHTML('afterend', '<span class="start-ghost" aria-hidden="true">' + esc(START_NOTE) + '</span>');
+        el.querySelector('.start-clock').insertAdjacentHTML('beforeend', '<span class="start-go"><i></i>Live</span>');
+        if (!startBurst) {
+          startBurst = true;
+          el.querySelector('.start-car').insertAdjacentHTML('beforeend', '<span class="start-burst">' + START_PIPS + '</span>');
+        }
       }
       return;
     }
@@ -1109,7 +1120,7 @@ button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px v
 
   function view(v) {
     return '<div class="ctf ' + v.motionCls + '">' +
-      '<div class="mockbar"><b>Mockup</b><span>Simulated data: 26 epochs on the network\'s real country coverage' + (PRE ? '; the note before the start counts down to epoch 8 above the drawn mock' : '') + '</span></div>' +
+      '<div class="mockbar"><b>Mockup</b><span>Simulated data: 26 epochs on the network\'s real country coverage' + (PRE ? '; the note before the start counts down to epoch 8 on a clock of its own, above the drawn mock' : '') + '</span></div>' +
       '<div class="shell">' + viewNav() + (PRE ? viewStart() : '') + viewHeader(v) + viewLive(v) +
       (v.showIntro ? viewMine(v) : '') + (v.page ? viewFaq(v) : '') + (v.showFeat ? viewFeat(v) : '') +
       (v.page ? viewAll(v) : viewGrid(v)) + viewHow(v) + (v.page ? '' : viewFaq(v)) + viewFoot(v) +
