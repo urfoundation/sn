@@ -64,6 +64,11 @@ func cmdV2Status(ctx context.Context, opts docopt.Opts) error {
 		fmt.Printf("  accounts:     none\n")
 		return nil
 	}
+	for i := range unavailable {
+		if err := unavailable[i].check(vault); err != nil {
+			return err
+		}
+	}
 	// the pools the endpoint could not read whose no_id is below an account's
 	unavailableBelow := func(below uint64) {
 		for 0 < len(unavailable) && unavailable[0].NoID < below {
@@ -188,6 +193,9 @@ func cmdV2Claim(ctx context.Context, opts docopt.Opts) error {
 	// account to claim: it is named, never taken as holding none.
 	var unread []error
 	for _, pool := range unavailable {
+		if err := pool.check(vault); err != nil {
+			return err
+		}
 		if all || !pickNoID || pool.NoID == noID {
 			fmt.Println(v2PoolUnavailable(pool.NoID))
 			unread = append(unread, fmt.Errorf("pool %d is unavailable at the ledger endpoint, so an account of coldkey %s there cannot be claimed until it can be read", pool.NoID, renderColdkey(coldkey)))

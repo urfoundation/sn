@@ -198,7 +198,16 @@ type v2Account struct {
 // unavailable_pools: its ledger could not be read, so whether the coldkey has
 // an account there is unknown, never none.
 type v2UnavailablePool struct {
-	NoID uint64 `json:"no_id"`
+	Vault string `json:"vault"`
+	NoID  uint64 `json:"no_id"`
+}
+
+// check refuses a pool of another vault than --vault, as an entry's.
+func (p *v2UnavailablePool) check(vault common.Address) error {
+	if !common.IsHexAddress(p.Vault) || common.HexToAddress(p.Vault) != vault {
+		return fmt.Errorf("the ledger endpoint names pool %d of vault %q unavailable, not of --vault %s", p.NoID, p.Vault, vault.Hex())
+	}
+	return nil
 }
 
 // fetchV2Accounts reads the coldkey's accounts from GET /sn/ledger/account,

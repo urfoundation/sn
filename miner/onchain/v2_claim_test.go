@@ -261,6 +261,50 @@ func TestV2StatusNamesUnavailablePools(t *testing.T) {
 	}
 }
 
+// A pool named unavailable in another vault than --vault is refused, as an
+// entry of another vault is, by status and by claim, before any chain read.
+func TestV2StatusAndClaimRefuseAnUnavailablePoolOfAnotherVault(t *testing.T) {
+	other := "0x3333333333333333333333333333333333333333"
+	for _, argv := range []func(*v2TestChain) []string{
+		func(c *v2TestChain) []string { return c.statusArgv() },
+		func(c *v2TestChain) []string { return c.claimArgv("--all") },
+	} {
+		s := newV2ClaimScenario(t)
+		s.c.accounts["0x"+aliceHex] = fmt.Sprintf(`{"coldkey":"0x%s","accounts":[],"unavailable_pools":[{"vault":"%s","no_id":%d,"kind":"ctf","label":"Capture the flag"}]}`, aliceHex, other, v2TestCtfPool)
+		want := fmt.Sprintf(`the ledger endpoint names pool %d of vault "%s" unavailable, not of --vault %s`, v2TestCtfPool, other, common.HexToAddress(v2TestVault).Hex())
+		if _, err := s.c.run(argv(s.c)); err == nil || err.Error() != want || s.c.observed() != "eth_chainId=1" {
+			t.Fatalf("%q: %v, want %q; observed %s", argv(s.c), err, want, s.c.observed())
+		}
+	}
+}
+
+// --all --batch with a pool the endpoint cannot read: the batch claims the
+// accounts it can read, in one transaction, and the command then fails naming
+// the pool.
+func TestV2ClaimAllBatchNamesAnUnavailablePool(t *testing.T) {
+	s := newV2BatchScenario(t)
+	var reply map[string]any
+	if err := json.Unmarshal([]byte(s.c.accounts["0x"+aliceHex]), &reply); err != nil {
+		t.Fatal(err)
+	}
+	reply["unavailable_pools"] = []map[string]any{{"vault": strings.ToLower(v2TestVault), "no_id": v2TestCtfPool, "kind": "ctf", "label": "Capture the flag"}}
+	data, err := json.Marshal(reply)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.c.accounts["0x"+aliceHex] = string(data)
+	output, err := s.c.run(s.c.claimArgv("--all", "--batch="+v2TestBatcher))
+	want := "pool 4294967299 is unavailable at the ledger endpoint, so an account of coldkey " + aliceSS58 + " (0x" + aliceHex + ") there cannot be claimed until it can be read"
+	if err == nil || err.Error() != want || !strings.HasPrefix(output, v2PoolUnavailable(v2TestCtfPool)+"\n") {
+		t.Fatalf("claim --all --batch: %v, want %q\n%s", err, want, output)
+	}
+	sent := s.c.transactions()
+	if len(sent) != 1 {
+		t.Fatalf("batch sent %d transactions", len(sent))
+	}
+	requireBatchTx(t, sent[0], 7, v2BatchLeast(3), s.calldata(t, ClaimBatchGasPerClaim, v2BatchPools...))
+}
+
 // Claim asks with partial=true too. A pool the endpoint names unavailable is
 // never taken as holding nothing: a selection that picks nothing from the
 // other pools fails naming it, with nothing read or sent, and --all claims
