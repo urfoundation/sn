@@ -35,6 +35,9 @@ contract V2CtfCarryTest is V2CtfBase {
     // The least seed: 0.1 TAO, staked 1:1 by the mock.
     uint256 internal constant SEED_RAO = 100_000_000;
     uint256 internal constant SEED_WEI = SEED_RAO * 1e9;
+    // The runtime refuses a move or transfer worth less than 100,000 rao of
+    // TAO (AmountTooLow); the suite scales that floor down to 100 rao of alpha.
+    uint256 internal constant FLOOR = 100;
 
     MockStakingRuntime486 internal runtime = MockStakingRuntime486(ISTAKING_ADDRESS);
     STCtfCarry internal carry;
@@ -48,6 +51,8 @@ contract V2CtfCarryTest is V2CtfBase {
         vm.etch(ISTAKING_ADDRESS, address(new MockStakingRuntime486()).code);
         vm.etch(address(0x080c), address(new MockAddressMapping()).code);
         staking.setColdkey(griefer, GRIEFER);
+        staking.setMinimumMoveAmount(FLOOR);
+        staking.setMinimumTransferAmount(FLOOR);
         ctfHotkey = _registerCtf(NO1, CTF_FIRST_EPOCH, CTF1_UID);
         carry = _createCarry(SEED_WEI);
         carryColdkey = carry.coldkey();
@@ -89,23 +94,23 @@ contract V2CtfCarryTest is V2CtfBase {
     }
 
     /// @dev The griefer adds `entries` new hotkeys to `coldkey`'s list, each by
-    ///      a one-rao transfer from its own coldkey, and returns the last.
+    ///      a transfer at the floor from its own coldkey, and returns the last.
     function _fill(bytes32 coldkey, uint256 entries) internal returns (bytes32 hotkey) {
         for (uint256 i = 0; i < entries; i++) {
             hotkey = keccak256(abi.encode("griefer hotkey", fills++));
-            staking.setStake(hotkey, GRIEFER, 1);
+            staking.setStake(hotkey, GRIEFER, FLOOR);
             vm.prank(griefer);
-            staking.transferStake(coldkey, hotkey, NETUID, NETUID, 1);
+            staking.transferStake(coldkey, hotkey, NETUID, NETUID, FLOOR);
         }
     }
 
     /// @dev One more griefer transfer to `coldkey` on a new hotkey, refused.
     function _fillRefused(bytes32 coldkey, string memory reason) internal {
         bytes32 hotkey = keccak256(abi.encode("griefer hotkey", fills++));
-        staking.setStake(hotkey, GRIEFER, 1);
+        staking.setStake(hotkey, GRIEFER, FLOOR);
         vm.prank(griefer);
         vm.expectRevert(bytes(reason));
-        staking.transferStake(coldkey, hotkey, NETUID, NETUID, 1);
+        staking.transferStake(coldkey, hotkey, NETUID, NETUID, FLOOR);
     }
 
     // ------------------------------------------------------------------
@@ -300,11 +305,11 @@ contract V2CtfCarryTest is V2CtfBase {
         _recycle(rootIndex, _carryAccount(700), proof);
 
         // A zero coldkey names no account: its other fields are ignored.
-        staking.setStake(V2_ESCROW, carryColdkey, SEED_RAO + 80);
+        staking.setStake(V2_ESCROW, carryColdkey, SEED_RAO + 180);
         (, amount) =
             _recycle(rootIndex, LedgerTree.Account({index: 9, coldkey: bytes32(0), cumulative: 1}), proof);
-        assertEq(amount, 80);
-        assertEq(carry.recycledFor(CTF_FIRST_EPOCH + 1), 780);
+        assertEq(amount, 180);
+        assertEq(carry.recycledFor(CTF_FIRST_EPOCH + 1), 880);
         assertEq(staking.stakes(V2_ESCROW, carryColdkey), SEED_RAO);
     }
 
@@ -407,12 +412,12 @@ contract V2CtfCarryTest is V2CtfBase {
         assertEq(carry.recycledFor(CTF_FIRST_EPOCH + 1), 700);
 
         // seed shares the guard: re-entered from a recycle's move, it is refused.
-        staking.setStake(V2_ESCROW, carryColdkey, SEED_RAO + 5);
+        staking.setStake(V2_ESCROW, carryColdkey, SEED_RAO + 105);
         staking.setReentry(address(carry), abi.encodeCall(STCtfCarry.seed, ()));
         (, amount) = _recycle(rootIndex, _noAccount(), proof);
         assertFalse(staking.reentrySucceeded());
         assertEq(staking.reentryFailureSelector(), STCtfCarry.Reentrancy.selector);
-        assertEq(amount, 5);
+        assertEq(amount, 105);
         staking.clearReentry();
     }
 
@@ -481,10 +486,10 @@ contract V2CtfCarryTest is V2CtfBase {
         assertEq(carry.recycledFor(CTF_FIRST_EPOCH + 1), 700);
 
         assertEq(_closeV2(CTF_FIRST_EPOCH + 1, CTF1), 700);
-        staking.setStake(V2_ESCROW, carryColdkey, SEED_RAO + 25);
+        staking.setStake(V2_ESCROW, carryColdkey, SEED_RAO + 125);
         (epoch_,) = _recycle(rootIndex, _noAccount(), proof);
         assertEq(epoch_, CTF_FIRST_EPOCH + 2);
-        assertEq(carry.recycledFor(CTF_FIRST_EPOCH + 2), 25);
+        assertEq(carry.recycledFor(CTF_FIRST_EPOCH + 2), 125);
         // A missed close defers the epoch; the next close captures the return.
         _closeV2(CTF_FIRST_EPOCH + 3, CTF1);
         assertEq(
@@ -492,7 +497,7 @@ contract V2CtfCarryTest is V2CtfBase {
         );
         assertEq(
             vault2.fundedThrough(CTF1, CTF_FIRST_EPOCH + 3),
-            vault2.fundedThrough(CTF1, CTF_FIRST_EPOCH + 1) + 25
+            vault2.fundedThrough(CTF1, CTF_FIRST_EPOCH + 1) + 125
         );
     }
 
@@ -525,11 +530,11 @@ contract V2CtfCarryTest is V2CtfBase {
         staking.setMinimumMoveAmount(701);
         vm.expectRevert("mock: move amount too low");
         _recycle(rootIndex, _noAccount(), proof);
-        staking.setMinimumMoveAmount(0);
+        staking.setMinimumMoveAmount(FLOOR);
         staking.setMinimumTransferAmount(701);
         vm.expectRevert("mock: transfer amount too low");
         _recycle(rootIndex, _noAccount(), proof);
-        staking.setMinimumTransferAmount(0);
+        staking.setMinimumTransferAmount(FLOOR);
         staking.setExhaustTransferTo(V2_SELF, true);
         vm.expectRevert();
         _recycle(rootIndex, _noAccount(), proof);
@@ -614,9 +619,9 @@ contract V2CtfCarryTest is V2CtfBase {
         _fillRefused(filledColdkey, "mock: AccountRejectsStakingHotkeyGrowth");
         _fillRefused(carryColdkey, "mock: AccountRejectsStakingHotkeyGrowth");
         assertEq(runtime.stakingHotkeyCount(carryColdkey), 2);
-        staking.setStake(V2_ESCROW, GRIEFER, 6);
+        staking.setStake(V2_ESCROW, GRIEFER, FLOOR);
         vm.prank(griefer);
-        staking.transferStake(filledColdkey, V2_ESCROW, NETUID, NETUID, 6);
+        staking.transferStake(filledColdkey, V2_ESCROW, NETUID, NETUID, FLOOR);
 
         // The pool's first root pays BOB and the filled carry's account.
         (V2TreeHelper.Node[][] memory levels, uint256 rootIndex) =
@@ -633,34 +638,36 @@ contract V2CtfCarryTest is V2CtfBase {
             rootIndex, _account(carryIndex, filledColdkey, 700), V2TreeHelper.proof(levels, carryIndex)
         );
         assertEq(epoch_, CTF_FIRST_EPOCH + 1);
-        assertEq(amount, 706);
+        assertEq(amount, 700 + FLOOR);
         assertEq(vault2.claimed(CTF1, carryIndex), 700);
         assertEq(staking.stakes(V2_ESCROW, filledColdkey), SEED_RAO);
         assertTrue(runtime.isStakingHotkey(filledColdkey, V2_ESCROW));
         assertEq(runtime.stakingHotkeyCount(filledColdkey), 130);
 
         _accrueV2(ctfHotkey, 50);
-        levels = V2TreeHelper.build(_keys(BOB, filledColdkey), _values(300, 1_456));
+        levels = V2TreeHelper.build(_keys(BOB, filledColdkey), _values(300, 1_550));
         _closeV2(CTF_FIRST_EPOCH + 1, CTF1);
         _commitV2(CTF_FIRST_EPOCH + 1, CTF1, rootSigner1, levels, 2);
         _approveV2(CTF1, auditor1);
         rootIndex = _finalizeV2(CTF1);
         vm.prank(stranger);
         (, amount) = filled.recycle(
-            rootIndex, _account(carryIndex, filledColdkey, 1_456), V2TreeHelper.proof(levels, carryIndex)
+            rootIndex, _account(carryIndex, filledColdkey, 1_550), V2TreeHelper.proof(levels, carryIndex)
         );
-        assertEq(amount, 756);
-        assertEq(vault2.claimed(CTF1, carryIndex), 1_456);
+        assertEq(amount, 850);
+        assertEq(vault2.claimed(CTF1, carryIndex), 1_550);
         assertTrue(runtime.isStakingHotkey(filledColdkey, V2_ESCROW));
         assertTrue(vault2.conservationHolds());
     }
 
-    // CC-15, §4.6: a coldkey swap into the carry's coldkey. With the opt-out,
-    // a source with any hotkey not on the carry's list is refused, so no merge
-    // can lengthen it; one with only the escrow hotkey merges, a donation the
-    // next recycle returns. Without the opt-out a merge could fill a list to
-    // 256 entries, after which the coldkey's own move to a new hotkey, as the
-    // carry's move onto the pool hotkey is, would be refused.
+    // CC-15, §4.6: a coldkey swap into the carry's coldkey. On the runtime the
+    // guardian makes that coldkey a hotkey account, which refuses every such
+    // swap (NewColdKeyIsHotkey, R-9); the mock leaves it out, so this checks
+    // the opt-out alone. A source with any hotkey not on the carry's list is
+    // refused, so no merge can lengthen it; one with only the escrow hotkey
+    // merges, a donation the next recycle returns. Without the opt-out a merge
+    // could fill a list to 256 entries, after which the coldkey's own move to a
+    // new hotkey, as the carry's move onto the pool hotkey is, would be refused.
     function test_CC15_aColdkeySwapCannotLengthenTheCarrysList() public {
         bytes32 source = keccak256("swap source");
         staking.setStake(ELSEWHERE, source, 5);
@@ -682,7 +689,7 @@ contract V2CtfCarryTest is V2CtfBase {
         // a merge of 255 new hotkeys leaves her list at 256.
         address carolAccount = makeAddr("carol");
         staking.setColdkey(carolAccount, CAROL);
-        staking.setStake(V2_ESCROW, CAROL, 10);
+        staking.setStake(V2_ESCROW, CAROL, 2 * FLOOR);
         bytes32 wide = keccak256("wide source");
         for (uint256 i = 0; i < 255; i++) {
             staking.setStake(keccak256(abi.encode("wide", i)), wide, 1);
@@ -691,7 +698,7 @@ contract V2CtfCarryTest is V2CtfBase {
         assertEq(runtime.stakingHotkeyCount(CAROL), 256);
         vm.prank(carolAccount);
         vm.expectRevert("mock: TooManyStakingHotkeys");
-        staking.moveStake(V2_ESCROW, ctfHotkey, NETUID, NETUID, 5);
+        staking.moveStake(V2_ESCROW, ctfHotkey, NETUID, NETUID, FLOOR);
     }
 
     // ------------------------------------------------------------------
@@ -746,7 +753,8 @@ contract V2CtfCarryTest is V2CtfBase {
     // CC-17, §4.6: a residual the runtime lowered, as rounding could, is
     // followed down and never refilled from the pool's stake: the recycle
     // returns all of the claim. Stake above the lowered residual is returned
-    // too, so the residual never rises again but by a seed.
+    // too, once it reaches the transfer floor, so the residual never rises
+    // again but by a seed.
     function test_CC17_aLoweredResidualIsNeverRefilledFromThePool() public {
         (V2TreeHelper.Node[][] memory levels, uint256 rootIndex) = _firstRoot();
         staking.setStake(V2_ESCROW, carryColdkey, SEED_RAO - 1);
@@ -757,9 +765,13 @@ contract V2CtfCarryTest is V2CtfBase {
         assertEq(carry.residual(), SEED_RAO - 1);
         assertEq(staking.stakes(V2_ESCROW, carryColdkey), SEED_RAO - 1);
 
+        // A fragment above it waits until it reaches the transfer floor.
         staking.setStake(V2_ESCROW, carryColdkey, SEED_RAO);
+        vm.expectRevert("mock: move amount too low");
+        _recycle(rootIndex, _noAccount(), V2TreeHelper.proof(levels, 1));
+        staking.setStake(V2_ESCROW, carryColdkey, SEED_RAO - 1 + FLOOR);
         (, amount) = _recycle(rootIndex, _noAccount(), V2TreeHelper.proof(levels, 1));
-        assertEq(amount, 1);
+        assertEq(amount, FLOOR);
         assertEq(carry.residual(), SEED_RAO - 1);
     }
 
@@ -801,12 +813,14 @@ contract V2CtfCarryTest is V2CtfBase {
     // CC-19 and CC-20: refusals the contract cannot clear
     // ------------------------------------------------------------------
 
-    // CC-19, §4.6: anyone can announce a coldkey swap naming the carry's
-    // coldkey, or vault2's, as its destination. While that reservation lasts,
-    // the runtime refuses every transfer to it from another coldkey: vault2's
-    // claim to the carry, or the carry's return to vault2. No contract can
-    // release it. The recycle reverts, the account stays claimable, and the
-    // next recycle after the reservation pays.
+    // CC-19, §4.6: a coldkey swap announced with the carry's coldkey, or
+    // vault2's, as its destination reserves it. The guardian makes both hotkey
+    // accounts, which the runtime refuses to reserve (NewColdKeyIsHotkey,
+    // R-9); this is what a reservation would do without that. While it lasts,
+    // the runtime refuses every transfer to the coldkey from another one:
+    // vault2's claim to the carry, or the carry's return to vault2. No contract
+    // can release it. The recycle reverts, the account stays claimable, and
+    // the next recycle after the reservation pays.
     function test_CC19_aSwapReservationDelaysTheCarry() public {
         (V2TreeHelper.Node[][] memory levels, uint256 rootIndex) = _firstRoot();
         LedgerTree.ProofNode[] memory proof = V2TreeHelper.proof(levels, 1);
@@ -823,13 +837,15 @@ contract V2CtfCarryTest is V2CtfBase {
         assertEq(amount, 700);
     }
 
-    // CC-21, §4.6: a coldkey swap can give the carry hotkeys, since the
-    // opt-out does not count owned hotkeys (swap/swap_coldkey.rs:365-390,
-    // 1143-1162), and the runtime credits their emission to the carry's list
-    // with no cap. Past 256 entries the carry's claim still lands on its
-    // residual's escrow hotkey and its move on the pool hotkey, its auto-stake
-    // destination, both on the list. A coldkey without the pin, CAROL, whose
-    // list reaches 256 the same way, is refused her own move onto a new hotkey.
+    // CC-21, §4.6: without the guardian's hotkey account on the carry's
+    // coldkey, which refuses every coldkey swap into it, a swap could give the
+    // carry hotkeys, since the opt-out does not count owned hotkeys
+    // (swap/swap_coldkey.rs:365-390, 1143-1162), and the runtime credits their
+    // emission to the carry's list with no cap. This checks the pin alone.
+    // Past 256 entries the carry's claim still lands on its residual's escrow
+    // hotkey and its move on the pool hotkey, its auto-stake destination, both
+    // on the list. A coldkey without the pin, CAROL, whose list reaches 256
+    // the same way, is refused her own move onto a new hotkey.
     function test_CC21_aListPast256EntriesLeavesTheCarryWorking() public {
         for (uint256 i = 0; i < 256; i++) {
             bytes32 gifted = keccak256(abi.encode("gifted hotkey", i));
@@ -847,14 +863,14 @@ contract V2CtfCarryTest is V2CtfBase {
 
         address carolAccount = makeAddr("carol");
         staking.setColdkey(carolAccount, CAROL);
-        staking.setStake(V2_ESCROW, CAROL, 10);
+        staking.setStake(V2_ESCROW, CAROL, 2 * FLOOR);
         for (uint256 i = 0; i < 255; i++) {
             staking.setStake(keccak256(abi.encode("carol's gift", i)), CAROL, 1);
         }
         assertEq(runtime.stakingHotkeyCount(CAROL), 256);
         vm.prank(carolAccount);
         vm.expectRevert("mock: TooManyStakingHotkeys");
-        staking.moveStake(V2_ESCROW, ctfHotkey, NETUID, NETUID, 5);
+        staking.moveStake(V2_ESCROW, ctfHotkey, NETUID, NETUID, FLOOR);
     }
 
     // CC-20, §4.6: the carry's return re-adds the CTF pool hotkey to vault2's
@@ -876,7 +892,7 @@ contract V2CtfCarryTest is V2CtfBase {
         assertEq(vault2.claimed(CTF1, 1), 0);
 
         vm.prank(stranger);
-        assertEq(vault2.absorbStake(foreign), 1);
+        assertEq(vault2.absorbStake(foreign), FLOOR);
         assertEq(runtime.stakingHotkeyCount(V2_SELF), 127);
         (, uint256 amount) = _recycle(rootIndex, _carryAccount(700), proof);
         assertEq(amount, 700);
@@ -886,13 +902,13 @@ contract V2CtfCarryTest is V2CtfBase {
         // again; an emission credit to the pool hotkey re-adds it.
         _closeV2(CTF_FIRST_EPOCH + 1, CTF1);
         _fill(V2_SELF, 128 - runtime.stakingHotkeyCount(V2_SELF));
-        staking.setStake(V2_ESCROW, carryColdkey, SEED_RAO + 30);
+        staking.setStake(V2_ESCROW, carryColdkey, SEED_RAO + 130);
         vm.expectRevert("mock: TooManyStakingHotkeys");
         _recycle(rootIndex, _noAccount(), proof);
         _accrueV2(ctfHotkey, 1);
         assertTrue(runtime.isStakingHotkey(V2_SELF, ctfHotkey));
         (, amount) = _recycle(rootIndex, _noAccount(), proof);
-        assertEq(amount, 30);
+        assertEq(amount, 130);
         assertTrue(vault2.conservationHolds());
     }
 }
