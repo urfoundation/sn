@@ -2371,10 +2371,11 @@ and role, so the first miner to reach a thin country earns far more than one mor
   `addStake`, and anyone can restore it with `seed()` if root's sweep of small nominations ever clears it.
   The residual never returns to the pool, so the ledger is unchanged (`CAPTURETHEFLAG.md` §4.6;
   `VERSION2-FINAL.md` §19.4).
-- **What still delays it.** Anyone can hold the carry's coldkey, or vault2's, reserved as a coldkey swap's
-  destination, for 0.1 TAO every six days, and the runtime then refuses the carry's claim or its return. No
-  contract can release a reservation on the current runtime. It takes nothing: the carry account stays
-  claimable, and pot shares wait as pending awards (`CAPTURETHEFLAG.md` §12.4).
+- **Hotkey accounts against swaps and reservations.** A coldkey swap could merge into the carry's coldkey or
+  vault2's, and a swap's announcement reserves its destination, which refuses every transfer into it. The
+  runtime does neither to a coldkey that is a hotkey account, so a guardian coldkey makes both of them hotkey
+  accounts. What can still delay the carry, taking nothing, is vault2's own list held full while the CTF UID
+  earns nothing (`CAPTURETHEFLAG.md` §4.6, §12.4).
 
 At epoch 4's scale, with no head fleet, the CTF pool's fresh amount is 119,583,893,572 rao (119.58 α). A slot
 is then worth 48,025,660 rao, about 0.048 α, and a country with no miners grows its two pots by about 0.48 α an
