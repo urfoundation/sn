@@ -1238,10 +1238,11 @@ tried again. The draw leaves out the census's head-bound candidates, as the oper
 must, so no winner holds a fleet binding. A census that lists one breaks P5: the audit
 reports it (`ledger_audit_ctf_census_bound`) but judges the root as built, since a
 committed census cannot be rebuilt and refusing it would refuse every later root of the
-pool. The watcher, which reads no bindings, refuses such a root wherever the bound
-client changes its draw. Through an outage of the published amendments the audit keeps
-the last verified file, as steering does; a later entry it misses can only name another
-carry contract, which the root's header then fails.
+pool. The watcher, `snclaim v2 check`, reads the same bindings from an archive RPC and
+reaches the same draw: it approves such a root and names the client it left out. Through
+an outage of the published amendments the audit keeps the last verified file, as steering
+does; a later entry it misses can only name another carry contract, which the root's
+header then fails.
 
 ---
 

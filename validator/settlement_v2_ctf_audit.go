@@ -37,8 +37,8 @@
 // (ledger_audit_ctf_census_bound), but judges the root as built: a committed
 // census is write-once, so refusing for it would refuse every later root of the
 // pool, and anyone who can make a client look bound could stall the pool. The
-// watcher, which reads no bindings, refuses such a root wherever the bound
-// client changes its draw.
+// watcher, snclaim v2 check, reads the same bindings from the chain
+// (miner/onchain/v2_ctf_heads.go) and reaches the same draw.
 package validator
 
 import (

@@ -669,10 +669,12 @@ countries, units and address dedupe, the wallets, and the declared networks. A f
 and rebuilt only on the operator's explicit command.
 
 **What anyone can check.** `snclaim v2 check --no_id 4294967297` runs the same audit from the published
-objects, and UR's watcher runs it beside the provider pool's. Without an archive of fleet bindings it leaves
-out no candidate, so a census that lists a fleet‑bound client reproduces only for the validator. The CTF
-statement (§9.1) publishes the per‑country counts and amounts, so concentration and jumps between epochs
-show.
+objects, and UR's watcher runs it beside the provider pool's. It reads the fleet bindings where the validator
+reads them, the v1 coordinator's `FleetBound` events and `bindingAt` at each drawn epoch's boundaries, so a
+census that lists a fleet‑bound client draws alike for both: the client is left out, and the check names it.
+Those are past blocks' state, so the check needs an archive RPC, as the validator does; on a node without
+one it says so and decides nothing. The CTF statement (§9.1) publishes the per‑country counts and amounts,
+so concentration and jumps between epochs show.
 
 ## 9. External inspection
 
