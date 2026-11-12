@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://urnetwork.io/schemas/epoch-usage-v2.schema.json",
+  "title": "UR Subnet epoch usage statement v2",
+  "description": "An operator's signed usage for one epoch whose committed ledger header carries an extender component (WHITEPAPER.md section 8.6.4, from E_x, the first epoch of the extender pool amendment), published on its /sn/evidence routes as kind epoch-usage-v2, run <no_id>-<epoch>, in at most 1 MiB. It holds every field of epoch-usage-v1 and the epoch's extender pool. Its total_usage_bytes, which adds all of Z to the provider rows' usage, and its total_users size and audit the operator's demand deposit in the next epoch (WHITEPAPER.md section 7.1). Every other epoch keeps its epoch-usage-v1 statement.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "deployment_id", "chain_id", "genesis_hash", "netuid", "coordinator", "vault_v2", "policy_hash", "no_id", "epoch", "start", "end", "provider_chunks", "provider_rows", "total_usage_bytes", "total_users", "intra_platform_bytes", "intra_network_bytes", "extender_pool_bytes", "extender_pool_weight_bytes", "extender_pool_contracts", "extender_pool_payers", "extender_census", "extender_units", "eligible_extenders", "extender_chunks", "signer", "signature"],
+  "properties": {
+    "schema": {"const": "urnetwork-epoch-usage-v2"},
+    "deployment_id": {"type": "string", "minLength": 1}, "chain_id": {"type": "integer", "minimum": 1}, "genesis_hash": {"type": "string", "minLength": 1},
+    "netuid": {"type": "integer", "minimum": 1, "maximum": 65535}, "coordinator": {"$ref": "#/$defs/address"}, "vault_v2": {"$ref": "#/$defs/address"},
+    "policy_hash": {"type": "string", "minLength": 1}, "no_id": {"type": "integer", "minimum": 1}, "epoch": {"type": "integer", "minimum": 0},
+    "start": {"$ref": "#/$defs/block", "description": "The epoch's finalized start block."},
+    "end": {"$ref": "#/$defs/block", "description": "The epoch's finalized end block. Its number must be greater than start's."},
+    "provider_chunks": {"type": ["array", "null"], "items": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}, "description": "The epoch's provider chunks, which must be those the committed ledger header lists for the epoch."},
+    "provider_rows": {"type": "integer", "minimum": 0, "description": "The number of rows in those chunks, eligible or not."},
+    "total_usage_bytes": {"type": "integer", "minimum": 0, "description": "The sum of the usage bytes of those rows, eligible or not, plus all of extender_pool_bytes (Z, before the cap)."},
+    "total_users": {"type": "integer", "minimum": 0, "description": "The operator's attested count of distinct top-level clients with contract usage in the epoch window, as a payout artifact's total_users. It is not independently verified."},
+    "intra_platform_bytes": {"type": "integer", "minimum": 0, "description": "Z's intra-platform part: the shares of the operator's registered platform endpoints in the funded contracts that closed in the epoch's earning window, less declared measurement and test traffic. The operator's attestation."},
+    "intra_network_bytes": {"type": "integer", "minimum": 0, "description": "Z's intra-network part: the shares on each such contract's origin network. The operator's attestation."},
+    "extender_pool_bytes": {"type": "integer", "minimum": 0, "description": "Z, the sum of intra_platform_bytes and intra_network_bytes, before the cap. It must equal the bytes of the epoch's extender component in the committed ledger header."},
+    "extender_pool_weight_bytes": {"type": "integer", "minimum": 0, "description": "Z', what Z entered the allocation as: min(Z, the epoch's eligible provider usage), and 0 with no eligible extender. It must equal the sum of the share rows that extender_chunks hold."},
+    "extender_pool_contracts": {"type": "integer", "minimum": 0, "description": "The number of contracts behind Z, positive exactly when Z is. The operator's attestation."},
+    "extender_pool_payers": {"type": "integer", "minimum": 0, "description": "The number of distinct payer networks behind Z, at most extender_pool_contracts and positive exactly when it is. The operator's attestation."},
+    "extender_census": {"type": "array", "items": {"$ref": "#/$defs/chunk"}, "description": "The census chunks, in order, which must be those the committed ledger header lists for the epoch's extender component: 98-byte rows, one per extender of the operator known in the epoch, eligible or not. [] for a census with no rows."},
+    "extender_units": {"type": "integer", "minimum": 0, "description": "M, the units that hold at least one eligible census row, as counted from the census chunks."},
+    "eligible_extenders": {"type": "integer", "minimum": 0, "description": "N, the eligible census rows, as counted from the census chunks. extender_units is positive exactly when it is, and at most it."},
+    "extender_chunks": {"type": "array", "items": {"$ref": "#/$defs/chunk"}, "description": "The share-row chunks, in order, which must be those the committed ledger header lists for the epoch's extender component: 57-byte rows like provider rows. [] exactly when extender_pool_weight_bytes is 0."},
+    "signer": {"$ref": "#/$defs/address", "description": "The address of the operator's artifact key."},
+    "signature": {"type": "string", "pattern": "^0x[0-9a-f]{130}$", "description": "The artifact key's secp256k1 signature, with a recovery id of 0 or 1, over the SHA-256 of the statement without this field, encoded as Go's encoding/json writes it: compact, with the fields in the order listed here."}
+  },
+  "$defs": {
+    "address": {"type": "string", "pattern": "^0x[0-9a-f]{40}$", "not": {"const": "0x0000000000000000000000000000000000000000"}},
+    "block": {"type": "object", "additionalProperties": false, "required": ["number", "hash"], "properties": {"number": {"type": "integer", "minimum": 0}, "hash": {"type": "string", "minLength": 1}}},
+    "chunk": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+  }
+}

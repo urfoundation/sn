@@ -96,6 +96,22 @@ var (
 	ErrTreeTotal = errors.New("ledger: account rows do not sum to the committed total")
 	// ErrTreeRoot: the account rows do not rebuild the committed root.
 	ErrTreeRoot = errors.New("ledger: account rows do not rebuild the committed root")
+
+	// Check 11, extenders (with the census rules' errors, ErrCensusZeroID,
+	// ErrCensusUnsorted, ErrCensusDuplicate, ErrCensusUnit, ErrCensusFlags
+	// and ErrCensusClient, and ErrExtenderOverflow; a census row's encoding,
+	// ErrCensusEncoding, is check 4's).
+
+	// ErrExtendersMissing: an epoch the extender pool amendment covers has no
+	// extender component.
+	ErrExtendersMissing = errors.New("ledger: an epoch the extender pool amendment covers has no extender component")
+	// ErrExtendersUnexpected: an epoch the amendment does not cover has an
+	// extender component.
+	ErrExtendersUnexpected = errors.New("ledger: an epoch the extender pool amendment does not cover has an extender component")
+	// ErrExtenderRows: the share rows are not the even split of the
+	// component's bytes, capped at the epoch's eligible provider usage, over
+	// its census.
+	ErrExtenderRows = errors.New("ledger: the extender share rows are not the census's even split of the capped pool bytes")
 )
 
 // Check names a §9.2 check.
@@ -118,6 +134,10 @@ const (
 	// CheckRecovery: the header's recovery components are not the ones the
 	// chain calls for (§16 step 6).
 	CheckRecovery
+	// CheckExtenders: an epoch's extender component is not the one the signed
+	// amendment entry calls for, or its census or share rows do not hold
+	// (WHITEPAPER.md §8.6.4).
+	CheckExtenders
 )
 
 func (c Check) String() string {
@@ -146,6 +166,8 @@ func (c Check) String() string {
 		return "fetch"
 	case CheckRecovery:
 		return "recovery"
+	case CheckExtenders:
+		return "extenders"
 	default:
 		return fmt.Sprintf("check(%d)", int(c))
 	}
@@ -182,6 +204,11 @@ type Custody interface {
 	// KeepNull records that the pending root seq declared the epoch's inputs
 	// unrecoverable.
 	KeepNull(ctx context.Context, noID, epoch, seq uint64) error
+	// ValidExtenders returns the extender component of the epoch that an
+	// audit found valid, with ok false when there is none.
+	ValidExtenders(ctx context.Context, noID, epoch uint64) (component *HeaderExtenders, ok bool, err error)
+	// KeepValidExtenders records the epoch's extender component as valid.
+	KeepValidExtenders(ctx context.Context, noID, epoch uint64, component *HeaderExtenders) error
 }
 
 // HeadOracle reads fleet bindings for check 6. Its errors are returned by
@@ -225,6 +252,20 @@ type VerifyInput struct {
 	// the epoch's funding are still checked; whether they are the scheduled
 	// ones is the auditors' check. A validator never sets it.
 	RecoveriesUnchecked bool
+	// ExtendersFrom is E_x for the pool: the first epoch the extender pool
+	// amendment covers (WHITEPAPER.md §8.6.7), from the signed amendment
+	// entry in force or, where none is, the configured fallback
+	// (amendment.File.At), and 0 while it covers no epoch. Every covered
+	// epoch from it that is not declared unrecoverable must carry an extender
+	// component, and no other epoch may (check 11). Version 1 of the entry
+	// has no end, so the epochs it covers are exactly those from E_x.
+	ExtendersFrom uint64
+	// ExtendersUnchecked takes the header's extender components as declared
+	// and skips check 11's first part, which epochs carry one, for a watcher
+	// without the amendments file, such as snclaim. Each component's census,
+	// head flags and share rows are still checked; whether the amendment
+	// covers its epoch is the auditors' check. A validator never sets it.
+	ExtendersUnchecked bool
 }
 
 // Fault is a previous account that the pending root's published account
@@ -347,6 +388,7 @@ var (
 	previousChunkRole  = role{check: CheckPrevious, within: ErrPreviousRebuild, mismatch: ErrChunkHash, oversize: ErrChunkLength, limit: ChunkRows * AccountRowBytes}
 	accountChunkRole   = role{check: CheckChunks, mismatch: ErrChunkHash, oversize: ErrChunkLength, limit: ChunkRows * AccountRowBytes}
 	providerChunkRole  = role{check: CheckChunks, mismatch: ErrChunkHash, oversize: ErrChunkLength, limit: ChunkRows * ProviderRowBytes}
+	censusChunkRole    = role{check: CheckChunks, mismatch: ErrChunkHash, oversize: ErrChunkLength, limit: ChunkRows * CensusRowBytes}
 )
 
 type verifier struct {
@@ -362,10 +404,13 @@ type verifier struct {
 // outcome is in the Result. The checks run in this order, stopping at the
 // first that fails: 2 (the previous root, so that a demand has accounts to
 // protect), 1, the pending root's account chunks (4) and the faults they
-// show against the previous root, 3, 8, 9, then per covered epoch its
-// provider chunks (4), rows (5) and head flags (6) with its allocation, and
-// finally 7. Objects fetched are kept in custody, and an epoch's rows that
-// pass checks 4 to 6 and allocate are recorded as valid.
+// show against the previous root, 10, which epochs carry an extender
+// component (11), 3, 8, 9, then per covered epoch its provider chunks (4),
+// rows (5) and head flags (6), its extender component's census chunks (4),
+// census rules (11), census head flags (6) and share rows (11), with its
+// allocation, and finally 7. Objects fetched are kept in custody, and an
+// epoch's rows and extender component that pass these checks and allocate
+// are recorded as valid.
 func Verify(ctx context.Context, in VerifyInput) (*Result, error) {
 	if ctx == nil || in.Fetcher == nil || in.Custody == nil {
 		return nil, ErrInput
@@ -405,7 +450,14 @@ func (v *verifier) run() error {
 			return err
 		}
 	}
+	if err := v.extenderDeclarations(header); err != nil {
+		return err
+	}
 	held, heldRecovery, err := v.fixedInputs(header)
+	if err != nil {
+		return err
+	}
+	heldExtenders, err := v.fixedExtenders(header, held)
 	if err != nil {
 		return err
 	}
@@ -415,7 +467,7 @@ func (v *verifier) run() error {
 	if err := v.checkTree(); err != nil {
 		return err
 	}
-	return v.allocation(header, p, held, heldRecovery)
+	return v.allocation(header, p, held, heldRecovery, heldExtenders)
 }
 
 // get returns an object from custody, or fetches, checks and keeps it.
@@ -703,9 +755,11 @@ func (v *verifier) checkTree() error {
 }
 
 // allocation runs checks 4 to 6 on each covered epoch's provider rows and
-// on its recovery components' source rows, walks the epochs (§6.4), each
-// recovery component allocated by its source rows first, and runs check 7.
-func (v *verifier) allocation(h *Header, p uint64, held []bool, heldRecovery [][]bool) error {
+// on its recovery components' source rows, checks its extender component
+// (4, 11 and 6), walks the epochs (§6.4), each recovery component allocated
+// by its source rows first and the epoch by its provider rows with its share
+// rows, and runs check 7.
+func (v *verifier) allocation(h *Header, p uint64, held []bool, heldRecovery [][]bool, heldExtenders []bool) error {
 	var base uint256.Int
 	if v.in.Previous != nil {
 		base = v.in.Previous.Total
@@ -727,13 +781,25 @@ func (v *verifier) allocation(h *Header, p uint64, held []bool, heldRecovery [][
 				return err
 			}
 		}
-		// Check 5 bounds the usage, so the allocation fails only with the
-		// context.
+		if epoch.Extenders != nil {
+			shares, err := v.extenderRows(epoch, rows)
+			if err != nil {
+				return err
+			}
+			rows = allocationRows(rows, shares)
+		}
+		// Check 5 bounds the provider rows' usage and check 11 that usage with
+		// the share rows, so the allocation fails only with the context.
 		if _, _, err := w.step(v.ctx, &ordinary, rows, epoch.Null); err != nil {
 			return err
 		}
 		if !epoch.Null && !held[i] {
 			if err := v.in.Custody.KeepValidRows(v.ctx, v.in.NoID, epoch.Epoch, epoch.Providers); err != nil {
+				return err
+			}
+		}
+		if epoch.Extenders != nil && !heldExtenders[i] {
+			if err := v.in.Custody.KeepValidExtenders(v.ctx, v.in.NoID, epoch.Epoch, epoch.Extenders); err != nil {
 				return err
 			}
 		}

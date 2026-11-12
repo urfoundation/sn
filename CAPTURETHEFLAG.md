@@ -908,7 +908,7 @@ brief:
 | `GET /sn/ctf/country/{cc}` | public; `public, max-age=60` | The country's row of `GET /sn/ctf` with the same context, and its history from the pool's first epoch, newest first: per role the units, the slots won, the pot in and out, what was awarded, the median award and the share of entries that won. A code outside the 249 is 404 `unknown_country`. |
 | `GET /sn/ctf/top` | public; `public, max-age=60` | The countries where a role was not fully captured at last epoch's draw, largest pot first (`role=provider\|extender\|any`, `limit` 1 to 249, 10 by default). The seven territories without a permanent population are left out unless `include_uninhabited=true`. Empty without a draw last epoch. |
 | `GET /sn/ctf/epoch/{epoch}` | public; `public, max-age=31536000, immutable` once finalized, `max-age=60` while pending | One epoch, once a committed root covers it. The census (`hash`, `block`, `candidates`, units, excused samples, exclusion counts), the draw (`round`, `signature`, `randomness`, `seed`), the amounts, the slots and the root. Every country's units, slots, near misses, pots in and out and awards. The awards (role, country, rank, unit hash and family, client id, coldkey, `slot`, `pot_share`, `pending`) and the pending awards. `objects` names the header, countries, census, awards, pots and pending objects, served by `GET /sn/ledger/object`. Before the pool's first epoch, or until a committed root covers it, 404 `unknown_epoch`. |
-| `GET /sn/ctf/client` | Bearer token: a client JWT for its own client, or the network's JWT or API key for every client the network has had; a valid credential of either kind is never answered 401; `private, no-cache` | For a client JWT, its status in its recent epochs (`limit` 1 to 52, 8 by default): per role, candidate or not and the first rule that excluded it, its country and unit family, its presence against the half‑epoch rule, and whether it won, with its rank, slot, pot share, whether that share is pending, and the coldkey paid. A network credential gets no epochs. Both get `wins`: every win of the answer's clients not claimed yet, whatever its epoch, and every win of the recent epochs, newest first, each with its client, amounts, root status and `claimed`. A network's wins are the awards recorded for it (`ctf_award.network_id`, from the census member, else the client's network, when the award is written), so they stay its own after a client is removed and the reaper deletes its rows. A win is claimed once the root that pays it is finalized and vault2's `claimed` for its coldkey's CTF account reaches the account's cumulative in that root. Every coldkey is read, the newest wins' first; vault2's `claimed` is read at one finalized block per answer, in batches of 50 eth_calls, and each value is kept for 25 s, under the 30 s between the apps' reads after a claim. `claimed` is null when that cannot be read in the five seconds the answer gives it, or when the account's cumulative in the paying root is below the win's amount, which that root pays whole; a claim state that cannot be read never fails the answer. |
+| `GET /sn/ctf/client` | Bearer token: a client JWT for its own client, or the network's JWT or API key for every client the network has had; a valid credential of either kind is never answered 401; `private, no-cache` | For a client JWT, its status in its recent epochs (`limit` 1 to 52, 8 by default): per role, candidate or not and the first rule that excluded it, its country and unit family, its presence against the half‑epoch rule, and whether it won, with its rank, slot, pot share, whether that share is pending, and the coldkey paid. A network credential gets no epochs. Both get `wins`: every win of the answer's clients not claimed yet, whatever its epoch, and every win of the recent epochs, newest first, each with its client, amounts, root status and `claimed`. A network's wins are the awards recorded for it (`ctf_award.network_id`, from the census member, else the client's network, when the award is written), so they stay its own after a client is removed and the reaper deletes its rows. A win is claimed once the root that pays it is finalized and vault2's `claimed` for its coldkey's CTF account reaches the account's cumulative in that root. Every coldkey is read, the newest wins' first; vault2's `claimed` is read at one finalized block per answer, in batches of 50 eth_calls, and each value is kept for 25 s, under the 30 s between the apps' reads after a claim. When vault2's `claimed` cannot be read again in the five seconds the answer gives it, the answer uses the last value the server read for the account, however old: `claimed` only grows, so it can only show a claimed win as not claimed a little longer. `claimed` is null when the account's state cannot be read and the server has no earlier value, or when the account's cumulative in the paying root is below the win's amount, which that root pays whole; a claim state that cannot be read never fails the answer. |
 | `GET /sn/ledger/account` | public; `Cache-Control: no-store` | Unchanged fields. Each entry gains `kind` (`pool` or `ctf`) and `label` ("Pool 1", "Capture the flag"), and the answer gains `unavailable_pools`. With `partial=true`, a pool whose ledger cannot be read is left out and named there, rather than failing the whole answer with a 502. Without it, a CTF pool that cannot be read is left out, unnamed, and the other pools are answered as before; a fault in any other pool is still a 502 (§10). |
 | `GET /sn/openapi.yml` | public; `public, max-age=3600` | The document, as YAML, byte for byte as the serving release was built with it. |
 
@@ -935,7 +935,7 @@ require: `*`, or the request's own origin for the operator's own sites, which th
 (vault `services.yml`'s `cors_origins`). The cacheable CTF answers carry a strong `ETag` (304 on
 `If-None-Match`) and `Last-Modified`, which is `as_of`: their data changes only when an epoch starts, a
 census or root is committed, or a root is finalized. `/sn/ctf/client` also changes, with its `ETag` but not
-its `as_of`, when one of its wins is claimed, within 25 s of the claim's finalized block.
+its `as_of`, when one of its wins is claimed, within 25 s of the claim's finalized block while vault2 can be read.
 
 **"Last epoch" and "this epoch".** "Paid last epoch" is the latest epoch with a committed CTF root: its
 winners per country and role. Its root may still be pending, and the status says so. "Carried into this
@@ -1079,15 +1079,25 @@ needed was on the server and in the presentation:
     transaction to the batcher already deployed on mainnet, `0x14174e7c…c41a`, after checking its code
     against the release's. Each item is capped at 2.6M gas or its estimate, whichever is higher, and a batch
     of two is signed at about 3.5M gas, against 2.6M for one claim sent alone. So a batch needs a larger gas
-    balance, in one transaction instead of two. Without a batcher (testnet), or with a gas key that can pay
-    one claim but not the batch, it claims the accounts alone, the largest first. One the gas key then cannot
-    pay for fails `needs_gas` with nothing sent, so it stays claimable. An account a batch did not attempt is
-    then claimed alone.
+    balance, in one transaction instead of two. Without a batcher (testnet) it claims the accounts alone, the
+    largest first. A gas key that cannot pay for the batch of every account sends the batch of the most
+    accounts it can pay for, the largest first, when that is two or more, and claims the others alone, the
+    largest first; of two accounts, it claims the largest alone first. One the gas key then cannot pay for
+    fails `needs_gas` with nothing sent, so it stays claimable: a gas key that can pay for no claim at all
+    sends nothing, and every account fails `needs_gas`. An account a batch did not attempt is then claimed
+    alone.
   - **External wallets** (ur.io's injected wallet, and any external signer of the bindings).
-    `SnLedgerClaimTransactionsForPayer` builds one batch transaction for two or more accounts when the
-    paying wallet can pay for it at the chain's price, read high on purpose. Otherwise it builds the largest
-    account's claim alone, and the others stay claimable (owner decision, 2026‑11‑12).
-    `SnLedgerClaimOutcomesOf` reads what each mined transaction did for each account.
+    `SnLedgerClaimTransactionsForPayer` checks the paying wallet's balance at the chain's price, read high on
+    purpose. A wallet that can pay for every claim gets them all, two or more as one batch transaction.
+    Otherwise it gets the claims of the most accounts it can pay for, the largest first, as one batch when it
+    can be, and the others stay claimable: of two accounts, the largest account's claim alone (owner
+    decision, 2026‑11‑12). A wallet that cannot pay even for the largest account's claim alone gets no
+    transaction (sdk `447ed899`): every account is still claimable with `needs_gas`, and `MaxCostWei` is what
+    that claim alone can cost, the least the wallet must hold. ur.io then sends nothing and does not ask the
+    wallet onto the chain, every account reads Claimable with "Add TAO for gas", and Claim stays for the next
+    try; it reads an older SDK's answer, which still named the largest account's claim, the same way. So, as
+    the device's gas key sends nothing it cannot pay for, the payer form gives a wallet no claim it cannot pay
+    for at that price. `SnLedgerClaimOutcomesOf` reads what each mined transaction did for each account.
   - **The relay's status** is one row per (coldkey, pool), and its top level is the primary coldkey's
     accounts together, so one action claims every pool.
   - **The won‑slot line.** `SnCtfClient` asks `GET /sn/ctf/client` with the device's network credential, as
@@ -1107,7 +1117,7 @@ needed was on the server and in the presentation:
     leaves it out, so no app offers a claim the chain refuses, and the SDK's `AmountTooLow` refusal reads the
     same, never as a failure. With no floor known, the SDK's preflight decides, as before.
   - **Still claimable.** An account the paying key or wallet could not pay for, with nothing sent, stays
-    claimable, never failed.
+    claimable, never failed, with "Add TAO for gas" under it in every app.
   - Apple, Windows, Linux and ur.io drew only the relay's top‑level status, so they gained per‑pool rows, as
     Android already had, and Claim now's sheet has per‑pool rows, as Android's has.
   - **The won‑slot lines.** Every app, ur.io included, shows one line for each slot won and not claimed yet,
@@ -1122,8 +1132,10 @@ needed was on the server and in the presentation:
     relay answer them with the operator's pool exactly as before, never a 502 or an error that would hide that
     pool's balance too. The CTF account is left out until its pool reads again (owner decision, 2026‑11‑12).
   - The relay's pass keeps claiming the operator's pool meanwhile, whether its ledger read or a claim's proof
-    finds the CTF pool unreadable, so the operator's pool's rows read as they did. Only the relay's own
-    `state`, which every client reads and no app draws, says `ledger_unavailable`.
+    finds the CTF pool unreadable, so the operator's pool's rows read as they did. So does the relay's own
+    `state`: such a pass says `ledger_unavailable` and names the CTF pool, which a client that sends
+    `partial=true` reads, and an old app reads `running`, as before that pool existed. A pass that cannot read
+    the operator's pool, or stops on it, reads `ledger_unavailable` to every client.
   - Claim now names no partial answer, so it does the same for every app: a tap of a coldkey whose only
     account is in an unreadable CTF pool reads `nothing_pending`. A tap of a coldkey that also has an account
     in the operator's pool is taken, and it stays open until the CTF pool reads, so that its CTF account is
@@ -1133,9 +1145,12 @@ needed was on the server and in the presentation:
 - **Miner daemon and `snclaim`.** Both already treat each `(vault, noId, index)` as its own unit, so they
   claim CTF accounts unchanged. The daemon's 1.9 α threshold is per account: unlike the relay, it does not
   sweep a small CTF account along with a due one, so that account waits for the threshold or a demand.
-  `snclaim v2 check` runs the CTF audit (§8). Neither sends `partial=true`, so while the CTF pool cannot be
-  read the ledger route leaves it out for them too. The daemon keeps its CTF units, which wait for the pool,
-  and `snclaim v2 status` and `claim` see the operator's pool alone.
+  `snclaim v2 check` runs the CTF audit (§8). The daemon does not send `partial=true`, so while the CTF pool
+  cannot be read the ledger route leaves it out for the daemon too, which keeps its CTF units until the pool
+  reads again. `snclaim v2 status` and `claim` send `partial=true`, so a pool the route cannot read is named,
+  never taken as holding nothing: `status` shows it as unavailable beside the other pools' accounts, and
+  `claim` names it and fails on it when it picks no account from the other pools, or with `--all` once it
+  has claimed them.
 
 ## 11. What was built, and the rollout
 

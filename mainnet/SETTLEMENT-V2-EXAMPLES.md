@@ -123,6 +123,21 @@ loaded `ExecStart` to be exactly the rendered one
 (`repair_validator_host.go:370-402`; `TestRepairValidatorReleaseAndCgroupRefusal`),
 so with this drop-in they refuse the validator.
 
+### The extender pool's fallback flag
+
+Only if the extender pool's amendment entry cannot be signed before its first
+epoch starts (WHITEPAPER.md §8.6.7) does the validator take
+`--amendments-fallback=<path>`. For a unit this repository renders, add it to
+the same drop-in's second `ExecStart`, after `--ledger_auditor_key_file`. On
+snow xops renders `ExecStart` (`main/ansible/playbook-validator.yml`), which
+today has a variable for the auditor key and none for this flag, so the flag
+needs one there first. `<path>` is an absolute file the service can read but
+not write, holding the owner's configured line, the same line as the server's
+st.yml `amendments:` block. It is a run flag, not part of the adopted config,
+so the controllers' unit check applies as it does to the auditor drop-in.
+Remove it from every reader once the signed entry is published (VALIDATOR.md
+§11.6).
+
 ## Claim daemon config (step 13)
 
 - `<vault2-address>` and `<claim-batcher-address>`: step 8.5's

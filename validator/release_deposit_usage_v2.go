@@ -15,6 +15,15 @@
 // observation or for the history byte allowance, so replay reads them from custody
 // and neither charges them.
 //
+// An epoch whose committed header carries an extender component (WHITEPAPER.md
+// §8.6.4, from the extender pool amendment's first epoch E_x) has a version 2
+// statement, read under its own evidence kind: the audit also reads the census and
+// share-row chunks the header lists for it, retained like provider chunks, and
+// holds the statement to what they and the header hold. Its total_usage_bytes,
+// which the deposit prices, is the provider rows' usage plus all of Z. Every other
+// epoch is audited exactly as before the amendment, reading the same objects and
+// the same version 1 statement.
+//
 // Live steering verifies an epoch's committed rows once per process and reuses what
 // they hold on later passes, which still read and judge the statement and compare
 // the deposit. All of one audit's reads of the operator's answers share one bounded
@@ -134,10 +143,25 @@ func depositUsageReadShare(ctx context.Context, limit time.Duration, operators i
 }
 
 // depositUsageVerified is what a source epoch's committed rows hold once verified:
-// the header's chunks for the epoch, in order, and the rows' count and usage.
+// the header's chunks for the epoch, in order, and the rows' count and usage, with
+// the epoch's extender component when its header carries one.
 type depositUsageVerified struct {
 	chunks []string
 	rows   DepositUsageRows
+	// extenders is the committed extender component as its statement must carry
+	// it (usage.CommittedExtenders), nil for an epoch without one.
+	extenders *usage.Extenders
+}
+
+// clone copies a verified value, so a memo entry shares nothing with its readers.
+func (self depositUsageVerified) clone() depositUsageVerified {
+	self.chunks = slices.Clone(self.chunks)
+	if self.extenders != nil {
+		extenders := *self.extenders
+		extenders.Census, extenders.Chunks = slices.Clone(extenders.Census), slices.Clone(extenders.Chunks)
+		self.extenders = &extenders
+	}
+	return self
 }
 
 type depositUsageMemoKey struct {
@@ -167,8 +191,7 @@ func (self *releaseDepositUsageMemo) get(key depositUsageMemoKey) (depositUsageV
 	self.lock.Lock()
 	defer self.lock.Unlock()
 	value, found := self.entries[key]
-	value.chunks = slices.Clone(value.chunks)
-	return value, found
+	return value.clone(), found
 }
 
 func (self *releaseDepositUsageMemo) put(key depositUsageMemoKey, value depositUsageVerified) {
@@ -187,8 +210,7 @@ func (self *releaseDepositUsageMemo) put(key depositUsageMemoKey, value depositU
 		}
 		delete(self.entries, oldest)
 	}
-	value.chunks = slices.Clone(value.chunks)
-	self.entries[key] = value
+	self.entries[key] = value.clone()
 	self.fills++
 }
 
@@ -443,11 +465,26 @@ func depositUsageChunksAhead(index, count int) uint64 {
 // checkDepositUsageChunk applies the list shape a verifier checks (ledger's
 // DecodeProviderChunks) to chunk index of count.
 func checkDepositUsageChunk(length, index, count int) error {
-	if length%ledger.ProviderRowBytes != 0 || length > depositUsageFullChunkBytes {
+	return checkDepositUsageChunkOf(length, ledger.ProviderRowBytes, index, count)
+}
+
+// depositUsageFullCensusChunkBytes is every census chunk but a list's last.
+const depositUsageFullCensusChunkBytes = ledger.ChunkRows * ledger.CensusRowBytes
+
+// depositUsageCensusChunksAhead is depositUsageChunksAhead for a census chunk list.
+func depositUsageCensusChunksAhead(index, count int) uint64 {
+	return uint64(count-1-index)*depositUsageFullCensusChunkBytes + ledger.CensusRowBytes
+}
+
+// checkDepositUsageChunkOf applies the list shape a verifier checks to chunk index
+// of count, of rows rowBytes long: whole rows, full chunks but a non-empty last.
+func checkDepositUsageChunkOf(length, rowBytes, index, count int) error {
+	full := ledger.ChunkRows * rowBytes
+	if length%rowBytes != 0 || length > full {
 		return fmt.Errorf("%w: chunk %d has %d bytes", ledger.ErrChunkLength, index, length)
 	}
-	if index < count-1 && length != depositUsageFullChunkBytes {
-		return fmt.Errorf("%w: chunk %d of %d has %d rows", ledger.ErrChunkShort, index, count, length/ledger.ProviderRowBytes)
+	if index < count-1 && length != full {
+		return fmt.Errorf("%w: chunk %d of %d has %d rows", ledger.ErrChunkShort, index, count, length/rowBytes)
 	}
 	if index == count-1 && length == 0 {
 		return fmt.Errorf("%w: chunk %d", ledger.ErrChunkEmpty, index)
@@ -457,10 +494,13 @@ func checkDepositUsageChunk(length, index, count int) error {
 
 // depositUsageRowSums applies the rules a verifier can check (VERSION2-FINAL.md §6.2)
 // to an epoch's rows as they arrive, a chunk at a time, and sums them. Rows that
-// break them are not the epoch's usage.
+// break them are not the epoch's usage. eligible is W_k, the usage of the rows
+// with a coldkey that are not head excluded (ledger.EligibleUsage); it never
+// exceeds the total, so it cannot overflow.
 type depositUsageRowSums struct {
-	last [16]byte
-	rows DepositUsageRows
+	last     [16]byte
+	rows     DepositUsageRows
+	eligible uint64
 }
 
 func (self *depositUsageRowSums) add(rows []protocol.LedgerUsageRow) error {
@@ -481,14 +521,20 @@ func (self *depositUsageRowSums) add(rows []protocol.LedgerUsageRow) error {
 		self.last = row.ClientID
 		self.rows.Count++
 		self.rows.UsageBytes += row.UsageBytes
+		if row.Coldkey != ([32]byte{}) && !row.HeadExcluded {
+			self.eligible += row.UsageBytes
+		}
 	}
 	return nil
 }
 
 // depositUsageVerdict is why an audit has no usage to judge: its status and cause.
+// extenders says the committed header it came from carries an extender component,
+// so its statement would have been version 2.
 type depositUsageVerdict struct {
-	status string
-	cause  error
+	status    string
+	cause     error
+	extenders bool
 }
 
 // depositUsageObjectVerdict is the verdict of an object that was not obtained. One
@@ -496,17 +542,21 @@ type depositUsageVerdict struct {
 // ledger; any other failure is pending until the root window closes.
 func depositUsageObjectVerdict(role string, observed error, unavailable string) *depositUsageVerdict {
 	if errors.Is(observed, errDepositUsageHeldOversize) {
-		return &depositUsageVerdict{DepositAuditInvalid, fmt.Errorf("%s: %w", role, observed)}
+		return &depositUsageVerdict{status: DepositAuditInvalid, cause: fmt.Errorf("%s: %w", role, observed)}
 	}
-	return &depositUsageVerdict{unavailable, fmt.Errorf("%s: %w", role, observed)}
+	return &depositUsageVerdict{status: unavailable, cause: fmt.Errorf("%s: %w", role, observed)}
 }
 
 // readDepositUsageRows reads and verifies a source epoch's committed rows: the header
-// the commit names, its chunks for the epoch, and the rules a verifier can check. It
-// holds one chunk at a time. A verdict is the operator's; an error is the
-// validator's own failure.
+// the commit names, its chunks for the epoch, and the rules a verifier can check, and,
+// when the header gives the epoch an extender component, its census and share-row
+// chunks (readDepositUsageExtenders). It holds one provider chunk at a time. A verdict
+// is the operator's; an error is the validator's own failure.
 func readDepositUsageRows(ctx context.Context, expectation *DepositUsageExpectation, objects depositUsageObjectRead, unavailable string) (depositUsageVerified, *depositUsageVerdict, error) {
 	var none depositUsageVerified
+	invalid := func(cause error) *depositUsageVerdict {
+		return &depositUsageVerdict{status: DepositAuditInvalid, cause: cause}
+	}
 	encoded, observed, err := objects(ctx, ledger.Ref(expectation.LedgerHash), ledger.MaxHeaderBytes, 0)
 	if err != nil {
 		return none, nil, err
@@ -516,10 +566,10 @@ func readDepositUsageRows(ctx context.Context, expectation *DepositUsageExpectat
 	}
 	header, err := ledger.DecodeHeader(encoded)
 	if err != nil {
-		return none, &depositUsageVerdict{DepositAuditInvalid, fmt.Errorf("committed ledger header: %w", err)}, nil
+		return none, invalid(fmt.Errorf("committed ledger header: %w", err)), nil
 	}
 	if header.NoID != expectation.NoID || header.Epoch != expectation.Epoch {
-		return none, &depositUsageVerdict{DepositAuditInvalid, errors.New("committed ledger header names another pool or epoch")}, nil
+		return none, invalid(errors.New("committed ledger header names another pool or epoch")), nil
 	}
 	var covered *ledger.HeaderEpoch
 	for index := range header.Epochs {
@@ -527,15 +577,22 @@ func readDepositUsageRows(ctx context.Context, expectation *DepositUsageExpectat
 			continue
 		}
 		if covered != nil {
-			return none, &depositUsageVerdict{DepositAuditInvalid, errors.New("committed ledger header lists the source epoch more than once")}, nil
+			return none, invalid(errors.New("committed ledger header lists the source epoch more than once")), nil
 		}
 		covered = &header.Epochs[index]
 	}
 	if covered == nil {
-		return none, &depositUsageVerdict{DepositAuditInvalid, errors.New("committed ledger header does not cover the source epoch")}, nil
+		return none, invalid(errors.New("committed ledger header does not cover the source epoch")), nil
 	}
 	if covered.Null {
-		return none, &depositUsageVerdict{DepositAuditInvalid, errors.New("committed ledger header declares the source epoch unrecoverable")}, nil
+		return none, invalid(errors.New("committed ledger header declares the source epoch unrecoverable")), nil
+	}
+	// From here a verdict is about an epoch whose header says which statement it
+	// has.
+	extenders := covered.Extenders != nil
+	verdict := func(verdict *depositUsageVerdict) *depositUsageVerdict {
+		verdict.extenders = extenders
+		return verdict
 	}
 	verified := depositUsageVerified{chunks: make([]string, len(covered.Providers))}
 	for index, ref := range covered.Providers {
@@ -548,21 +605,101 @@ func readDepositUsageRows(ctx context.Context, expectation *DepositUsageExpectat
 			return none, nil, err
 		}
 		if observed != nil {
-			return none, depositUsageObjectVerdict("committed provider chunk", observed, unavailable), nil
+			return none, verdict(depositUsageObjectVerdict("committed provider chunk", observed, unavailable)), nil
 		}
 		if err := checkDepositUsageChunk(len(chunk), index, len(covered.Providers)); err != nil {
-			return none, &depositUsageVerdict{DepositAuditInvalid, fmt.Errorf("committed provider rows: %w", err)}, nil
+			return none, verdict(invalid(fmt.Errorf("committed provider rows: %w", err))), nil
 		}
 		rows, err := ledger.DecodeProviderChunks([][]byte{chunk})
 		if err != nil {
-			return none, &depositUsageVerdict{DepositAuditInvalid, fmt.Errorf("committed provider rows: chunk %d: %w", index, err)}, nil
+			return none, verdict(invalid(fmt.Errorf("committed provider rows: chunk %d: %w", index, err))), nil
 		}
 		if err := sums.add(rows); err != nil {
-			return none, &depositUsageVerdict{DepositAuditInvalid, fmt.Errorf("committed provider rows: %w", err)}, nil
+			return none, verdict(invalid(fmt.Errorf("committed provider rows: %w", err))), nil
 		}
 	}
 	verified.rows = sums.rows
+	if extenders {
+		committed, failed, err := readDepositUsageExtenders(ctx, covered, sums.eligible, objects, unavailable)
+		if err != nil {
+			return none, nil, err
+		}
+		if failed != nil {
+			return none, verdict(failed), nil
+		}
+		verified.extenders = committed
+	}
 	return verified, nil, nil
+}
+
+// readDepositUsageExtenders reads and verifies a covered epoch's extender component
+// (WHITEPAPER.md §8.6.4) as its statement must carry it, after its provider rows:
+// the census chunks, their shape and the census rules (ledger.CheckCensusRows), then
+// the share-row chunks, their shape and the rules provider rows follow. The share
+// rows must sum to Z' = min(Z, W_k) with eligible as W_k, and to 0 with no eligible
+// extender: the cap the ledger's split applies. Whether they are exactly the split
+// is check 11 of the settlement v2 audit. A verdict is the operator's; an error is
+// the validator's own failure.
+func readDepositUsageExtenders(ctx context.Context, covered *ledger.HeaderEpoch, eligible uint64, objects depositUsageObjectRead, unavailable string) (*usage.Extenders, *depositUsageVerdict, error) {
+	invalid := func(cause error) *depositUsageVerdict {
+		return &depositUsageVerdict{status: DepositAuditInvalid, cause: cause}
+	}
+	component := covered.Extenders
+	var census []ledger.CensusRow
+	for index, ref := range component.Census {
+		chunk, observed, err := objects(ctx, ref, depositUsageFullCensusChunkBytes, depositUsageCensusChunksAhead(index, len(component.Census)))
+		if err != nil {
+			return nil, nil, err
+		}
+		if observed != nil {
+			return nil, depositUsageObjectVerdict("committed census chunk", observed, unavailable), nil
+		}
+		if err := checkDepositUsageChunkOf(len(chunk), ledger.CensusRowBytes, index, len(component.Census)); err != nil {
+			return nil, invalid(fmt.Errorf("committed census rows: %w", err)), nil
+		}
+		rows, err := ledger.DecodeCensusChunks([][]byte{chunk})
+		if err != nil {
+			return nil, invalid(fmt.Errorf("committed census rows: chunk %d: %w", index, err)), nil
+		}
+		census = append(census, rows...)
+	}
+	if err := ledger.CheckCensusRows(census); err != nil {
+		return nil, invalid(fmt.Errorf("committed census rows: %w", err)), nil
+	}
+	var shares []protocol.LedgerUsageRow
+	var sums depositUsageRowSums
+	for index, ref := range component.Rows {
+		chunk, observed, err := objects(ctx, ref, depositUsageFullChunkBytes, depositUsageChunksAhead(index, len(component.Rows)))
+		if err != nil {
+			return nil, nil, err
+		}
+		if observed != nil {
+			return nil, depositUsageObjectVerdict("committed extender share chunk", observed, unavailable), nil
+		}
+		if err := checkDepositUsageChunk(len(chunk), index, len(component.Rows)); err != nil {
+			return nil, invalid(fmt.Errorf("committed extender share rows: %w", err)), nil
+		}
+		rows, err := ledger.DecodeProviderChunks([][]byte{chunk})
+		if err != nil {
+			return nil, invalid(fmt.Errorf("committed extender share rows: chunk %d: %w", index, err)), nil
+		}
+		if err := sums.add(rows); err != nil {
+			return nil, invalid(fmt.Errorf("committed extender share rows: %w", err)), nil
+		}
+		shares = append(shares, rows...)
+	}
+	committed, err := usage.CommittedExtenders(component, census, shares)
+	if err != nil {
+		return nil, invalid(fmt.Errorf("committed extender share rows: %w", err)), nil
+	}
+	var weight uint64
+	if committed.Eligible != 0 {
+		weight = min(committed.Bytes, eligible)
+	}
+	if committed.Weight != weight {
+		return nil, invalid(fmt.Errorf("committed extender share rows sum to %d bytes, not the %d of the capped extender pool", committed.Weight, weight)), nil
+	}
+	return committed, nil, ctx.Err()
 }
 
 // evaluateDepositUsageSources is one audit of a committed v2 source epoch, the same
@@ -572,9 +709,12 @@ func readDepositUsageRows(ctx context.Context, expectation *DepositUsageExpectat
 // replay passes none and verifies them from its evidence.
 func evaluateDepositUsageSources(ctx context.Context, request depositUsageRequest, objects depositUsageObjectRead, reader *HTTPArtifactReader, memo *releaseDepositUsageMemo) (DepositAudit, error) {
 	expectation := request.expectation
+	// The kind of statement the epoch has follows its committed header: version 2
+	// once the header shows an extender component, else version 1.
+	extenders := false
 	failed := func(status string, cause error) (DepositAudit, error) {
 		audit := usageDepositAudit(request.epoch, &expectation, request.observedDeposit, request.convictionBefore)
-		audit.Status, audit.Error = status, depositUsageLabel(cause.Error())
+		audit.Status, audit.Error, audit.UsageEvidence = status, depositUsageLabel(cause.Error()), usage.KindOf(extenders)
 		return audit, ctx.Err()
 	}
 	key := depositUsageMemoKey{noID: expectation.NoID, epoch: expectation.Epoch, ledgerHash: expectation.LedgerHash}
@@ -585,13 +725,15 @@ func evaluateDepositUsageSources(ctx context.Context, request depositUsageReques
 			return DepositAudit{}, err
 		}
 		if verdict != nil {
+			extenders = verdict.extenders
 			return failed(verdict.status, verdict.cause)
 		}
 		verified = read
 		memo.put(key, verified)
 	}
-	expectation.ProviderChunks = verified.chunks
-	statements, status, err := reader.readDepositUsageStatements(ctx, expectation.Epoch, expectation.NoID, request.unavailableStatus)
+	expectation.ProviderChunks, expectation.Extenders = verified.chunks, verified.extenders
+	extenders = verified.extenders != nil
+	statements, status, err := reader.readDepositUsageStatements(ctx, expectation.Epoch, expectation.NoID, usage.KindOf(extenders), request.unavailableStatus)
 	if status != "" {
 		return failed(status, err)
 	}
@@ -634,15 +776,15 @@ type depositUsageEnvelope struct {
 	Signature    string          `json:"signature"`
 }
 
-// readDepositUsageStatements reads the operator's statements of one epoch, distinct
-// by their bytes, in the order of its history. A nonempty status is why there are
-// none to choose from, with its cause.
-func (self *HTTPArtifactReader) readDepositUsageStatements(ctx context.Context, epoch, noID uint64, unavailable string) ([]*usage.Statement, string, error) {
+// readDepositUsageStatements reads the operator's statements of one epoch under one
+// evidence kind, distinct by their bytes, in the order of its history. A nonempty
+// status is why there are none to choose from, with its cause.
+func (self *HTTPArtifactReader) readDepositUsageStatements(ctx context.Context, epoch, noID uint64, kind, unavailable string) ([]*usage.Statement, string, error) {
 	runID := usage.RunID(noID, epoch)
 	endpoint := self.endpoint("/sn/evidence/history", url.Values{
 		"deployment_id": []string{self.deploymentID},
 		"netuid":        []string{fmt.Sprint(self.netuid)},
-		"kind":          []string{usage.EvidenceKind},
+		"kind":          []string{kind},
 		"run_id":        []string{runID},
 		"limit":         []string{fmt.Sprint(maximumExactArtifactObjects + 1)},
 	})
@@ -666,7 +808,7 @@ func (self *HTTPArtifactReader) readDepositUsageStatements(ctx context.Context, 
 	if len(history.Objects) == 0 {
 		return nil, unavailable, errors.New("no usage statement is published")
 	}
-	suffix := fmt.Sprintf("/st/v1/evidence/history/%s/%d/%s/%s/", self.deploymentID, self.netuid, usage.EvidenceKind, runID)
+	suffix := fmt.Sprintf("/st/v1/evidence/history/%s/%d/%s/%s/", self.deploymentID, self.netuid, kind, runID)
 	seen := make(map[string]bool, len(history.Objects))
 	statements := make([]*usage.Statement, 0, len(history.Objects))
 	for _, object := range history.Objects {
@@ -682,7 +824,7 @@ func (self *HTTPArtifactReader) readDepositUsageStatements(ctx context.Context, 
 		if object.Size != int64(len(value)) {
 			return nil, DepositAuditInvalid, errors.New("usage statement size does not match its history")
 		}
-		statement, err := self.decodeDepositUsageEnvelope(value, contentHash, runID)
+		statement, err := self.decodeDepositUsageEnvelope(value, contentHash, kind, runID)
 		if err != nil {
 			return nil, DepositAuditInvalid, err
 		}
@@ -698,15 +840,25 @@ func (self *HTTPArtifactReader) readDepositUsageStatements(ctx context.Context, 
 	return statements, "", nil
 }
 
-func (self *HTTPArtifactReader) decodeDepositUsageEnvelope(value []byte, contentHash, runID string) (*usage.Statement, error) {
+// decodeDepositUsageEnvelope reads a statement published under kind, which must be
+// the statement's own version: a version 1 statement under the version 2 kind, or
+// the reverse, is the operator's invalid evidence.
+func (self *HTTPArtifactReader) decodeDepositUsageEnvelope(value []byte, contentHash, kind, runID string) (*usage.Statement, error) {
 	var envelope depositUsageEnvelope
 	if err := decodeAttemptStreamV2JSON(value, maximumUsageEnvelopeBytes, &envelope); err != nil {
 		return nil, fmt.Errorf("usage statement envelope: %w", err)
 	}
-	if envelope.Schema != releaseUsageEnvelopeSchema || envelope.DeploymentID != self.deploymentID || envelope.Netuid != self.netuid || envelope.Kind != usage.EvidenceKind || envelope.RunID != runID || !strings.EqualFold(envelope.ContentHash, contentHash) {
+	if envelope.Schema != releaseUsageEnvelopeSchema || envelope.DeploymentID != self.deploymentID || envelope.Netuid != self.netuid || envelope.Kind != kind || envelope.RunID != runID || !strings.EqualFold(envelope.ContentHash, contentHash) {
 		return nil, errors.New("usage statement envelope is outside the requested identity")
 	}
-	return usage.Decode(envelope.Payload)
+	statement, err := usage.Decode(envelope.Payload)
+	if err != nil {
+		return nil, err
+	}
+	if statement.Kind() != kind {
+		return nil, fmt.Errorf("usage statement of schema %s is published as %s", statement.Schema, kind)
+	}
+	return statement, nil
 }
 
 // depositUsageLabel makes operator-controlled text fit a retained exchange, so a
@@ -1016,8 +1168,9 @@ func parseDepositUsageRootName(name string) (epoch uint64, ledgerHash [32]byte, 
 	return epoch, ledgerHash, true
 }
 
-// listed adds to keep a root's header and every chunk its header lists for epoch:
-// all replay of an audit of the root can read.
+// listed adds to keep a root's header and every chunk its header lists for epoch,
+// its extender component's census and share-row chunks included: all replay of an
+// audit of the root can read.
 func (self *depositUsageObjects) listed(ctx context.Context, epoch uint64, ledgerHash [32]byte, keep map[ledger.Ref]bool) error {
 	keep[ledger.Ref(ledgerHash)] = true
 	data, held, err := self.Object(ctx, ledger.Ref(ledgerHash))
@@ -1032,6 +1185,14 @@ func (self *depositUsageObjects) listed(ctx context.Context, epoch uint64, ledge
 		if covered.Epoch == epoch {
 			for _, ref := range covered.Providers {
 				keep[ref] = true
+			}
+			if covered.Extenders != nil {
+				for _, ref := range covered.Extenders.Census {
+					keep[ref] = true
+				}
+				for _, ref := range covered.Extenders.Rows {
+					keep[ref] = true
+				}
 			}
 		}
 	}
