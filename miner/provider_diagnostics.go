@@ -62,6 +62,9 @@ type providerExtenderObservation struct {
 	// tcp_443_bind_failed, unreachable_on_tcp_443); the record's guidance
 	// says the fix. Empty while nothing is wrong.
 	Reason string `json:"reason,omitempty"`
+	// the router port mapping's state, the sdk's fixed set (off, not_needed,
+	// mapping, mapped, failed), never its reason (connect/EXTENDER.md S10)
+	PortMapping string `json:"port_mapping,omitempty"`
 }
 
 // Optional operational delivery evidence is independent of status=ok, which
