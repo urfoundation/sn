@@ -25,6 +25,8 @@ Research of 2026‑11‑11 for ur.xyz `/ctf` and its planned country pages (`CAP
    - The hub's "Your country" card follows the visitor's IP, and Googlebot crawls mostly from the US.
    - `/ctf/<cc>` pages rank only if each carries its own data, not a swapped name. Otherwise they are doorway
      or scaled‑content abuse, and that penalty can be site‑wide.
+   - So a country page that differs from another only by the country's name is `noindex` until its data or a
+     local note sets it apart (§2.1).
 4. **Every number has to be in the HTML.** Astro renders the pages statically from a per‑epoch data snapshot,
    and React islands only add interaction. Most AI crawlers run no JavaScript.
 5. **This is YMYL money content, so trust decides.**
@@ -32,9 +34,12 @@ Research of 2026‑11‑11 for ur.xyz `/ctf` and its planned country pages (`CAP
    - Disclosures beside the numbers.
    - No fiat projections.
    - "Not a job, not an investment".
-   - Counsel's review of the UK and EU crypto marketing rules, sanctions, and how a prize draw reads.
+   - The legal risks of §3 are accepted: the owner passed on counsel's review before launch (2026‑11‑11).
+     They are the UK and EU crypto marketing rules, how capture the flag (an auction) is classified,
+     sanctions, and extenders in censored countries.
 6. **Agents need data, not tricks.**
-   - Per‑country JSON with units and `as_of`, the OpenAPI spec, open CORS, and an optional read‑only MCP server.
+   - Per‑country JSON with units and `as_of`, the OpenAPI spec and open CORS. No MCP server (owner decision,
+     §8).
    - `llms.txt` helps agents, not citations.
    - ur.xyz's robots.txt already welcomes AI crawlers.
 7. **AI answers favour other sites over a brand's own pages.** Directories, comparison lists, local tech press
@@ -120,8 +125,9 @@ Research of 2026‑11‑11 for ur.xyz `/ctf` and its planned country pages (`CAP
 
 - **India searches in romanized Hindi.** Honeygain's Hindi site is in romanized Hinglish, not Devanagari:
   "Passive Income - Bina Mehnat ke Kamaai" ([honeygain.com/hi](https://www.honeygain.com/hi/)).
-- **ur.xyz's locales.** It already serves en, ru, ar, zh, de and es. Spanish, Russian and Arabic cover large
-  parts of this demand. Portuguese, Indonesian, Vietnamese, Turkish, Hindi and French would be new locales.
+- **ur.xyz's locales.** It serves en, ru, ar, zh, de and es, and capture the flag uses those only: no new
+  locales (owner decision, 2026‑11‑11). Spanish, Russian and Arabic cover large parts of this demand.
+  Portuguese, Indonesian, Vietnamese, Turkish, Hindi and French would have been new locales.
 
 ### 1.4 Competitors
 
@@ -138,7 +144,8 @@ Research of 2026‑11‑11 for ur.xyz `/ctf` and its planned country pages (`CAP
 - **URnetwork is already listed** on [AlternativeTo](https://alternativeto.net/software/urnetwork/about/) and
   [DePINHub](https://depinhub.io/projects/urnetwork/). That makes "URnetwork review", "URnetwork vs Honeygain"
   and "Honeygain alternatives" winnable.
-  - Those belong on a separate, sourced comparison page, not on `/ctf`.
+  - Those would need a separate, sourced comparison page, not `/ctf`. The owner decided against one
+    (2026‑11‑11), so they are not pursued.
 
 ### 1.5 How people ask assistants
 
@@ -167,7 +174,7 @@ Agents acting for someone ask for tasks:
 - "is there an open provider slot in Ghana? set me up";
 - "tell me when Nigeria opens".
 
-The API answers those (§5.4).
+The API answers those (§5.3).
 
 ## 2. The pages
 
@@ -195,13 +202,26 @@ The API answers those (§5.4).
   title that differs "by only a single piece of information" counts as boilerplate
   ([title links](https://developers.google.com/search/docs/appearance/title-link)). Data‑driven
   descriptions are encouraged ([snippets](https://developers.google.com/search/docs/appearance/snippet)).
-- **What to index: every page, from launch** (owner decision, 2026‑11‑11). The hub and all 249 country
-  pages are indexable from the first epoch.
-  - That includes the seven territories with no permanent population (AQ, BV, GS, HM, IO, TF, UM).
-  - It includes countries under comprehensive sanctions, and countries where circumvention tools are
-    illegal. Counsel's review (§3.3) therefore comes before launch.
-  - The weight falls on each page's own data from its first epoch. No two pages may differ by the country's
-    name alone.
+- **What to index: every page with its own data, from launch** (owner decision, 2026‑11‑11, made once the
+  pages were built).
+  - The hub, and every country page with its own data or a local note, are indexable from launch.
+  - A country page that differs from another only by the country's name is `noindex` until its data or a
+    local note sets it apart. It is still built, linked from the hub and served, but it is left out of the
+    sitemap. The rule is applied afresh to each epoch's data, so a page becomes indexable with the first
+    epoch whose data, or the first local note, makes it its own.
+  - Two pages differ only by name when what each says of its own country is the same once the country's
+    names and code are masked: the page's text without its neighbours, its other big pots and the days it
+    states. The site's audit reads the built pages the same way, so no two indexable country pages differ by
+    the name alone (§6).
+  - Before launch that is 109 of the 249 pages, in 10 groups: the 75 inhabited countries the network's
+    dashboard never counted; the seven territories with no permanent population (AQ, BV, GS, HM, IO, TF,
+    UM), which read alike while nobody runs there; and 27 countries the dashboard counted alike, such as
+    Kenya and Liechtenstein.
+  - The rule replaces the decision earlier the same day to index all 249 pages, which would have indexed
+    those 109 too.
+  - Pages for countries under comprehensive sanctions, and for countries where circumvention tools are
+    illegal, follow the same rule. The owner accepted their risks and passed on counsel's review (§3).
+  - The weight falls on each page's own data from its first epoch.
 - **The local notes, in order.** Write them for the demand markets of §1.1 first, plus the US, UK, Canada and
   Germany, where Honeygain says bandwidth is worth most
   ([Honeygain](https://www.honeygain.com/blog/bandwidth-sharing-apps/)):
@@ -262,8 +282,9 @@ page that pays a few tenths of an α.
 - **Words to avoid:** guaranteed, risk‑free, secure or protected returns, get rich, easy money, financial
   freedom, quit your job, job, hiring, salary, wage, investment, returns, yield, APY, lottery, jackpot, bet.
   - "Only N slots left" may appear only when N is live and true.
-- **Wording to keep.** The owner chose "chance to win", "pot" and "draw" (§12.1, item 15). Next to them, the
-  page says how the draw works, and that taking part costs nothing beyond running the app.
+- **Wording to keep.** The owner chose "chance to win", "pot" and "draw" (§12.1, item 15), and calls capture
+  the flag an auction (2026‑11‑11). Next to them, the page says how the draw works, and that taking part costs
+  nothing beyond running the app.
 - **The disclosure, beside the numbers:**
   - Rewards are paid in alpha, the token of Bittensor subnet 25. Its value changes and can fall.
   - What you win depends on uptime, on how many others run in your country, and on the network's emission.
@@ -288,7 +309,9 @@ page that pays a few tenths of an α.
 
 ## 3. Compliance
 
-Each item needs counsel's confirmation before launch.
+These are the legal risks the research found. The owner accepted them and passed on counsel's review before
+launch (2026‑11‑11), so none holds up launch and no legal question here stays open. They are described so a
+reader knows what was accepted; the copy rules of §2.3 still apply.
 
 ### 3.1 Earnings and employment claims
 
@@ -323,23 +346,27 @@ Each item needs counsel's confirmation before launch.
     by a competent authority.
   - Article 4(3) exempts crypto‑assets offered for free or created as a reward for maintaining the ledger
     ([ESMA](https://www.esma.europa.eu/publications-and-data/interactive-single-rulebook/mica/article-4-offers-public-crypto-assets-other)).
-  - Whether URnetwork is an "offeror" of alpha is a question for counsel.
+  - Whether URnetwork is an "offeror" of alpha was left to counsel; the owner accepted it unreviewed.
 - **India.** The ASCI code requires "Crypto products and NFTs are unregulated and can be highly risky" on
   crypto ads.
 - **Google Ads** bans "get rich quick", guaranteed returns and risk‑free framing
   ([policy](https://support.google.com/adspolicy/answer/15936857)). Node rewards are not addressed.
 
-### 3.3 The draw, sanctions and safety
+### 3.3 The auction, sanctions and safety
 
-- **How a prize draw reads.** A draw with prizes reads as a lottery when entry requires something of value.
-  Running the app is the only entry condition, so counsel should confirm how sweepstakes and lottery law treat
-  it in the main markets.
+- **An auction.** Capture the flag is an auction of each country's slots every epoch (owner decision,
+  2026‑11‑11). Running the app is its only entry condition. How it is classified in each market was left to
+  counsel; the owner passed on that review and accepted the risk, so no legal‑classification question stays
+  open.
 - **Sanctions.** A US general license (GL D‑2) authorizes anti‑censorship services for Iran
   ([Federal Register](https://www.govinfo.gov/content/pkg/FR-2022-10-13/pdf/2022-22233.pdf)). Paying
-  residents of sanctioned countries is a separate question. Hold those pages until it is answered.
+  residents of sanctioned countries is a separate question, and the owner accepted it unreviewed: no country
+  is excluded, and CTF payouts are screened by the SDN address list as every payout is (`CAPTURETHEFLAG.md`
+  §7). Those pages are not held back; they follow §2.1's rule like every other.
 - **Extenders in censored countries.** Freedom House found anti‑censorship tools blocked in at least 21 of
   72 countries ([Tunnel Vision](https://freedomhouse.org/report/special-report/2025/tunnel-vision-anti-censorship-tools-end-end-encryption-and-fight-free)).
-  Recruiting extenders there needs a legal and safety review, and each such page carries a dated safety note.
+  Recruiting extenders there carries legal and safety risk for them. The owner accepted it without a legal
+  review. A dated safety note on such a page, like a local note, would warn them; none is written yet.
 - **App stores.**
   - Apple's guidelines bar crypto apps from offering currency for completing tasks.
   - Google Play allows proxy services only as an app's core purpose.
@@ -439,10 +466,10 @@ The pages link:
   `Link: rel="service-desc"` to the OpenAPI document.
 - **Discovery.** List the OpenAPI document in `/.well-known/api-catalog` ([RFC 9727](https://www.rfc-editor.org/rfc/rfc9727)).
   On each country page, set `Base.astro`'s `alternate` to that country's JSON.
-- **MCP (optional).** ur.io's MCP server needs OAuth and an account. A read‑only, no‑sign‑in MCP server with
-  `list_countries`, `get_country` and `top_open_pots` would answer assistants directly.
-  - It would be listed in the MCP Registry, llms.txt and `agents.md`.
-  - Nothing shows assistants discover such servers on their own, so it serves people who add it.
+- **MCP: none** (owner decision, 2026‑11‑11). ur.io's MCP server needs OAuth and an account. A read‑only,
+  no‑sign‑in MCP server with `list_countries`, `get_country` and `top_open_pots` was considered and is not
+  built; agents read the JSON API.
+  - Nothing shows assistants discover such servers on their own; it would have served only people who add it.
 - **Browser agents.**
   - Semantic buttons and links, labelled inputs and no invisible overlays
     ([web.dev](https://web.dev/articles/ai-agent-site-ux)).
@@ -492,14 +519,19 @@ every SEO concern lives. `/mainnet` is the model: `astro/src/pages/mainnet.astro
   - `breadcrumbName` ("Capture the flag", then the country);
   - `jsonLd` (Dataset on the hub; WebPage with `about` Country on country pages);
   - `alternate` (the country's JSON);
+  - `noindex` per §2.1;
   - `ogImage` per epoch and country, named by epoch so caches refresh.
 - **"Updated".** `LASTMOD_TOKEN` fills it, as on `/mainnet`, so the visible date, `dateModified` and the
   sitemap's `lastmod` agree.
-- **Indexing.** Every page is indexable (§2.1), so every page is in the sitemap.
+- **Indexing.** `src/pages/ctf/[cc].astro` decides each country page's `noindex` in `getStaticPaths()` from
+  the epoch's snapshot (§2.1). It renders every country page's body first and compares what each says of its
+  own country (`react/src/components/pages/ctf/indexing.js`). The sitemap and `page-dates.json` leave the
+  `noindex` pages out, as they leave out every `noindex` page.
 - **Links.** Every cell of the 249‑country grid is a plain `<a href="/ctf/<cc>">`, so every country page is
   linked.
 - **English first, like `/mainnet`.**
-  - Localized versions go through the shared localized‑route list.
+  - Localized versions, if any, use the site's current locales only (§1.3) and go through the shared
+    localized‑route list.
   - hreflang links translations of one country page only, never two countries.
   - Never redirect by IP.
 - **Gates.** `seo-audit.mjs` already checks:
@@ -509,7 +541,8 @@ every SEO concern lives. `/mainnet` is the model: `astro/src/pages/mainnet.astro
   - hreflang;
   - the agent‑file budgets.
 
-  Add one check: no two country pages differ by the country's name alone.
+  Add one check, by the build's own comparison: every country page follows §2.1's rule, so no two indexable
+  country pages differ by the country's name alone.
 - **The rebuild.** After each epoch's census and root, the import runs, the site rebuilds and deploys.
 - **`SITEMAP.md`.** A Capture the flag section, like the Mainnet one.
 
@@ -534,14 +567,17 @@ every SEO concern lives. `/mainnet` is the model: `astro/src/pages/mainnet.astro
 - **Server logs.** Each hit from ChatGPT‑User, Claude‑User, Perplexity‑User, Meta‑ExternalFetcher or
   Google‑Agent is an assistant reading the page for a person. Count those, and the API's clients.
 
-## 8. Open questions for the owner
+## 8. The owner's decisions
 
-1. **Counsel's review:**
+The owner decided these on 2026‑11‑11, and no question for the owner stays open:
+
+1. **Counsel's review: passed on.** The owner accepted the risks of §3 without a review before launch:
    - the UK and EU promotion rules;
-   - how the draw reads under lottery law;
+   - how capture the flag (an auction) is classified;
    - sanctions;
    - extenders in censored countries.
-2. **New locales**, beyond ru, ar, es, zh and de: Portuguese (BR), Indonesian, Vietnamese, Turkish, Hindi
-   (romanized) or French.
-3. **Whether to build the read‑only MCP server.**
-4. **A comparison page** for "Honeygain alternatives" and "URnetwork vs …", sourced and kept apart from `/ctf`.
+2. **New locales: none.** The pages use the site's current locales only: en, ru, ar, zh, de and es (§1.3).
+3. **The read‑only MCP server: not built** (§5.3).
+4. **A comparison page** for "Honeygain alternatives" and "URnetwork vs …": not built (§1.4).
+5. **Indexing.** Every country page with its own data or a local note is indexable from launch; a page that
+   differs from another only by the country's name is `noindex` until it does not (§2.1).
