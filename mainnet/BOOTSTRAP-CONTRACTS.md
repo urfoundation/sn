@@ -1379,3 +1379,111 @@ configuration:
 - UP-11: a failed execution, under a hotkey someone registered first or in
   the first epoch, leaves the operation ready and the proxy on phase C; the
   first runs again a block later.
+
+## Capture the flag carry
+
+The carry contract, `STCtfCarry` (`CAPTURETHEFLAG.md` §4.6, §11.2), takes each
+CTF root's pots and pending awards and returns them to the CTF pool. There is
+one per CTF pool, immutable and ownerless. It is created after the
+[Capture the flag upgrade](#capture-the-flag-upgrade) has registered the pool,
+because its constructor reads the pool's hotkey from vault2. Anyone creates it
+through the canonical deterministic deployment proxy, in one transaction:
+
+- **To** the proxy, `0x4e59b44847b379578588920ca78fbf26c0b4956c`, with the
+  32-byte salt followed by the creation code and the constructor's arguments,
+  `abi.encode(vault2, 2^32 + noId)`.
+- **With** the seed plus the runtime's 500-rao existential deposit as the
+  call's value. The constructor stakes all the TAO the contract then holds on
+  vault2's escrow hotkey by its own `addStake`: that is its residual, which
+  keeps the escrow hotkey on its staking-hotkey list so that vault2's claims
+  to it always land. It then sets the runtime's opt-outs of third-party
+  staking-hotkey growth and of locked alpha. The seed must be at least the
+  contract's `seedMinimum()`: ten times the runtime's nominator minimum, and
+  at least 0.1 TAO. Mainnet seeds 1 TAO. The seed never returns.
+- **Under** a fresh random salt, kept private until the creation. The
+  address is `CREATE2(proxy, salt, keccak256(creation code ‖ arguments))`.
+  Anyone who knew it five days ahead could prepare a coldkey swap into the
+  carry's coldkey and fill its list to 256 entries or lock alpha on it,
+  before its opt-outs exist. The amendment entry v2 names the address after
+  the creation.
+
+`ctf-carry review` builds that transaction from the artifact and checks it,
+before and after. It neither signs nor sends, and every read is pinned to one
+head block:
+
+```sh
+sn-mainnet ctf-carry review --rpc "$EVM_RPC" --settlement2 "$SETTLEMENT2_PROXY" --no-id 1 \
+  --artifact evm/out/STCtfCarry.sol/STCtfCarry.json --salt "$CARRY_SALT" --seed-rao 1000000000 \
+  --from "$CREATOR"
+```
+
+Before any read, it rejects with exit 2:
+
+- a missing `--rpc`, `--settlement2`, `--no-id`, `--artifact`, `--salt` or
+  `--seed-rao`, a `--no-id` of 0 or from 2^32, a zero seed, and a `--from`
+  that is not a nonzero address;
+- the zero salt, which makes the address known before the carry exists; and
+- an artifact that is not `STCtfCarry`'s: one without every carry function
+  (`recycle`, `recycledFor`, `seed`, `residual`, `seedMinimum`,
+  `MINIMUM_SEED_RAO`, `SEED_NOMINATOR_MULTIPLE` and the seven immutables'
+  views), without the payable `(address, uint256)` constructor, or with other
+  than its seven immutables.
+
+It reads the pool through the proxy, which must run `STSettlement2Ctf`:
+`ctfPoolId(noId)`, `vault()`, vault2's `pools(2^32 + noId)` and
+`ctfSettlementAt(noId, firstEpoch)`, which must agree, and vault2's
+`netuid()`, `escrowHotkey()` and `selfColdkey()`. From the staking and alpha
+precompiles it reads the nominator minimum, the alpha price, and the carry
+coldkey's staking hotkeys, owned hotkeys and conviction lock.
+
+**Before the creation** it refuses with exit 3:
+
+- a deterministic deployment proxy that is missing or whose code differs;
+- a proxy without the capture the flag implementation, a CTF pool vault2
+  does not hold, and a pool that `ctfSettlementAt` resolves elsewhere;
+- a carry coldkey that already holds staking hotkeys, owns hotkeys or holds a
+  lock: someone knows its address, so it is created under another salt;
+- a seed below `seedMinimum()` at the head; and
+- with `--from`, a creation that fails as an `eth_call` from that sender with
+  its value, or that answers another address than the derived one.
+
+Without `--from` the preflight does not run, and its result says so.
+
+**Once the carry exists** it refuses with exit 3:
+
+- code that differs from the artifact's runtime code outside the seven
+  immutables' words;
+- immutables that do not name vault2, the CTF pool, its hotkey, vault2's
+  netuid, escrow hotkey and coldkey, and the mirror of the carry's own
+  address, and constants other than the reviewed `MINIMUM_SEED_RAO` and
+  `SEED_NOMINATOR_MULTIPLE`;
+- no residual, a position on the escrow hotkey below the residual, a
+  staking-hotkey list without the escrow hotkey, and either opt-out unset;
+  and
+- a residual worth less, at the head's alpha price, than the nominator
+  minimum, which root's next sweep would clear. `seed()` adds to it.
+
+Its result, schema `urnetwork-mainnet-ctf-carry-review-v1`, has:
+
+- `carry`: the proxy, the salt, the address and its coldkey, the creation
+  code's size and keccak256, the constructor's arguments, the initcode's
+  keccak256 and the runtime size, whether the carry exists, the seed and the
+  existential deposit, and the creation transaction (`create_to`,
+  `create_value_wei`, `create_data` and its keccak256);
+- `pool`: the proxy, vault2, the operator, the pool id, its hotkey and first
+  epoch, vault2's netuid, escrow hotkey and coldkey;
+- `runtime`: the nominator minimum, `seedMinimum()`, the alpha price, the
+  address's balance, which the seed's staking includes, and the coldkey's
+  staking hotkeys, owned hotkeys and lock;
+- `created`, once it exists: its code hash, the residual, its position on the
+  escrow hotkey and its worth in TAO at the head, whether the list holds the
+  escrow hotkey, both opt-outs, and the address in its EIP-55 form for the
+  amendment entry (`mainnet/SETTLEMENT-AMENDMENTS.md`); and
+- `preflight`, as in the upgrade review.
+
+`mainnet/evm_v2_ctf_carry_test.go` runs it against the forge build of
+`STCtfCarry` on a JSON-RPC chain that answers its reads: CR-1 the review
+before the creation, with and without `--from`; CR-2 each refusal before
+it; CR-3 each usage error; CR-4 a created carry; CR-5 each refusal of a
+created carry. Rehearsal R-9 creates the carry on the live runtime
+(`scripts/runtime-rehearsal/README.md`, "Capture the flag (R-9)").

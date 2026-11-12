@@ -116,6 +116,7 @@ func e2eCatalogArtifact(t testing.TB, name string) *e2eArtifact {
 var e2eForgeSources = []struct{ source, name string }{
 	{"src/STSettlement2PhaseC.sol", "STSettlement2PhaseC"},
 	{"src/STSettlement2Ctf.sol", "STSettlement2Ctf"},
+	{"src/STCtfCarry.sol", "STCtfCarry"},
 	{"lib/openzeppelin-contracts/contracts/governance/TimelockController.sol", "TimelockController"},
 }
 
