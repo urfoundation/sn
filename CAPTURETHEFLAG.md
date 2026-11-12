@@ -1122,8 +1122,10 @@ needed was on the server and in the presentation:
     relay answer them with the operator's pool exactly as before, never a 502 or an error that would hide that
     pool's balance too. The CTF account is left out until its pool reads again (owner decision, 2026‑11‑12).
   - The relay's pass keeps claiming the operator's pool meanwhile, whether its ledger read or a claim's proof
-    finds the CTF pool unreadable, so the operator's pool's rows read as they did. Only the relay's own
-    `state`, which every client reads and no app draws, says `ledger_unavailable`.
+    finds the CTF pool unreadable, so the operator's pool's rows read as they did. So does the relay's own
+    `state`: such a pass says `ledger_unavailable` and names the CTF pool, which a client that sends
+    `partial=true` reads, and an old app reads `running`, as before that pool existed. A pass that cannot read
+    the operator's pool, or stops on it, reads `ledger_unavailable` to every client.
   - Claim now names no partial answer, so it does the same for every app: a tap of a coldkey whose only
     account is in an unreadable CTF pool reads `nothing_pending`. A tap of a coldkey that also has an account
     in the operator's pool is taken, and it stays open until the CTF pool reads, so that its CTF account is
@@ -1133,9 +1135,12 @@ needed was on the server and in the presentation:
 - **Miner daemon and `snclaim`.** Both already treat each `(vault, noId, index)` as its own unit, so they
   claim CTF accounts unchanged. The daemon's 1.9 α threshold is per account: unlike the relay, it does not
   sweep a small CTF account along with a due one, so that account waits for the threshold or a demand.
-  `snclaim v2 check` runs the CTF audit (§8). Neither sends `partial=true`, so while the CTF pool cannot be
-  read the ledger route leaves it out for them too. The daemon keeps its CTF units, which wait for the pool,
-  and `snclaim v2 status` and `claim` see the operator's pool alone.
+  `snclaim v2 check` runs the CTF audit (§8). The daemon does not send `partial=true`, so while the CTF pool
+  cannot be read the ledger route leaves it out for the daemon too, which keeps its CTF units until the pool
+  reads again. `snclaim v2 status` and `claim` send `partial=true`, so a pool the route cannot read is named,
+  never taken as holding nothing: `status` shows it as unavailable beside the other pools' accounts, and
+  `claim` names it and fails on it when it picks no account from the other pools, or with `--all` once it
+  has claimed them.
 
 ## 11. What was built, and the rollout
 

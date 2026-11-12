@@ -149,8 +149,12 @@ paths:
         ended epoch's root is pending, `pending_draw` names its census and
         drand round.
 
-        `Cache-Control: public, max-age=60`. The page refreshes it every five
-        minutes and shows "unavailable", never zeros, when it cannot be read.
+        `Cache-Control: public, max-age=60`. The ur.xyz `/ctf` pages do not
+        read it live: once each epoch's CTF root is committed, the site takes
+        a snapshot of this answer, checks it against this document's
+        arithmetic and rebuilds the pages from it. A read that fails, or a
+        draw still pending after a drawn one, stops the import, and the pages
+        keep the last snapshot, never zeros.
       parameters:
         - $ref: "#/components/parameters/IfNoneMatch"
       responses:
@@ -228,8 +232,8 @@ paths:
         pool's first, newest first, per role, the units in the draw, the
         slots won, the pot carried in and out, what was awarded, the median
         award and the share of entries that won. The ur.xyz country page
-        `/ctf/{cc}` is built from it, with `GET /sn/ctf` for the country
-        picker and the other big pots.
+        `/ctf/{cc}` names this route as its data in JSON; the page itself is
+        built from the snapshot of `GET /sn/ctf`.
 
         `Cache-Control: public, max-age=60`.
       parameters:
