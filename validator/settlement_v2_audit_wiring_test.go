@@ -199,12 +199,19 @@ func TestSettlementV2AuditFromConfigRefusals(t *testing.T) {
 			t.Fatalf("%s: audit %v, %v", name, audit != nil, err)
 		}
 	}
-	// Without an auditor key the audit decides and sends nothing.
+	// Without an auditor key the audit decides and sends nothing. Each
+	// operator's capture the flag pool is audited beside its provider pool,
+	// from the same objects, unless the ctf setting is off.
 	cfg := fixture.config()
 	audit, err := newReleaseSettlementV2Audit(t.Context(), cfg, fixture.client, runtime.settlementV2Confirmed)
-	if err != nil || audit == nil || audit.sender != nil || audit.maxBytes != DefaultLedgerMaxBytes || len(audit.pools) != 1 || audit.pools[0].noID != settlementV2AuditTestNoID ||
-		audit.pools[0].objects.(*settlementV2Objects).endpoint.String() != fixture.objects.url+"/sn/ledger/object" {
+	if err != nil || audit == nil || audit.sender != nil || audit.maxBytes != DefaultLedgerMaxBytes || len(audit.pools) != 2 || audit.pools[0].noID != settlementV2AuditTestNoID ||
+		audit.pools[0].objects.(*settlementV2Objects).endpoint.String() != fixture.objects.url+"/sn/ledger/object" || audit.pools[0].ctf != nil ||
+		audit.pools[1].noID != 1<<32+settlementV2AuditTestNoID || audit.pools[1].ctf == nil || audit.pools[1].ctf.noID != settlementV2AuditTestNoID || audit.pools[1].objects != audit.pools[0].objects || audit.ctf == nil {
 		t.Fatalf("an audit without an auditor key: %v", err)
+	}
+	cfg.Ctf = ReleaseCtfOff
+	if audit, err := newReleaseSettlementV2Audit(t.Context(), cfg, fixture.client, runtime.settlementV2Confirmed); err != nil || len(audit.pools) != 1 || audit.ctf != nil {
+		t.Fatalf("ctf off audited a capture the flag pool: %v", err)
 	}
 }
 
@@ -235,6 +242,7 @@ func TestSettlementV2AuditBesideClosedCensusAfterAdoption(t *testing.T) {
 	}
 	for _, operator := range fixture.startup.cfg.Operators {
 		answers[block.Vault+"/"+common.Bytes2Hex(settlementV2Vault.PackPools(new(big.Int).SetUint64(operator.NoID)))] = unregistered
+		answers[block.Vault+"/"+common.Bytes2Hex(settlementV2Vault.PackPools(new(big.Int).SetUint64(1<<32+operator.NoID)))] = unregistered
 	}
 	fixture.evm.serveSettlementV2(answers)
 	fixture.start(t)

@@ -133,6 +133,9 @@ type ReleaseMeasurementArtifact struct {
 	// DepositPriceEntry is the signed price in force for the decision epoch. It is
 	// absent while the signed policy's schedule is in force.
 	DepositPriceEntry *ReleaseDepositPriceEntry `json:"deposit_price_entry,omitempty"`
+	// CaptureTheFlag is capture the flag in force for the decision epoch. It is
+	// absent before E_c, while the signed policy's theta splits the row.
+	CaptureTheFlag *ReleaseCaptureTheFlag `json:"capture_the_flag,omitempty"`
 }
 
 // VerifiedReleasePool is one independently derived pool decision. Ineligible
@@ -160,6 +163,9 @@ type VerifiedReleaseMeasurement struct {
 	Scores         []*big.Rat
 	BoundProviders map[uint64]map[connect.Id]bool
 	StatsByNO      map[uint64]VerifiedReleaseStats
+	// Ctf is the CTF channel: each weighted CTF pool with its operator's pool
+	// score. Empty without capture the flag.
+	Ctf []ExactWeightInput
 }
 
 // parseReleaseHex32 requires the unique lowercase 0x-prefixed representation.
@@ -204,6 +210,9 @@ func verifyReleaseMeasurementIdentityWithHexWork(artifact *ReleaseMeasurementArt
 	}
 	if artifact.DepositPriceEntry != nil {
 		return errors.New("legacy release measurement rejects a signed deposit price")
+	}
+	if artifact.CaptureTheFlag != nil {
+		return errors.New("legacy release measurement rejects capture the flag")
 	}
 	for _, input := range artifact.Inputs {
 		if input.AttemptCutV2 != nil {
@@ -823,6 +832,11 @@ func assembleReleaseMeasurement(artifact *ReleaseMeasurementArtifact, statsByNO 
 	if err != nil {
 		return nil, err
 	}
+	ctf, err := verifiedReleaseCaptureTheFlag(artifact)
+	if err != nil {
+		return nil, err
+	}
+	ctfWeights := ctf.ctfInputs(pools, masked)
 	for uid, members := range membersByUID {
 		for _, member := range members {
 			if controlled[member.NoID] {
@@ -836,14 +850,21 @@ func assembleReleaseMeasurement(artifact *ReleaseMeasurementArtifact, statsByNO 
 		maskedUIDs = append(maskedUIDs, uid)
 	}
 	sort.Slice(maskedUIDs, func(i, j int) bool { return maskedUIDs[i] < maskedUIDs[j] })
-	uids, scores, err := BuildWeightVectorExact(poolWeights, selection.Selected, artifact.Policy.Steering.Theta, masked)
+	// From E_c capture the flag's shares replace theta (CAPTURETHEFLAG.md §2.1).
+	var uids []uint16
+	var scores []*big.Rat
+	if ctf != nil {
+		uids, scores, err = BuildWeightVectorCtf(poolWeights, ctfWeights, selection.Selected, ctf.shares, masked)
+	} else {
+		uids, scores, err = BuildWeightVectorExact(poolWeights, selection.Selected, artifact.Policy.Steering.Theta, masked)
+	}
 	if err != nil && (!emptyProviders || artifact.Policy.NetworkProfile != "mainnet" || !errors.Is(err, errNoPositiveUnmaskedWeights)) {
 		return nil, err
 	}
 	return &VerifiedReleaseMeasurement{
 		EligibleHead: eligible, SelectedHead: selection.Selected, RejectedHead: selection.Rejected,
 		StaleBindings: stale, Pools: pools, MaskedUIDs: maskedUIDs, UIDs: uids,
-		Scores: scores, BoundProviders: bound, StatsByNO: statsByNO,
+		Scores: scores, BoundProviders: bound, StatsByNO: statsByNO, Ctf: ctfWeights,
 	}, nil
 }
 

@@ -52,7 +52,7 @@ func captureReleaseDecisionObservationsV2(ctx context.Context, cfg *ReleaseConfi
 		if err := errors.Join(err, custody.close()); err != nil {
 			return err
 		}
-		observation := ReleaseEvidenceV2DecisionObservation{MeasurementHash: item.Intent.MeasurementArtifactHash, Decision: sources.decision, Bindings: sources.bindings, Pools: sources.pools, DepositAudits: sources.audits}
+		observation := ReleaseEvidenceV2DecisionObservation{MeasurementHash: item.Intent.MeasurementArtifactHash, Decision: sources.decision, Bindings: sources.bindings, Pools: sources.pools, DepositAudits: sources.audits, CtfPools: sources.ctfPools}
 		if err := observeReleaseDecisionLifecycleV2(ctx, native, &owned, &item.Intent, &observation); err != nil {
 			return err
 		}

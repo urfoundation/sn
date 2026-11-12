@@ -552,6 +552,7 @@ func (self *releaseRuntimeV2) collect(ctx context.Context, steerer *ReleaseSteer
 		Coordinator: self.cfg.Coordinator, SettlementVault: self.cfg.SettlementVault, ValidatorID: self.cfg.ValidatorID, Netuid: self.cfg.Netuid, SubnetEpoch: subnetEpoch,
 		NativeSnapshotBlock: nativeBlock, NativeSnapshotHash: nativeHash, EVMSnapshotBlock: snapshot.BlockNumber, EVMSnapshotHash: attemptHex32(snapshot.BlockHash),
 		SettlementEpoch: snapshot.Epoch.Uint64(), PolicyHash: self.cfg.PolicyHash, SelfUID: uid}, Policy: self.cfg.Policy, ControlledNOIDs: slices.Clone(self.cfg.ControlledNOIDs),
+		CtfSupport: releaseCtfSupported(&self.cfg), AmendmentFallback: slices.Clone(self.cfg.AmendmentFallback),
 		Operators: make(map[uint64]ReleaseMeasurementV2OperatorOptions, len(self.history.participants)), MaxOperators: bounds.MaxOperators, MaxHeadEntries: bounds.MaxHeadEntries, MaxArtifactBytes: bounds.MaxArtifactBytes, MaxControlBytes: bounds.MaxControlBytes}
 	replicas, err := releaseReservedAttemptCensusReplicasV2(&self.cfg, self.origins, self.runtimes)
 	if err != nil {
