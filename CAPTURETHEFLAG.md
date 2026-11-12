@@ -1163,6 +1163,7 @@ Every part landed on 2026‑11‑11 and 2026‑11‑12, each merged to its repos
 | SDK | `Kind` and `Label`, `partial=true` reads with unavailable pools, the batched claim, the relay's per‑pool rows, `SnCtfClient`, and the gomobile, wasm and cgo bindings | sdk `089b7c3a` |
 | apps | Per‑pool rows, unavailable pools, the claim minimum, Claim both, and the won‑slot line | android `547dad493`, apple `953e3932`, windows `af147705`, linux `b036df4`, ur.io (mmm) `7ef59d8ec` |
 | the client route | `GET /sn/ctf/client` for a client or a network credential, with every win and whether it is claimed | sn `95bbbe57`, server `eb9ee7a25` |
+| the client route's fixes | Claim states read within five seconds at one finalized block, in batches, each kept 25 s, so they never fail the answer; a network's wins by `ctf_award.network_id` (migration 963), so they outlive the reaper; a win the paying root holds less than is null, never claimed; every coldkey read | sn `d99545cc`, server `3bd154311` |
 | SDK, second pass | Every unclaimed win, read with the network credential and never a reason to sign out; the largest account alone when the payer cannot pay for the batch | sdk `7387af51` |
 | apps, second pass | A line for every unclaimed win, the claim minimum on any account, a `needs_gas` account still claimable, and ur.io's largest‑first claim for browser wallets | android `ab694efff`, apple `b4d0b854`, windows `28d6d088`, linux `e53ef2d`, ur.io (mmm) `4f4524b8e` |
 | the guardian and R-9 | `mainnet/guardian_associate.py`: the guardian's association through the MEV shield, signed once on a Ledger; the rehearsal harness admits runtime 490, and R-9's corrected griefing checks, which passed on 490 | sn `fbb9072f`, `c6abfc9b`, `f707f657`, `87673a5f` |
@@ -1178,7 +1179,7 @@ vault2, the provider pool's ledger and the extender pool did not change. Some of
 - **On a runtime,** R-9 ran on a local chain of runtime 490 and passed (§4.6), and E-8 runs the whole cycle
   on the e2e chain, whose runtime is a set of Go fakes. Nothing has run on mainnet.
 - **The ctf migrations** (the tables, and `ctf_award.network_id`) have run only on disposable local
-  databases, where the CTF database tests run.
+  databases, where the database tests that cover them passed.
 - **The apps** ran the unit tests that cover the change. No release build was made, and the Android and
   Windows apps were not built here at all.
 - **Nothing is deployed:** every server part stays off until ctf.yml and st.yml turn it on, and the site
