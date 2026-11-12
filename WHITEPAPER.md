@@ -2319,7 +2319,8 @@ and role, so the first miner to reach a thin country earns far more than one mor
   counts of the miners each rule excluded. It holds no coldkeys and no addresses. Within 600 blocks of
   `end(k)`, NO `n`'s root signer commits `censusHash = sha256(census header)` with
   `commitCtfCensus(k, n, censusHash)`, once per epoch, so the candidates are fixed on chain before any
-  randomness for the draw exists.
+  randomness for the draw exists. No census can be committed while the v1 coordinator is paused, so a pause
+  across that window means no draw for the epoch.
 - **The draw.** A drand round published after the commitment seeds it:
 
   ```
@@ -2359,10 +2360,11 @@ and role, so the first miner to reach a thin country earns far more than one mor
 - **Pending awards.** If the carry has not come back before an epoch's close (a late root, or the relay down),
   the epoch is not matured. Its winners take their slot amounts at once and their pot shares as pending awards,
   paid in full in the first matured epoch, so a delay does not cost a winner its pot share.
-- **An open risk.** Third parties can fill the carry contract's staking‑hotkey list, after which the runtime
-  refuses every claim of its account, and the contract cannot clear the list. The carry could then not return,
-  and pending awards would wait. This is open for the owner's decision before the carry contract is created
-  (`VERSION2-FINAL.md` §19.4).
+- **An open problem, pending the owner's decision.** Third parties can fill the carry contract's
+  staking‑hotkey list, after which the runtime refuses every claim of its account, and the contract cannot clear
+  the list. Slot amounts would still pay, but the pots and pending awards would never return. This is not
+  solved: the owner decides before the carry contract is created (`CAPTURETHEFLAG.md` §4.6, §12.4;
+  `VERSION2-FINAL.md` §19.4).
 
 At epoch 4's scale, with no head fleet, the CTF pool's fresh amount is 119,583,893,572 rao (119.58 α). A slot
 is then worth 48,025,660 rao, about 0.048 α, and a country with no miners grows its two pots by about 0.48 α an
@@ -2420,8 +2422,12 @@ started, so the owner signs it during epoch 7 (`mainnet/SETTLEMENT-AMENDMENTS.md
 
 - **One timelock operation** upgrades `STSettlement2` to `STSettlement2Ctf` and registers UR's CTF pool:
   `upgradeToAndCall` with `registerCtfPool(1, maxBurn, 8)` as its call. It has to execute before epoch 8
-  starts at block 9,600,028, so the Safe schedules it at least 72 hours earlier. The carry contract is created
-  after it, at an address known in advance, which the entry names.
+  starts at block 9,600,028. Anyone can take the derived hotkey inside the executing block, since it is known
+  once the parent block is sealed, so the Safe schedules the operation days early, by about 2026‑11‑22. The
+  execute is retried with a bounded gas limit, and a fallback operation with first epoch 9, under another
+  salt, is scheduled beside it.
+- **The carry contract** is created after the operation, at an address known in advance that depends on its
+  exact build, so its artifact is pinned before the entry names the address.
 - **The server** samples presence from before `end(6)`, so that epoch 7 runs in shadow. Epoch 8's census is
   committed by block 9,651,028, and its root with the provider root by block 9,651,628.
 - **UR's validator** weights the CTF UID from epoch 8's first tempo. It holds the stake majority, so it alone
@@ -3275,11 +3281,13 @@ registered by `STSettlement2Ctf.registerCtfPool` one to two days before `E_c`, a
 earns weight before its registration immunity ends. The hotkey is derived when the timelock operation
 executes, from the proxy, the pool id `2^32 + n`, the block number and the previous block's hash. A hotkey
 named in the scheduled call would be public for the timelock's 72 hours, and whoever registered it on SN25
-first would make vault2's registration fail. The registration takes one of the 256 UIDs, and with no owner
-trim a full metagraph loses its lowest-ranked UID that is not immune; the live `immunity_period` has to
-outlast the time from the registration to the first revealed CTF weight, a little over two days. A pruned CTF
-pool earns nothing, and leaves the CTF channel empty for its NO, until anyone re-registers its hotkey through
-`registerPoolUid`, paying the burn.
+first would make vault2's registration fail. The derived hotkey is still known once the parent block is
+sealed, and anyone can take it inside the executing block, so the operation is made ready days early, with a
+fallback for the next epoch (`CAPTURETHEFLAG.md` §3.1, §11.2). The registration takes one of the 256 UIDs,
+and with no owner trim a full metagraph loses its lowest-ranked UID that is not immune; the live
+`immunity_period` has to outlast the time from the registration to the first revealed CTF weight, a little over
+two days. A pruned CTF pool earns nothing, and leaves the CTF channel empty for its NO, until anyone
+re-registers its hotkey through `registerPoolUid`, paying the burn.
 
 ---
 
