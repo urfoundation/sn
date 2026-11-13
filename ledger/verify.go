@@ -97,20 +97,17 @@ var (
 	// ErrTreeRoot: the account rows do not rebuild the committed root.
 	ErrTreeRoot = errors.New("ledger: account rows do not rebuild the committed root")
 
-	// Check 11, extenders (with the census rules' errors, ErrCensusZeroID,
+	// Check 11, extenders (with the census rules' errors, ErrCensusZeroId,
 	// ErrCensusUnsorted, ErrCensusDuplicate, ErrCensusUnit, ErrCensusFlags
 	// and ErrCensusClient, and ErrExtenderOverflow; a census row's encoding,
 	// ErrCensusEncoding, is check 4's).
 
-	// ErrExtendersMissing: an epoch the extender pool amendment covers has no
-	// extender component.
+	// An epoch the extender pool amendment covers has no extender component.
 	ErrExtendersMissing = errors.New("ledger: an epoch the extender pool amendment covers has no extender component")
-	// ErrExtendersUnexpected: an epoch the amendment does not cover has an
-	// extender component.
+	// An epoch the amendment does not cover has an extender component.
 	ErrExtendersUnexpected = errors.New("ledger: an epoch the extender pool amendment does not cover has an extender component")
-	// ErrExtenderRows: the share rows are not the even split of the
-	// component's bytes, capped at the epoch's eligible provider usage, over
-	// its census.
+	// The share rows are not the even split of the component's bytes, capped
+	// at the epoch's eligible provider usage, over its census.
 	ErrExtenderRows = errors.New("ledger: the extender share rows are not the census's even split of the capped pool bytes")
 )
 
@@ -134,9 +131,9 @@ const (
 	// CheckRecovery: the header's recovery components are not the ones the
 	// chain calls for (§16 step 6).
 	CheckRecovery
-	// CheckExtenders: an epoch's extender component is not the one the signed
-	// amendment entry calls for, or its census or share rows do not hold
-	// (WHITEPAPER.md §8.6.4).
+	// An epoch's extender component is not the one the signed amendment entry
+	// calls for, or its census or share rows do not hold (WHITEPAPER.md
+	// §8.6.4).
 	CheckExtenders
 )
 
@@ -252,19 +249,19 @@ type VerifyInput struct {
 	// the epoch's funding are still checked; whether they are the scheduled
 	// ones is the auditors' check. A validator never sets it.
 	RecoveriesUnchecked bool
-	// ExtendersFrom is E_x for the pool: the first epoch the extender pool
-	// amendment covers (WHITEPAPER.md §8.6.7), from the signed amendment
-	// entry in force or, where none is, the configured fallback
-	// (amendment.File.At), and 0 while it covers no epoch. Every covered
-	// epoch from it that is not declared unrecoverable must carry an extender
-	// component, and no other epoch may (check 11). Version 1 of the entry
-	// has no end, so the epochs it covers are exactly those from E_x.
+	// E_x for the pool: the first epoch the extender pool amendment covers
+	// (WHITEPAPER.md §8.6.7), from the signed amendment entry in force or,
+	// where none is, the configured fallback (amendment.File.At), and 0 while
+	// it covers no epoch. Every covered epoch from it that is not declared
+	// unrecoverable must carry an extender component, and no other epoch may
+	// (check 11). Version 1 of the entry has no end, so the epochs it covers
+	// are exactly those from E_x.
 	ExtendersFrom uint64
-	// ExtendersUnchecked takes the header's extender components as declared
-	// and skips check 11's first part, which epochs carry one, for a watcher
-	// without the amendments file, such as snclaim. Each component's census,
-	// head flags and share rows are still checked; whether the amendment
-	// covers its epoch is the auditors' check. A validator never sets it.
+	// Takes the header's extender components as declared and skips check
+	// 11's first part, which epochs carry one, for a watcher without the
+	// amendments file, such as snclaim. Each component's census, head flags
+	// and share rows are still checked; whether the amendment covers its
+	// epoch is the auditors' check. A validator never sets it.
 	ExtendersUnchecked bool
 }
 

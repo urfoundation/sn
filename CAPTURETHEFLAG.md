@@ -884,7 +884,9 @@ epochs show.
 ### 9.1 The API: `sn/api/operator.yml`
 
 `sn/api/operator.yml` is the OpenAPI 3.1 document of the operator's public SN routes: the `/sn/ctf` routes
-and the ledger account route. The other `/sn` routes may move into it later. The server serves it at
+and the ledger account route. Every network operator serves them for its own pools, at its own `api_url` in
+the operator list (`ur.xyz/operators.yml`), so each answer is one operator's: its CTF pool, its census and its
+draws. The ur.xyz page reads every listed operator's and adds them up (§9.2). The other `/sn` routes may move into it later. The server serves it at
 `GET /sn/openapi.yml`, from its embed in sn's `api` package, and every other route links to it
 (`Link: </sn/openapi.yml>; rel="service-desc"`). The server's `api/spec_conformance_test.go` holds every route
 and field to it, as it holds the `/competition` routes to `sn/api/competition.yml`. The ledger route is in
@@ -953,6 +955,23 @@ The page is a new English‑only page, `ur.xyz/ctf`, with a page per country at 
 - **Where the design is.** `design/ctf/design.html` is the page's design: the hub and a country page. It
   replaced the canvas "ur.xyz CTF page" on 2026‑11‑11. `design/ctf/SEO.md` has the search, compliance and
   agent findings, and the owner's decisions on them (its §8).
+- **Every operator, combined** (owner decision, 2026‑11‑12; §12.1, item 29). Capture the flag is part of the
+  SN25 protocol, not one operator's program: every network operator runs its CTF pool `ctf(n)` beside its
+  provider pool, with ten slots in every country and its own draw among its own miners (§3, §4). So the
+  page combines every operator of the operator list, `https://ur.xyz/operators.yml`
+  (`docs/OPERATOR-DISCOVERY.md`), and says so, with a link to the list; its fine print points to this
+  document and the subnet's code for the rules.
+  - **Summed:** per country and role, the slots, the slots won, the pots, the awards, the flags held and the
+    entries (the units of the draws). A country has five slots of each role at each operator, so with `N`
+    operators the page counts `5N` (and `249 · N` flags).
+  - **Protocol‑wide:** the epoch, its timing and the pre‑launch state.
+  - **Per operator:** the chance to win, since a miner enters its own operator's draw: each operator's exact
+    odds, `5/entries` of its own units plus the newcomer. With one operator the page shows them as before;
+    with several, a compact list names each operator by its domain ("38% at bringyour.com · 83% at
+    example.org"), and so do an open slot's take and a draw that did not happen. The slot amount differs by
+    operator, so the live bar shows the smallest to the largest.
+  - The copy names an operator only where a per‑operator fact is the point: a draw's odds, an open slot,
+    where to claim.
 - **Which country pages are indexed** (owner decision, 2026‑11‑12; `design/ctf/SEO.md` §2.1). A country page
   whose own text reads like another country page's but for the name, and that has no local note, is
   `noindex, nofollow` and left out of the sitemap. It is still built, linked from the hub and served.
@@ -967,7 +986,8 @@ Under the title, a mission statement reads "Providers and extenders in every cou
 
 - **Live bar.** The epoch and the time to its draw, the slot amount, the α carried into this epoch, and
   what the last draw paid and to how many winners. Three counts are also filters:
-  - **Flags held:** countries whose ten slots were all won last epoch, five providers and five extenders.
+  - **Flags held:** countries whose ten slots at an operator were all won last epoch, five providers and five
+    extenders, counted at each operator (out of `249 · N`).
   - **Not fully captured**, with one row for providers and one for extenders: countries where at least one of
     the role's five slots went unclaimed last epoch. These are the easy wins: a new miner in that role who
     meets the presence rule wins by default.
@@ -981,6 +1001,9 @@ Under the title, a mission statement reads "Providers and extenders in every cou
     "not fully captured, a newcomer wins by default", or the units in the draw with the chance to win.
   - The call to action is **Start mining**, with **Run an extender** beside it and the eligibility rule
     beneath: online, in the country, for half the epoch.
+  - **Start mining** (and **Run a provider**) opens the miner guide, `/docs/miner` in the page's language;
+    **Run an extender** its chapter on extenders. The miner guide names URnetwork's apps as an easy
+    alternative for mining from a phone or computer, with a link to ur.io (owner decision, 2026‑11‑12).
 - **Easy wins.** Eight countries drawn at random from those with a big pot this epoch, weighted by pot size.
   - The draw repeats on each visit, or with Shuffle.
   - Each country drawn has an open slot, so a newcomer wins by default.
@@ -1000,10 +1023,11 @@ Under the title, a mission statement reads "Providers and extenders in every cou
   half an epoch and you win by default: about 1.30 α this epoch, then a fifth of what is left each epoch you
   stay".
 - **Chance to win.**
-  - It is shown only for a role whose five slots were all won.
-  - Its entries are last epoch's eligible units in that role plus the visitor.
-  - It is the draw's exact odds (§4.4): 100% at five entries or fewer, else 5/entries. That is 83% at six
-    entries, 50% at ten and 5% at a hundred.
+  - It is shown only for a role whose five slots were all won, at an operator.
+  - Its entries are last epoch's eligible units in that role at that operator plus the visitor.
+  - It is that operator's draw's exact odds (§4.4): 100% at five entries or fewer, else 5/entries. That is
+    83% at six entries, 50% at ten and 5% at a hundred. With several operators, a cell shows the best of
+    them and its tip lists each operator's.
 - **Large pots are highlighted, in two tiers above a threshold** of twenty slot amounts, 0.96 α at epoch 4's
   scale (`BIG_POT_SLOTS`). The mockup's fixed 5 α would show no big pot for about ten epochs while the pots
   are new:
@@ -1016,12 +1040,16 @@ Under the title, a mission statement reads "Providers and extenders in every cou
   pot, it is the provider and extender pots together, and pots within 0.1 α of each other fall back to A–Z.
 - **How it works**, in three steps. The fine print says the amounts are estimates and that every draw is
   verifiable (§8).
-- **Data.** The pages are built from a snapshot of `GET https://api.bringyour.com/sn/ctf`
-  (`react/src/data/ctf-epoch.json`), not read live:
-  - `scripts/ctf-import.mjs` writes it once each epoch's CTF root is committed, after checking every figure
-    against operator.yml's arithmetic, and the site is then rebuilt and deployed.
-  - A failed read, or an epoch's draw still pending after a drawn one, stops the import, and the pages keep
-    the last snapshot, never zeros.
+- **Data.** The pages are built from every listed operator's `GET <api_url>/sn/ctf`, not read live:
+  - `scripts/ctf-import.mjs` reads the operator list, then each operator's answer once each epoch's CTF roots
+    are committed, checking every figure against operator.yml's arithmetic. It keeps each operator's
+    snapshot, with its operator number and domain (`react/src/data/ctf-operators/<domain>.json`), and
+    writes their aggregate, which the pages are built from (`react/src/data/ctf-epoch.json`; with one
+    operator, that operator's figures). The site is then rebuilt and deployed.
+  - An operator whose answer cannot be read, fails the checks (an epoch's draw still pending after a drawn
+    one among them), or is not at the others' epoch is left out of the figures, and the aggregate records
+    the reason; the page names it. When no operator can be read, the import writes nothing, and the pages
+    keep the last snapshot, never zeros or a default.
   - Between a draw and the rebuild the pages show the previous epoch, labelled with its epoch, and past the
     draw time the live bar says the draw is under way.
   - Before the first root the snapshot is the pre‑launch state, and once epoch 8 has ended, the pages say its
@@ -1156,7 +1184,7 @@ needed was on the server and in the presentation:
 
 ### 11.1 Components
 
-Every part landed on 2026‑11‑11 and 2026‑11‑12, each merged to its repository's main:
+Every part landed between 2026‑11‑11 and 2026‑11‑13, each merged to its repository's main:
 
 | Part | What landed | Merge on main |
 |---|---|---|
@@ -1188,17 +1216,27 @@ Every part landed on 2026‑11‑11 and 2026‑11‑12, each merged to its repos
 | web: amendments | `https://ur.xyz/amendments.yml`, its sync and its gate | web `01651c92` |
 | web: the pages | `/ctf` and the 249 `/ctf/<cc>`, the flags, the snapshot import and the SEO gates (`design/ctf/SEO.md` §6) | web `da04ba3c` |
 | web: noindex | Country pages that read alike but for the name are `noindex` until they have data of their own or a local note; `design/ctf/SEO.md` records the owner's decisions | web `8085515e`, sn `23e8a078` |
+| SDK, third pass | A failed network read falls back to the client token; the most accounts a payer can afford, largest first, and none sent when it can afford none; which bearer a 401 answered; `SnLedgerClaimOutcomesFor` reads a batch item under the floor as `AmountTooLow`; one turn per gas key from the nonce read to the broadcast | sdk `1b6c42eb`, `447ed899`, `ae3e494b` |
+| apps, third pass | Wins read again 30, 60 and 120 s after a claim; a failed read keeps the last good lines; a network answer beats a client answer; a claim in flight belongs to the session, not a screen; the figure fixed from the press to Done; one claim at a time; one Apple session for every window | android `9aa998840`, `44bc634ba`, `1820ea290`, `129e022ea`; apple `4254667d`, `6c8daad4`, `c8627d16`; windows `0c6c3ebf`, `c234c1fa`; linux `faf9a9c`, `2286c27`, `5c3450d`; ur.io (mmm) `db41aa84b`, `fe6e60d07` |
+| follow‑ups, second pass | The ledger route's record‑before‑count races; `claimed` kept from the last read when a fresh one fails; `snclaim` reads with `partial=true`; connect's spec and the SDK's comments; the docs' §8.7, §19.5 and §19.7 rows | sn `708795ba`, `e1d74972`; server `10c1e4d48`; sdk `2420817c`; connect `fc949b78`; ur.io (mmm) `e677222e5` |
+| web: the note and countdown | The note that capture the flag starts with epoch 8, with a countdown, on the hub and the 249 country pages; the flags wave out of step as in the design | web `12a6cbfe`, `de80c2d8`; sn `bdfcec46`, `24d80e90` |
+| web: every operator | `/ctf` combines every operator in `operators.yml` (§9.2); "Start mining" opens the miner docs | web `9c556a43`, sn `fffc4598` |
+| web: wording and /mainnet | The draw as a random selection in every language, never drawing lots; the /mainnet notices collapsed, epoch 8 and capture the flag on its timeline | web `53d2c034`, `9463f2cb`, `4b6842d5` |
+| apps, fourth pass | The claim reads in the order they started: an answer from before a claim's Done never replaces the read after it; Claim of a kind waits for a read that started after that kind's last Done, and nothing starts a claim from an older read; a sheet left open across its own claim's end offers no Claim from the rows it opened with | android `826deb13e`, apple `5ce25e9f`, windows `46cb24f2`, linux `dd0be47` |
+| web: Gamma and the loop gate | /mainnet's Gamma milestone links ur.io's page on paying with Gamma; the redirect‑loops gate still fails a loop at once, runs a case that only ran out of time again, alone, and runs fewer cases at a time under load | web `8dbb3a97` |
 
 vault2, the provider pool's ledger and the extender pool did not change. Some of it has run only in tests:
 
 - **On a runtime,** R-9 ran on a local chain of runtime 490 and passed (§4.6), and E-8 runs the whole cycle
-  on the e2e chain, whose runtime is a set of Go fakes. Nothing has run on mainnet.
+  on the e2e chain, whose runtime is a set of Go fakes.
 - **The ctf migrations** (the tables, and `ctf_award.network_id`) have run only on disposable local
   databases, where the database tests that cover them passed.
-- **The apps** ran the unit tests that cover the change. No release build was made, and the Android and
-  Windows apps were not built here at all.
-- **Nothing is deployed:** every server part stays off until ctf.yml and st.yml turn it on, and the site
-  and the validator release are not out.
+- **The apps** ran the unit tests that cover the change. The Android app was built with gradle at android
+  `130ed4526` against an SDK library from sdk `dce4ab69`: it compiles, Hilt's graph validates, and the wallet
+  tests pass. Apple's ran on an iOS simulator and macOS. The Windows app was not built here. No release was made.
+- **Deployed:** the site, ur.xyz, from web `fdf20a4d` on 2026‑11‑13. On mainnet, the guardian's association of
+  vault2's coldkey (§3.1), finalized at block 9,492,297. Every server part stays off until ctf.yml and st.yml turn
+  it on; the server, the apps, ur.io and the validator release ship with the owner's next release.
 
 ### 11.2 Deployment plan: `E_c = 8`
 
@@ -1435,6 +1473,12 @@ coordinator's pause guardian, and it holds nothing else.
     lone or not, in every app, as Android does (§10).
 28. **An auction.** "We should call it an auction": this document calls capture the flag an auction. Its
     technical terms stay as they are: the census, the draw, the drand seed and the chance to win.
+29. **Every operator, on the page.** "Every network operator participates as part of the protocol", and
+    "ur.xyz should aggregate across all network operators as a default rule": the `/ctf` pages combine every
+    operator of the operator list, sum what adds up and show each operator's own odds (§9.2).
+30. **Start mining opens the miner guide.** "I prefer we actually link to the start mining docs", which "can
+    mention URnetwork as an easy alternative to mine from an app": the pages' Start mining links open
+    `/docs/miner`, and the guide names URnetwork's apps, with a link to ur.io (§9.2).
 
 ### 12.2 Resolved in this design
 

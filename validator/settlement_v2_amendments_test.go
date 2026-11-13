@@ -31,6 +31,7 @@ const (
 	amendmentsTestNetuid = 25
 )
 
+// A fresh signing key for a test deployment's amendments.
 func amendmentsTestKey(t *testing.T) *ecdsa.PrivateKey {
 	t.Helper()
 	key, err := crypto.GenerateKey()
@@ -40,8 +41,8 @@ func amendmentsTestKey(t *testing.T) *ecdsa.PrivateKey {
 	return key
 }
 
-// amendmentsTestFile is a published file holding the signed extender entries
-// for no 1 from each of epochs.
+// A published file holding the signed extender entries for no 1 from
+// each of epochs.
 func amendmentsTestFile(t *testing.T, key *ecdsa.PrivateKey, epochs ...uint64) []byte {
 	t.Helper()
 	var file strings.Builder
@@ -63,6 +64,7 @@ func amendmentsTestFile(t *testing.T, key *ecdsa.PrivateKey, epochs ...uint64) [
 	return []byte(file.String())
 }
 
+// The test deployment's extender pool line for pool 1 from epoch.
 func amendmentsTestLine(t *testing.T, epoch uint64) string {
 	t.Helper()
 	line, err := amendment.NewExtenders(amendmentsTestChain, amendmentsTestNetuid, 1, epoch).Line()
@@ -153,12 +155,12 @@ func TestSettlementV2AmendmentsPinnedDeployment(t *testing.T) {
 		w.Write(raw)
 	}))
 	defer site.Close()
-	previousURL, previousSigner := settlementV2AmendmentsURL, settlementV2AmendmentsSigner
-	settlementV2AmendmentsURL = site.URL + "/amendments.yml"
-	settlementV2AmendmentsSigner = func(chainID uint64, netuid uint16) (common.Address, bool) {
-		return crypto.PubkeyToAddress(key.PublicKey), chainID == amendmentsTestChain && netuid == amendmentsTestNetuid
+	previousUrl, previousSigner := settlementV2AmendmentsUrl, settlementV2AmendmentsSigner
+	settlementV2AmendmentsUrl = site.URL + "/amendments.yml"
+	settlementV2AmendmentsSigner = func(chainId uint64, netuid uint16) (common.Address, bool) {
+		return crypto.PubkeyToAddress(key.PublicKey), chainId == amendmentsTestChain && netuid == amendmentsTestNetuid
 	}
-	defer func() { settlementV2AmendmentsURL, settlementV2AmendmentsSigner = previousURL, previousSigner }()
+	defer func() { settlementV2AmendmentsUrl, settlementV2AmendmentsSigner = previousUrl, previousSigner }()
 
 	ctx := context.Background()
 	stateDir := t.TempDir()
@@ -297,9 +299,9 @@ func TestSettlementV2CustodyRecordsExtenders(t *testing.T) {
 	}
 }
 
-// cacheTestFile is a published file of the test deployment the steering tests
-// pin (chain 945, sn 521), holding the extender entries for no 1 from each of
-// epochs, signed by the test price key both readers pin for it.
+// A published file of the test deployment the steering tests pin (chain 945,
+// sn 521), holding the extender entries for no 1 from each of epochs, signed
+// by the test price key both readers pin for it.
 func cacheTestFile(t *testing.T, epochs ...uint64) []byte {
 	t.Helper()
 	var file strings.Builder
@@ -318,7 +320,7 @@ func cacheTestFile(t *testing.T, epochs ...uint64) []byte {
 	return []byte(file.String())
 }
 
-// cacheTestSite serves whatever file it is given, and nothing while it holds none.
+// Serves whatever file it is given, and nothing while it holds none.
 func cacheTestSite(t *testing.T) (*httptest.Server, *atomic.Value) {
 	t.Helper()
 	var served atomic.Value
@@ -347,12 +349,12 @@ func TestSettlementV2AmendmentsCacheIsApartFromCaptureTheFlags(t *testing.T) {
 	signer := crypto.PubkeyToAddress(depositPriceTestKey.PublicKey)
 	extenderSite, extenderServed := cacheTestSite(t)
 	ctfSite, ctfServed := cacheTestSite(t)
-	previousURL, previousSigner := settlementV2AmendmentsURL, settlementV2AmendmentsSigner
-	settlementV2AmendmentsURL = extenderSite.URL + "/amendments.yml"
+	previousUrl, previousSigner := settlementV2AmendmentsUrl, settlementV2AmendmentsSigner
+	settlementV2AmendmentsUrl = extenderSite.URL + "/amendments.yml"
 	settlementV2AmendmentsSigner = func(chain uint64, sn uint16) (common.Address, bool) {
 		return signer, chain == chainID && sn == netuid
 	}
-	defer func() { settlementV2AmendmentsURL, settlementV2AmendmentsSigner = previousURL, previousSigner }()
+	defer func() { settlementV2AmendmentsUrl, settlementV2AmendmentsSigner = previousUrl, previousSigner }()
 
 	stateDir := t.TempDir()
 	extenderPath := settlementV2AmendmentsStorePath(stateDir)
@@ -498,9 +500,9 @@ func TestSettlementV2AmendmentsReadsTheRepositoryFile(t *testing.T) {
 	}
 	site, served := cacheTestSite(t)
 	served.Store(raw)
-	previousURL, previousSigner := settlementV2AmendmentsURL, settlementV2AmendmentsSigner
-	settlementV2AmendmentsURL, settlementV2AmendmentsSigner = site.URL+"/amendments.yml", amendment.SignerFor
-	defer func() { settlementV2AmendmentsURL, settlementV2AmendmentsSigner = previousURL, previousSigner }()
+	previousUrl, previousSigner := settlementV2AmendmentsUrl, settlementV2AmendmentsSigner
+	settlementV2AmendmentsUrl, settlementV2AmendmentsSigner = site.URL+"/amendments.yml", amendment.SignerFor
+	defer func() { settlementV2AmendmentsUrl, settlementV2AmendmentsSigner = previousUrl, previousSigner }()
 	ctx := context.Background()
 
 	stateDir := t.TempDir()

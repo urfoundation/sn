@@ -804,6 +804,7 @@ func (c *failingCustody) KeepNull(ctx context.Context, noID, epoch, seq uint64) 
 	return c.MemoryCustody.KeepNull(ctx, noID, epoch, seq)
 }
 
+// Fails on the call counted n, else answers as its custody does.
 func (c *failingCustody) ValidExtenders(ctx context.Context, noID, epoch uint64) (*HeaderExtenders, bool, error) {
 	if err := c.fail(); err != nil {
 		return nil, false, err
@@ -811,6 +812,7 @@ func (c *failingCustody) ValidExtenders(ctx context.Context, noID, epoch uint64)
 	return c.MemoryCustody.ValidExtenders(ctx, noID, epoch)
 }
 
+// Fails on the call counted n, else keeps as its custody does.
 func (c *failingCustody) KeepValidExtenders(ctx context.Context, noID, epoch uint64, component *HeaderExtenders) error {
 	if err := c.fail(); err != nil {
 		return err

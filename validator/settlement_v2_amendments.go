@@ -42,64 +42,62 @@ import (
 	"github.com/urfoundation/sn/amendment"
 )
 
-// settlementV2AmendmentsRefresh spaces the fetches of the published file.
+// Spaces the fetches of the published file.
 const settlementV2AmendmentsRefresh = 10 * time.Minute
 
 // The seams tests replace: the published address and the pinned signers.
 var (
-	settlementV2AmendmentsURL    = amendment.URL
+	settlementV2AmendmentsUrl    = amendment.URL
 	settlementV2AmendmentsSigner = amendment.SignerFor
 )
 
-// settlementV2AmendmentsStorePath is where the ledger audit keeps its verified
-// amendments file: a directory of its own, apart from capture the flag's
-// state_dir/amendments.
+// Where the ledger audit keeps its verified amendments file: a directory
+// of its own, apart from capture the flag's state_dir/amendments.
 func settlementV2AmendmentsStorePath(stateDir string) string {
 	return filepath.Join(stateDir, "settlement-v2-amendments", "amendments.yml")
 }
 
-// settlementV2Amendments holds one deployment's amendments for the audit.
+// Holds one deployment's amendments for the audit.
 type settlementV2Amendments struct {
-	// source is nil for a deployment without a pinned signer, whose file is
-	// fixed.
+	// Nil for a deployment without a pinned signer, whose file is fixed.
 	source   *amendment.Source
 	fallback *amendment.Fallback
 	now      func() time.Time
 
-	lock      sync.Mutex
+	stateLock sync.Mutex
 	file      *amendment.File
 	refreshed time.Time
 }
 
-// newSettlementV2Amendments reads the configured fallback lines and, for a
-// deployment with a pinned signer, keeps its verified file at
+// Reads the configured fallback lines and, for a deployment with a
+// pinned signer, keeps its verified file at
 // settlementV2AmendmentsStorePath(stateDir).
-func newSettlementV2Amendments(chainID uint64, netuid uint16, stateDir string, lines []string) (*settlementV2Amendments, error) {
-	fallback, err := amendment.ParseFallback(chainID, netuid, lines)
+func newSettlementV2Amendments(chainId uint64, netuid uint16, stateDir string, lines []string) (*settlementV2Amendments, error) {
+	fallback, err := amendment.ParseFallback(chainId, netuid, lines)
 	if err != nil {
 		return nil, fmt.Errorf("--amendments-fallback: %w", err)
 	}
-	out := &settlementV2Amendments{fallback: fallback, now: time.Now}
-	signer, pinned := settlementV2AmendmentsSigner(chainID, netuid)
+	amendments := &settlementV2Amendments{fallback: fallback, now: time.Now}
+	signer, pinned := settlementV2AmendmentsSigner(chainId, netuid)
 	if !pinned {
-		if out.file, err = amendment.Unpublished(chainID, netuid); err != nil {
+		if amendments.file, err = amendment.Unpublished(chainId, netuid); err != nil {
 			return nil, err
 		}
-		return out, nil
+		return amendments, nil
 	}
 	store := &releaseDepositPriceStore{path: settlementV2AmendmentsStorePath(stateDir)}
-	out.source = amendment.NewSource(settlementV2AmendmentsURL, chainID, netuid, signer, store)
-	return out, nil
+	amendments.source = amendment.NewSource(settlementV2AmendmentsUrl, chainId, netuid, signer, store)
+	return amendments, nil
 }
 
-// held is the verified file, refreshed when due, nil while none is held. A
+// The verified file, refreshed when due, nil while none is held. A
 // published file that cannot be taken leaves the held one in force.
 func (self *settlementV2Amendments) held(ctx context.Context) *amendment.File {
 	if self.source == nil {
 		return self.file
 	}
-	self.lock.Lock()
-	defer self.lock.Unlock()
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
 	now := self.now()
 	if self.file == nil || !now.Before(self.refreshed.Add(settlementV2AmendmentsRefresh)) {
 		file, problem := self.source.Refresh(ctx)
@@ -110,39 +108,39 @@ func (self *settlementV2Amendments) held(ctx context.Context) *amendment.File {
 			self.refreshed = now
 		}
 		if problem != nil {
-			held := "the last verified file stays in force"
+			heldNote := "the last verified file stays in force"
 			if self.file == nil {
-				held = "no verified file is held, so the ledger audit decides nothing until one is"
+				heldNote = "no verified file is held, so the ledger audit decides nothing until one is"
 			}
-			fmt.Printf("settlement v2 audit: amendments: %v; %s\n", problem, held)
+			fmt.Printf("settlement v2 audit: amendments: %v; %s\n", problem, heldNote)
 		}
 	}
 	return self.file
 }
 
-// extendersFrom is E_x for pool noID over a root's covered epochs first …
-// last: the first of them the extender pool amendment covers, 0 when it
-// covers none. With no verified file held it is amendment.ErrUnknown.
-func (self *settlementV2Amendments) extendersFrom(ctx context.Context, noID, first, last uint64) (uint64, error) {
+// E_x for pool noID over a root's covered epochs first … last: the
+// first of them the extender pool amendment covers, 0 when it covers
+// none. With no verified file held it is amendment.ErrUnknown.
+func (self *settlementV2Amendments) extendersFrom(ctx context.Context, noId, first, last uint64) (uint64, error) {
 	file := self.held(ctx)
 	if file == nil {
 		return 0, amendment.ErrUnknown
 	}
-	return settlementV2ExtendersFrom(file, self.fallback, noID, first, last)
+	return settlementV2ExtendersFrom(file, self.fallback, noId, first, last)
 }
 
-// settlementV2ExtendersFrom is the first epoch of first … last that the
-// extender pool amendment covers for noID, 0 for none. A version 1 entry
-// covers every epoch from its first, and configuration stands in only before
-// a signed entry, so the covered epochs run from it to last; anything else is
-// refused, as ledger.Verify can state only that.
-func settlementV2ExtendersFrom(file *amendment.File, fallback *amendment.Fallback, noID, first, last uint64) (uint64, error) {
+// The first epoch of first … last that the extender pool amendment covers for
+// noID, 0 for none. A version 1 entry covers every epoch from its first, and
+// configuration stands in only before a signed entry, so the covered epochs
+// run from it to last; anything else is refused, as ledger.Verify can state
+// only that.
+func settlementV2ExtendersFrom(file *amendment.File, fallback *amendment.Fallback, noId, first, last uint64) (uint64, error) {
 	var from uint64
 	if last < first {
 		return 0, nil
 	}
 	for epoch := first; ; epoch++ {
-		in, err := file.At(noID, epoch, fallback)
+		in, err := file.At(noId, epoch, fallback)
 		if err != nil {
 			return 0, err
 		}
@@ -150,7 +148,7 @@ func settlementV2ExtendersFrom(file *amendment.File, fallback *amendment.Fallbac
 		case covered && from == 0:
 			from = epoch
 		case !covered && from != 0:
-			return 0, fmt.Errorf("settlement v2 audit: the extender pool amendment covers epoch %d of pool %d and not epoch %d", from, noID, epoch)
+			return 0, fmt.Errorf("settlement v2 audit: the extender pool amendment covers epoch %d of pool %d and not epoch %d", from, noId, epoch)
 		}
 		if epoch == last {
 			return from, nil
@@ -158,9 +156,9 @@ func settlementV2ExtendersFrom(file *amendment.File, fallback *amendment.Fallbac
 	}
 }
 
-// readSettlementV2AmendmentsFallback reads --amendments-fallback: one
-// configured line per line of the file, blank lines and lines starting with
-// "#" passed over. The lines are checked when the audit is built.
+// Reads --amendments-fallback: one configured line per line of the file,
+// blank lines and lines starting with "#" passed over. The lines are
+// checked when the audit is built.
 func readSettlementV2AmendmentsFallback(path string) ([]string, error) {
 	if path == "" {
 		return nil, nil

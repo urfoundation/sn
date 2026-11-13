@@ -39,8 +39,8 @@ func extenderHeads() heads {
 	return h
 }
 
-// buildExtenders builds a root for epoch 12 over F with the given extender
-// pools for epochs 11 and 12 (nil for none).
+// Builds a root for epoch 12 over F with the given extender pools for
+// epochs 11 and 12 (nil for none).
 func (s *scenario) buildExtenders(t *testing.T, e11, e12 *ExtenderInput) *Ledger {
 	t.Helper()
 	l, err := Build(context.Background(), BuildInput{
@@ -55,18 +55,20 @@ func (s *scenario) buildExtenders(t *testing.T, e11, e12 *ExtenderInput) *Ledger
 	return l
 }
 
+// The scenario's audit input for pending, with the extender heads and E_x
+// from.
 func (s *scenario) extendersFrom(pending Root, objects Objects, from uint64) VerifyInput {
 	in := s.input(pending, objects)
 	in.Heads, in.ExtendersFrom = extenderHeads(), from
 	return in
 }
 
-// setCensus publishes covered epoch i's census.
+// Publishes covered epoch i's census.
 func (pub *publication) setCensus(i int, census []CensusRow) {
 	pub.header.Epochs[i].Extenders.Census = pub.put(EncodeCensusChunks(census))
 }
 
-// setShares publishes covered epoch i's share rows.
+// Publishes covered epoch i's share rows.
 func (pub *publication) setShares(i int, rows []protocol.LedgerUsageRow) {
 	pub.header.Epochs[i].Extenders.Rows = pub.put(EncodeProviderChunks(rows))
 }
@@ -141,8 +143,8 @@ func TestVerifyExtendersBoundary(t *testing.T) {
 	}
 }
 
-// cloneCustodyAfterF is the custody as it was after F's audit: its valid
-// rows of epoch 10 and its objects, nothing of a later audit.
+// The custody as it was after F's audit: its valid rows of epoch 10
+// and its objects, nothing of a later audit.
 func cloneCustodyAfterF(t *testing.T, s *scenario) *MemoryCustody {
 	t.Helper()
 	custody := NewMemoryCustody()
@@ -263,15 +265,17 @@ func TestVerifyExtendersFixedInputs(t *testing.T) {
 	audited := cloneCustody(s.custody)
 
 	// A replacement root over F lists another component for epoch 12.
-	for name, input := range map[string]*ExtenderInput{
-		"other bytes":  {Bytes: z12 - 1, Census: census12()},
-		"other census": {Bytes: z12, Census: census12()[:3]},
+	for _, c := range []struct {
+		name  string
+		input *ExtenderInput
+	}{
+		{name: "other bytes", input: &ExtenderInput{Bytes: z12 - 1, Census: census12()}},
+		{name: "other census", input: &ExtenderInput{Bytes: z12, Census: census12()[:3]}},
 	} {
-		t.Run(name, func(t *testing.T) {
-			s.custody = cloneCustody(audited)
-			other := s.buildExtenders(t, nil, input)
-			expectFailure(t, mustVerify(t, s.extendersFrom(other.Commit, other.Objects, 12)), CheckFixedInputs, ActionRefuse, ErrFixedInputs)
-		})
+		t.Logf("a replacement root with %s", c.name)
+		s.custody = cloneCustody(audited)
+		other := s.buildExtenders(t, nil, c.input)
+		expectFailure(t, mustVerify(t, s.extendersFrom(other.Commit, other.Objects, 12)), CheckFixedInputs, ActionRefuse, ErrFixedInputs)
 	}
 	// An epoch whose rows were fixed without a component cannot gain one.
 	s.custody = cloneCustody(audited)
@@ -323,19 +327,20 @@ func TestVerifyExtendersErrors(t *testing.T) {
 	}
 }
 
-// headsAfter answers as heads does, except that its nth read of epoch's
-// bindings fails.
+// Answers as heads does, except that its nth read of epoch's bindings
+// fails.
 type headsAfter struct {
 	heads    heads
 	epoch    uint64
 	n, calls int
 }
 
-func (h *headsAfter) HeadBindings(ctx context.Context, epoch uint64) (map[[16]byte]bool, error) {
-	if epoch == h.epoch {
-		if h.calls++; h.calls == h.n {
+// The bindings of epoch, failing on its nth read of the failing epoch.
+func (self *headsAfter) HeadBindings(ctx context.Context, epoch uint64) (map[[16]byte]bool, error) {
+	if epoch == self.epoch {
+		if self.calls++; self.calls == self.n {
 			return nil, errInjected
 		}
 	}
-	return h.heads[epoch], nil
+	return self.heads[epoch], nil
 }

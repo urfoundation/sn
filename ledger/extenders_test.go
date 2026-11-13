@@ -21,7 +21,7 @@ import (
 	"github.com/urfoundation/sn/protocol"
 )
 
-// unitHash returns unit n; units order as their n.
+// Returns unit n; units order as their n.
 func unitHash(n int) [32]byte {
 	var b [32]byte
 	binary.BigEndian.PutUint64(b[:8], uint64(n))
@@ -29,19 +29,19 @@ func unitHash(n int) [32]byte {
 	return b
 }
 
-// extenderID returns extender id n.
-func extenderID(n int) [16]byte {
+// Returns extender id n.
+func extenderId(n int) [16]byte {
 	var b [16]byte
 	binary.BigEndian.PutUint64(b[:8], uint64(n))
 	b[15] = 0xe0
 	return b
 }
 
-// censusRow returns a census row for extender ext of client in unit u, active
+// Returns a census row for extender ext of client in unit u, active
 // unless flags say otherwise; cold 0 is no wallet. An inactive row has no
 // unit.
 func censusRow(ext, client, cold, u int, flags CensusFlags) CensusRow {
-	r := CensusRow{ExtenderID: extenderID(ext), ClientID: id(client), Flags: flags}
+	r := CensusRow{ExtenderID: extenderId(ext), ClientID: id(client), Flags: flags}
 	if cold != 0 {
 		r.Coldkey = key(cold)
 	}
@@ -51,13 +51,15 @@ func censusRow(ext, client, cold, u int, flags CensusFlags) CensusRow {
 	return r
 }
 
+// An eligible census row: active with no other flag.
 func active(ext, client, cold, u int) CensusRow { return censusRow(ext, client, cold, u, CensusActive) }
 
+// A share row of usage bytes for client and coldkey cold.
 func shareRow(client, cold int, usage uint64) protocol.LedgerUsageRow {
 	return protocol.LedgerUsageRow{ClientID: id(client), Coldkey: key(cold), UsageBytes: usage}
 }
 
-// deltaOf returns coldkey n's delta in an epoch's allocation, 0 without one.
+// Returns coldkey n's delta in an epoch's allocation, 0 without one.
 func deltaOf(alloc *EpochAllocation, n int) uint64 {
 	for _, d := range alloc.Deltas {
 		if d.Coldkey == key(n) {
@@ -67,7 +69,7 @@ func deltaOf(alloc *EpochAllocation, n int) uint64 {
 	return 0
 }
 
-// previousRoot is a finalized root of epoch with the given accounts, and its
+// A finalized root of epoch with the given accounts, and its
 // published header and account chunks.
 func previousRoot(t *testing.T, epoch uint64, accounts []merkle.LedgerAccount) (*Previous, Objects) {
 	t.Helper()
@@ -90,6 +92,7 @@ func previousRoot(t *testing.T, epoch uint64, accounts []merkle.LedgerAccount) (
 	return &Previous{Root: Root{Epoch: epoch, Root: root, Total: total, LeafCount: tree.LeafCount(), LedgerHash: RefOf(data)}, Accounts: accounts}, objects
 }
 
+// The account of coldkey cold with cumulative alpha.
 func account(cold int, cumulative uint64) merkle.LedgerAccount {
 	return merkle.LedgerAccount{Coldkey: key(cold), Cumulative: rao(cumulative)}
 }
@@ -219,7 +222,7 @@ func TestExtenderPoolWorkedExample(t *testing.T) {
 	}
 }
 
-// buildOne builds one epoch over F (pool 7's first root) with an extender
+// Builds one epoch over F (pool 7's first root) with an extender
 // pool, funded with amount.
 func buildOne(t *testing.T, f *Ledger, amount uint64, rows []protocol.LedgerUsageRow, extenders *ExtenderInput) *Ledger {
 	t.Helper()
@@ -467,8 +470,8 @@ func TestCheckCensusRows(t *testing.T) {
 	}{
 		{"unknown flag", mutate(func(r []CensusRow) []CensusRow { r[1].Flags |= 0x80; return r }), ErrCensusEncoding},
 		{"unknown family", mutate(func(r []CensusRow) []CensusRow { r[0].Family = 5; return r }), ErrCensusEncoding},
-		{"zero extender id", mutate(func(r []CensusRow) []CensusRow { r[0].ExtenderID = [16]byte{}; return r }), ErrCensusZeroID},
-		{"zero client id", mutate(func(r []CensusRow) []CensusRow { r[0].ClientID = [16]byte{}; return r }), ErrCensusZeroID},
+		{"zero extender id", mutate(func(r []CensusRow) []CensusRow { r[0].ExtenderID = [16]byte{}; return r }), ErrCensusZeroId},
+		{"zero client id", mutate(func(r []CensusRow) []CensusRow { r[0].ClientID = [16]byte{}; return r }), ErrCensusZeroId},
 		{"clients unsorted", mutate(func(r []CensusRow) []CensusRow { r[0], r[2] = r[2], r[0]; return r }), ErrCensusUnsorted},
 		{"extenders unsorted within a client", mutate(func(r []CensusRow) []CensusRow {
 			r[0].ExtenderID, r[1].ExtenderID = r[1].ExtenderID, r[0].ExtenderID

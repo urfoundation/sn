@@ -29,38 +29,36 @@ import (
 )
 
 const (
-	// SchemaV3 names the header format of a root that covers at least one
-	// epoch with an extender component. A root that covers none keeps Schema,
-	// byte for byte.
+	// The header format of a root that covers at least one epoch with an
+	// extender component. A root that covers none keeps Schema, byte for byte.
 	SchemaV3 = "urnetwork-payout-ledger-v3"
-	// CensusRowBytes is the size of a census row, big-endian:
-	// extender_id(16) ‖ client_id(16) ‖ coldkey(32) ‖ unit(32) ‖ unit_family(1) ‖ flags(1).
+	// The size of a census row, big-endian: extender_id(16) ‖ client_id(16) ‖
+	// coldkey(32) ‖ unit(32) ‖ unit_family(1) ‖ flags(1).
 	CensusRowBytes = 98
 )
 
-// CensusFlags are a census row's flags (WHITEPAPER.md §8.6.2), one bit each.
+// A census row's flags (WHITEPAPER.md §8.6.2), one bit each.
 type CensusFlags uint8
 
 const (
-	// CensusActive is E1: at end(k) the record is active and unrevoked, and
-	// at least one of its addresses is active.
+	// E1: at end(k) the record is active and unrevoked, and at least one
+	// of its addresses is active.
 	CensusActive CensusFlags = 1 << iota
-	// CensusGated is E5: the record is in the gated tier, the operator's own
-	// durable fleet (durable_network_ids).
+	// E5: the record is in the gated tier, the operator's own durable
+	// fleet (durable_network_ids).
 	CensusGated
-	// CensusCanary is E5: the record is on a canary channel.
+	// E5: the record is on a canary channel.
 	CensusCanary
-	// CensusDeclared is E5: the record's network is one the operator declares
-	// it controls.
+	// E5: the record's network is one the operator declares it controls.
 	CensusDeclared
-	// CensusRevoked marks a record revoked by end(k).
+	// Marks a record revoked by end(k).
 	CensusRevoked
-	// CensusDuplicate is E3: the record shares a provider client, an IPv4
-	// address or an IPv6 /64 with an active record of a lower (client id,
-	// extender id), which is the one that counts.
+	// E3: the record shares a provider client, an IPv4 address or an IPv6
+	// /64 with an active record of a lower (client id, extender id),
+	// which is the one that counts.
 	CensusDuplicate
-	// CensusHeadBound is E4's second half: the record's provider client has
-	// an active fleet binding at either of the epoch's boundaries.
+	// E4's second half: the record's provider client has an active fleet
+	// binding at either of the epoch's boundaries.
 	CensusHeadBound
 
 	censusFlagsKnown = CensusActive | CensusGated | CensusCanary | CensusDeclared | CensusRevoked | CensusDuplicate | CensusHeadBound
@@ -68,68 +66,63 @@ const (
 
 // The unit families of a census row.
 const (
-	// UnitNone is the family of a row without an active address, whose unit
-	// is zero.
+	// The family of a row without an active address, whose unit is zero.
 	UnitNone uint8 = 0
-	// UnitIPv4 is a unit keyed from an active IPv4 address's /29.
+	// A unit keyed from an active IPv4 address's /29.
 	UnitIPv4 uint8 = 4
-	// UnitIPv6 is a unit keyed from an active IPv6 address's /48, for a
-	// record without an active IPv4 address.
+	// A unit keyed from an active IPv6 address's /48, for a record
+	// without an active IPv4 address.
 	UnitIPv6 uint8 = 6
 )
 
-// CensusRow is one extender record of the operator in an epoch's census.
+// One extender record of the operator in an epoch's census.
 type CensusRow struct {
 	ExtenderID [16]byte
-	// ClientID is the record's provider client at end(k).
+	// The record's provider client at end(k).
 	ClientID [16]byte
-	// Coldkey is the provider client's payout coldkey under the wallet
-	// selection provider rows use, zero without one (E4).
+	// The provider client's payout coldkey under the wallet selection
+	// provider rows use, zero without one (E4).
 	Coldkey [32]byte
-	// Unit is the keyed /29 or /48 prefix hash of the record's active
-	// address, the unit of §8.4 under the same key and granularity; zero
-	// without an active address.
+	// The keyed /29 or /48 prefix hash of the record's active address,
+	// the unit of §8.4 under the same key and granularity; zero without
+	// an active address.
 	Unit   [32]byte
 	Family uint8
 	Flags  CensusFlags
 }
 
-// Eligible reports E1 and E3–E5: active, with no other flag set, and a
-// payout coldkey.
-func (r *CensusRow) Eligible() bool {
-	return r.Flags == CensusActive && r.Coldkey != ([32]byte{})
+// Reports E1 and E3–E5: active, with no other flag set, and a payout
+// coldkey.
+func (self *CensusRow) Eligible() bool {
+	return self.Flags == CensusActive && self.Coldkey != ([32]byte{})
 }
 
 var (
-	// ErrCensusEncoding is returned for a census row with an unknown flag
-	// bit or a unit family other than 0, 4 and 6.
+	// Returned for a census row with an unknown flag bit or a unit
+	// family other than 0, 4 and 6.
 	ErrCensusEncoding = errors.New("ledger: census row has unknown flags or unit family")
-	// ErrCensusZeroID is returned for a census row with a zero extender id
-	// or client id.
-	ErrCensusZeroID = errors.New("ledger: census row has a zero extender id or client id")
-	// ErrCensusUnsorted is returned for census rows out of (client id,
-	// extender id) order.
+	// Returned for a census row with a zero extender id or client id.
+	ErrCensusZeroId = errors.New("ledger: census row has a zero extender id or client id")
+	// Returned for census rows out of (client id, extender id) order.
 	ErrCensusUnsorted = errors.New("ledger: census rows are not sorted by client id and extender id")
-	// ErrCensusDuplicate is returned for two census rows of one extender.
+	// Returned for two census rows of one extender.
 	ErrCensusDuplicate = errors.New("ledger: census rows repeat an extender id")
-	// ErrCensusUnit is returned for a census row whose unit does not match
-	// its activity, an active row with no unit or an inactive one with a
-	// unit, and for a unit hash given two families.
+	// Returned for a census row whose unit does not match its activity,
+	// an active row with no unit or an inactive one with a unit, and for
+	// a unit hash given two families.
 	ErrCensusUnit = errors.New("ledger: census row unit does not match its activity, or a unit has two families")
-	// ErrCensusFlags is returned for a census row that is both active and
-	// revoked, or a duplicate without being active.
+	// Returned for a census row that is both active and revoked, or a
+	// duplicate without being active.
 	ErrCensusFlags = errors.New("ledger: census row flags contradict each other")
-	// ErrCensusClient is returned for a provider client whose active census
-	// rows count more than one record (E3), or whose rows name more than one
-	// coldkey.
+	// Returned for a provider client whose active census rows count more
+	// than one record (E3), or whose rows name more than one coldkey.
 	ErrCensusClient = errors.New("ledger: a provider client's census rows count twice or name two coldkeys")
-	// ErrExtenderOverflow is returned when an epoch's eligible usage with
-	// its extender share rows reaches 2^64.
+	// Returned when an epoch's eligible usage with its extender share
+	// rows reaches 2^64.
 	ErrExtenderOverflow = errors.New("ledger: eligible usage with the extender share rows reaches 2^64")
 )
 
-// EncodeCensusChunks encodes census rows, in the order given, as a chunk
-// list.
+// Encodes census rows, in the order given, as a chunk list.
 func EncodeCensusChunks(rows []CensusRow) [][]byte {
 	return encodeChunks(len(rows), CensusRowBytes, func(b []byte, i int) []byte {
 		row := &rows[i]
@@ -141,8 +134,8 @@ func EncodeCensusChunks(rows []CensusRow) [][]byte {
 	})
 }
 
-// DecodeCensusChunks decodes a chunk list of census rows, checking its
-// shape. It does not check the census rules; CheckCensusRows does.
+// Decodes a chunk list of census rows, checking its shape. It does
+// not check the census rules; CheckCensusRows does.
 func DecodeCensusChunks(chunks [][]byte) ([]CensusRow, error) {
 	var rows []CensusRow
 	for j, chunk := range chunks {
@@ -154,6 +147,7 @@ func DecodeCensusChunks(chunks [][]byte) ([]CensusRow, error) {
 	return rows, nil
 }
 
+// Appends the census rows of one chunk, whose shape has been checked, to rows.
 func decodeCensusRows(rows []CensusRow, chunk []byte) []CensusRow {
 	for offset := 0; offset < len(chunk); offset += CensusRowBytes {
 		b := chunk[offset : offset+CensusRowBytes]
@@ -168,8 +162,8 @@ func decodeCensusRows(rows []CensusRow, chunk []byte) []CensusRow {
 	return rows
 }
 
-// CheckCensusRows checks the census rules a verifier can check without
-// addresses (§8.6.4 check 2):
+// Checks the census rules a verifier can check without addresses
+// (§8.6.4 check 2):
 //
 //   - every row has known flags, a unit family of 0, 4 or 6, and nonzero
 //     extender and client ids;
@@ -186,29 +180,29 @@ func decodeCensusRows(rows []CensusRow, chunk []byte) []CensusRow {
 // Which records share an address (the rest of E3), which are active, gated,
 // canaries or declared, and the wallets are the operator's attestation.
 func CheckCensusRows(rows []CensusRow) error {
-	extenders := make(map[[16]byte]bool, len(rows))
-	families := map[[32]byte]uint8{}
+	seenExtenderIds := make(map[[16]byte]bool, len(rows))
+	unitFamilies := map[[32]byte]uint8{}
 	for i := range rows {
 		row := &rows[i]
 		if row.Flags&^censusFlagsKnown != 0 || (row.Family != UnitNone && row.Family != UnitIPv4 && row.Family != UnitIPv6) {
 			return fmt.Errorf("%w: row %d", ErrCensusEncoding, i)
 		}
 		if row.ExtenderID == ([16]byte{}) || row.ClientID == ([16]byte{}) {
-			return fmt.Errorf("%w: row %d", ErrCensusZeroID, i)
+			return fmt.Errorf("%w: row %d", ErrCensusZeroId, i)
 		}
-		if extenders[row.ExtenderID] {
+		if seenExtenderIds[row.ExtenderID] {
 			return fmt.Errorf("%w: row %d", ErrCensusDuplicate, i)
 		}
-		extenders[row.ExtenderID] = true
+		seenExtenderIds[row.ExtenderID] = true
 		active := row.Flags&CensusActive != 0
 		if active != (row.Family != UnitNone) || active != (row.Unit != [32]byte{}) {
 			return fmt.Errorf("%w: row %d", ErrCensusUnit, i)
 		}
 		if active {
-			if family, ok := families[row.Unit]; ok && family != row.Family {
+			if family, ok := unitFamilies[row.Unit]; ok && family != row.Family {
 				return fmt.Errorf("%w: row %d", ErrCensusUnit, i)
 			}
-			families[row.Unit] = row.Family
+			unitFamilies[row.Unit] = row.Family
 		}
 		if (active && row.Flags&CensusRevoked != 0) || (!active && row.Flags&CensusDuplicate != 0) {
 			return fmt.Errorf("%w: row %d", ErrCensusFlags, i)
@@ -226,12 +220,12 @@ func CheckCensusRows(rows []CensusRow) error {
 	}
 	// A client's rows are adjacent, so its first active row is the first
 	// active row since its client changed.
-	var client [16]byte
+	var clientId [16]byte
 	seenActive := false
 	for i := range rows {
 		row := &rows[i]
-		if i == 0 || row.ClientID != client {
-			client, seenActive = row.ClientID, false
+		if i == 0 || row.ClientID != clientId {
+			clientId, seenActive = row.ClientID, false
 		}
 		if row.Flags&CensusActive == 0 {
 			continue
@@ -244,37 +238,25 @@ func CheckCensusRows(rows []CensusRow) error {
 	return nil
 }
 
-// ExtenderSplit is the even split of an epoch's extender pool (§8.6.2).
+// The even split of an epoch's extender pool (§8.6.2).
 type ExtenderSplit struct {
-	// Bytes is Z, the epoch's extender pool bytes.
+	// Z, the epoch's extender pool bytes.
 	Bytes uint64
-	// Weight is Z', what Z enters the allocation as: min(Z, W_k) with W_k
-	// the epoch's eligible provider usage (ζ = 1), and 0 when no extender is
-	// eligible. The share rows sum to it.
+	// Z', what Z enters the allocation as: min(Z, W_k) with W_k the epoch's
+	// eligible provider usage (ζ = 1), and 0 when no extender is eligible.
+	// The share rows sum to it.
 	Weight uint64
-	// Eligible is N, the census rows that pass E1 and E3–E5, and Units is M,
-	// the units that hold them.
+	// N, the census rows that pass E1 and E3–E5, and M, the units that hold
+	// them.
 	Eligible uint64
 	Units    uint64
-	// Rows are the share rows: one per eligible extender with a positive
-	// share, sorted by client id, each with its census row's coldkey and
-	// head_excluded 0.
+	// The share rows: one per eligible extender with a positive share, sorted
+	// by client id, each with its census row's coldkey and head_excluded 0.
 	Rows []protocol.LedgerUsageRow
 }
 
-// evenShare is the share of index in an even split of total over count, the
-// remainder going to the lowest indexes: the rule a contract's bytes split
-// over its hops by (the server's evenContractPayoutShare).
-func evenShare(total uint64, index, count uint64) uint64 {
-	share := total / count
-	if index < total%count {
-		share++
-	}
-	return share
-}
-
-// EligibleUsage is W_k: the usage of the provider rows that are eligible for
-// the allocation, with a coldkey and not head-excluded. The rows' total is
+// W_k: the usage of the provider rows that are eligible for the
+// allocation, with a coldkey and not head-excluded. The rows' total is
 // below 2^64 once checkProviderRows passed, so it cannot overflow.
 func EligibleUsage(rows []protocol.LedgerUsageRow) uint64 {
 	var total uint64
@@ -286,31 +268,41 @@ func EligibleUsage(rows []protocol.LedgerUsageRow) uint64 {
 	return total
 }
 
-// SplitExtenderPool splits an epoch's extender pool bytes z (§8.6.2). The
-// weight Z' is z capped at the eligible usage of the epoch's provider rows
-// (ζ = 1), so extenders take at most half of the epoch's amount. The eligible
-// census rows group into units by unit hash; with M units, the j-th by unit
-// hash takes floor(Z'/M), plus one byte when j < Z' mod M, and within it the
-// i-th of its m eligible extenders by client id takes floor(z_j/m), plus one
-// byte when i < z_j mod m. A share of zero has no row. With no eligible
-// extender Z is dropped: Weight is 0 and there are no rows.
+// Splits an epoch's extender pool bytes z (§8.6.2). The weight Z' is z capped
+// at the eligible usage of the epoch's provider rows (ζ = 1), so extenders
+// take at most half of the epoch's amount. The eligible census rows group
+// into units by unit hash; with M units, the j-th by unit hash takes
+// floor(Z'/M), plus one byte when j < Z' mod M, and within it the i-th of its
+// m eligible extenders by client id takes floor(z_j/m), plus one byte when i
+// < z_j mod m. A share of zero has no row. With no eligible extender Z is
+// dropped: Weight is 0 and there are no rows.
 //
 // census must pass CheckCensusRows, which makes each eligible row's client id
 // unique, and providers checkProviderRows.
 func SplitExtenderPool(z uint64, providers []protocol.LedgerUsageRow, census []CensusRow) (*ExtenderSplit, error) {
+	// the share of index in an even split of total over count, the remainder
+	// going to the lowest indexes: the rule a contract's bytes split over its
+	// hops by (the server's evenContractPayoutShare)
+	evenShare := func(total uint64, index, count uint64) uint64 {
+		share := total / count
+		if index < total%count {
+			share++
+		}
+		return share
+	}
 	split := &ExtenderSplit{Bytes: z, Rows: []protocol.LedgerUsageRow{}}
-	members := map[[32]byte][]int{}
+	unitMemberIndexes := map[[32]byte][]int{}
 	for i := range census {
 		if census[i].Eligible() {
-			members[census[i].Unit] = append(members[census[i].Unit], i)
+			unitMemberIndexes[census[i].Unit] = append(unitMemberIndexes[census[i].Unit], i)
 			split.Eligible++
 		}
 	}
 	if split.Eligible == 0 {
 		return split, nil
 	}
-	units := make([][32]byte, 0, len(members))
-	for unit := range members {
+	units := make([][32]byte, 0, len(unitMemberIndexes))
+	for unit := range unitMemberIndexes {
 		units = append(units, unit)
 	}
 	slices.SortFunc(units, func(a, b [32]byte) int { return bytes.Compare(a[:], b[:]) })
@@ -324,8 +316,8 @@ func SplitExtenderPool(z uint64, providers []protocol.LedgerUsageRow, census []C
 	for j, unit := range units {
 		zj := evenShare(split.Weight, uint64(j), split.Units)
 		// census order is client id order, so a unit's members are too
-		for i, index := range members[unit] {
-			share := evenShare(zj, uint64(i), uint64(len(members[unit])))
+		for i, index := range unitMemberIndexes[unit] {
+			share := evenShare(zj, uint64(i), uint64(len(unitMemberIndexes[unit])))
 			if share == 0 {
 				continue
 			}
@@ -336,9 +328,9 @@ func SplitExtenderPool(z uint64, providers []protocol.LedgerUsageRow, census []C
 	return split, nil
 }
 
-// buildExtenders builds a covered epoch's extender component into objects:
-// its census chunks, held to the chunks it was first built with, and the
-// share rows of its split.
+// Builds a covered epoch's extender component into objects: its census
+// chunks, held to the chunks it was first built with, and the share rows
+// of its split.
 func buildExtenders(input *EpochInput, objects Objects) (*ExtenderAllocation, error) {
 	extenders := input.Extenders
 	if input.Null {
@@ -358,7 +350,7 @@ func buildExtenders(input *EpochInput, objects Objects) (*ExtenderAllocation, er
 	return &ExtenderAllocation{ExtenderSplit: *split, Census: census, Chunks: putChunks(EncodeProviderChunks(split.Rows), objects)}, nil
 }
 
-// putChunks adds chunks to objects and returns their references.
+// Adds chunks to objects and returns their references.
 func putChunks(chunks [][]byte, objects Objects) []Ref {
 	refs := make([]Ref, len(chunks))
 	for j, chunk := range chunks {
@@ -368,10 +360,9 @@ func putChunks(chunks [][]byte, objects Objects) []Ref {
 	return refs
 }
 
-// allocationRows are the rows an epoch with an extender component allocates
-// by: its provider rows and its share rows. AllocateLedgerEpoch sums them by
-// coldkey, so a coldkey that holds both adds them, and their order does not
-// matter.
+// The rows an epoch with an extender component allocates by: its provider
+// rows and its share rows. AllocateLedgerEpoch sums them by coldkey, so a
+// coldkey that holds both adds them, and their order does not matter.
 func allocationRows(providers, shares []protocol.LedgerUsageRow) []protocol.LedgerUsageRow {
 	if len(shares) == 0 {
 		return providers
