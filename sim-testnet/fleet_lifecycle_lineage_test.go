@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urfoundation/sn/protocol"
+	"github.com/urfoundation/sn/v2026/protocol"
 )
 
 func fleetLifecycleRegistrationActionID(variantName string) string {

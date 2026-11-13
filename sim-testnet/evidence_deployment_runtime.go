@@ -14,7 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/urfoundation/sn/stabi"
+	"github.com/urfoundation/sn/v2026/stabi"
 )
 
 // Returns no accepted state on cancellation, RPC failure, malformed tuples or

@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	validatorpkg "github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/connect"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/connect/v2026"
 )
 
 func TestVerifyFinalCollectedAttemptRecordsAcceptsRecoveredPendingLifecycle(t *testing.T) {

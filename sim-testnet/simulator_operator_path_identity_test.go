@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Uses only the existing synthetic test wallet. Full provisioner derivation

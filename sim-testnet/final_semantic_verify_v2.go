@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // The public pass cannot obtain original history from mutable runtime paths.

@@ -17,7 +17,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urfoundation/sn/stabi"
+	"github.com/urfoundation/sn/v2026/stabi"
 )
 
 // Holds the exact JSON-RPC filter shape used for an inclusive proxy log range.

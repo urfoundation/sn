@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 type finalValidatorPathEpochV2 struct {

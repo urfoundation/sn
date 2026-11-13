@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/urfoundation/sn/protocol"
+	"github.com/urfoundation/sn/v2026/protocol"
 )
 
 const policyRateAmendmentSchema = "urnetwork-sim-policy-rate-amendment-v1"

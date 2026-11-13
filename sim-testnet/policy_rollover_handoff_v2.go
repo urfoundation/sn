@@ -12,7 +12,7 @@ import (
 	"reflect"
 	"strings"
 
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Only initial absence selects original runtime inputs. Corruption, empty

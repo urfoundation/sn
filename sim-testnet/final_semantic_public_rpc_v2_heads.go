@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 func finalV2RPCString(raw json.RawMessage) (string, error) {

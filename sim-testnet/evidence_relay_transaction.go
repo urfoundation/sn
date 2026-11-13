@@ -21,8 +21,8 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 
-	"github.com/urfoundation/sn/stabi"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/stabi"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // A successful third-party race retains our actual reverted receipt and cost
