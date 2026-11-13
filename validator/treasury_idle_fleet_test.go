@@ -569,3 +569,130 @@ func TestTreasuryRowExclusionReachesTheJournal(t *testing.T) {
 		t.Fatalf("journal line %q", line)
 	}
 }
+
+// From E_c capture the flag's shares replace theta and an operator's CTF pool
+// joins the row (CAPTURETHEFLAG.md §2.1), and an idle fleet must not refuse that
+// row either. It is left out and named once it rounds to zero, a tempo or two
+// later than at theta: the head channel is 5/100 of the row (7,282 wire units)
+// with the CTF pool weighted, and 5/90 (8,091) with the ctf setting off. Every
+// other share stays exact, and a lost pool still refuses.
+func TestCaptureTheFlagTreasuryRowSurvivesIdleFleetDecay(t *testing.T) {
+	fixture := newTreasuryProductionTestFixture(t)
+	stage, provider := fixture.stage(t)
+	source := fixture.operator.measurement.provider.artifact
+	registrations := map[uint16]OwnerRecycleRegistration{}
+	for _, registration := range stage.authority.observation.Snapshot.Registrations {
+		registrations[registration.Uid] = registration
+	}
+	const poolUid, ctfPoolUid = uint16(109), uint16(50)
+	if _, spare := registrations[ctfPoolUid]; !spare || slices.Contains(stage.proof.Row.TreasuryUids, ctfPoolUid) || source.Pools[0].NoID != 9 || source.Pools[0].UID != poolUid {
+		t.Fatal("treasury fixture census changed")
+	}
+	masked := map[uint16]bool{}
+	for _, uid := range provider.MaskedUIDs {
+		masked[uid] = true
+	}
+	// Operator 9's configured entry from epoch 8. Its CTF pool is weighted only
+	// under support, as newReleaseCaptureTheFlag resolves it.
+	withCtf := func(support bool) *ReleaseMeasurementArtifact {
+		artifact := cloneReleaseMeasurementArtifact(t, source)
+		artifact.CaptureTheFlag = &ReleaseCaptureTheFlag{Support: support, Pools: []ReleasePoolMeasurement{},
+			Entries: []ReleaseAmendmentEntry{ctfTestWire(t, ctfTestEntry(t, artifact.ChainID, artifact.Netuid, 9, 8, nil))}}
+		if support {
+			artifact.CaptureTheFlag.Pools = []ReleasePoolMeasurement{{NoID: 9, UID: ctfPoolUid, PoolHotkey: releaseHex32(registrations[ctfPoolUid].Hotkey)}}
+		}
+		return artifact
+	}
+	// One tempo's decision as assembleReleaseMeasurement makes it from E_c.
+	decide := func(pools, ctf, head []ExactWeightInput) *VerifiedReleaseMeasurement {
+		selection, err := selectHeadFleets(head, 200)
+		if err != nil {
+			t.Fatal(err)
+		}
+		decision := *provider
+		decision.EligibleHead = append(slices.Clone(selection.Selected), selection.Rejected...)
+		decision.SelectedHead, decision.RejectedHead, decision.Ctf = selection.Selected, selection.Rejected, ctf
+		decision.Pools = make([]VerifiedReleasePool, len(pools))
+		for index, pool := range pools {
+			decision.Pools[index] = VerifiedReleasePool{NoID: uint64(9 + index), UID: pool.UID, Eligible: true, Score: pool.Score}
+		}
+		decision.UIDs, decision.Scores, err = BuildWeightVectorCtf(pools, ctf, selection.Selected, ctfTestShares, masked)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &decision
+	}
+	pools := []ExactWeightInput{{UID: poolUid, Score: big.NewRat(1, 1)}}
+	weighted := []ExactWeightInput{{UID: ctfPoolUid, Score: big.NewRat(1, 1)}}
+	for _, test := range []struct {
+		name         string
+		support      bool
+		ctf          []ExactWeightInput
+		otherUids    []uint16
+		otherScore   *big.Rat
+		poolShare    *big.Rat
+		ctfShare     *big.Rat
+		headShare    *big.Rat
+		leftOutTempo int
+	}{
+		{name: "CTF pool weighted, one other fleet at EMA 1", support: true, ctf: weighted, otherUids: []uint16{145}, otherScore: big.NewRat(1, 1),
+			poolShare: big.NewRat(4, 100), ctfShare: big.NewRat(1, 100), headShare: big.NewRat(5, 100), leftOutTempo: 34},
+		{name: "CTF pool weighted, 199 other fleets at EMA 3", support: true, ctf: weighted, otherUids: idleFleetTestOtherUids(), otherScore: big.NewRat(3, 1),
+			poolShare: big.NewRat(4, 100), ctfShare: big.NewRat(1, 100), headShare: big.NewRat(5, 100), leftOutTempo: 15},
+		{name: "ctf off, one other fleet at EMA 1", support: false, ctf: []ExactWeightInput{}, otherUids: []uint16{145}, otherScore: big.NewRat(1, 1),
+			poolShare: big.NewRat(4, 90), ctfShare: new(big.Rat), headShare: big.NewRat(5, 90), leftOutTempo: 34},
+	} {
+		artifact := withCtf(test.support)
+		idle := new(big.Rat).Set(test.otherScore)
+		for tempo := 0; tempo <= test.leftOutTempo+4; tempo++ {
+			row, err := deriveOwnerRecycleMeasuredRow(stage.authority, artifact, decide(pools, test.ctf, idleFleetTestHead(test.otherUids, test.otherScore, idle)))
+			if err != nil {
+				t.Fatalf("%s: idle for %d tempos refused the whole row: %v", test.name, tempo, err)
+			}
+			pool, ctf, head := new(big.Rat), new(big.Rat), new(big.Rat)
+			for index, uid := range row.Uids {
+				score, err := decodeRationalJSON(row.Scores[index])
+				if err != nil {
+					t.Fatal(err)
+				}
+				if row.Values[index] == 0 {
+					t.Fatalf("%s: tempo %d: uid %d kept an exact share with a zero wire value", test.name, tempo, uid)
+				}
+				switch {
+				case slices.Contains(row.TreasuryUids, uid):
+					if score.Cmp(big.NewRat(9, 20)) != 0 {
+						t.Fatalf("%s: tempo %d: recipient %d share %s", test.name, tempo, uid, score)
+					}
+				case uid == poolUid:
+					pool.Add(pool, score)
+				case uid == ctfPoolUid:
+					ctf.Add(ctf, score)
+				default:
+					head.Add(head, score)
+				}
+			}
+			if pool.Cmp(test.poolShare) != 0 || ctf.Cmp(test.ctfShare) != 0 || head.Cmp(test.headShare) != 0 {
+				t.Fatalf("%s: tempo %d: pool %s, CTF %s, head %s", test.name, tempo, pool, ctf, head)
+			}
+			for _, uid := range test.otherUids {
+				if !slices.Contains(row.Uids, uid) {
+					t.Fatalf("%s: tempo %d: busy fleet %d left the row", test.name, tempo, uid)
+				}
+			}
+			leftOut := tempo >= test.leftOutTempo
+			if slices.Contains(row.Uids, idleFleetTestUid) == leftOut {
+				t.Fatalf("%s: tempo %d: idle fleet in row %v, want left out from tempo %d", test.name, tempo, row.Uids, test.leftOutTempo)
+			}
+			if excluded := idleFleetTestExcludedUids(t, row); leftOut != slices.Equal(excluded, []uint16{idleFleetTestUid}) || !leftOut && excluded != nil {
+				t.Fatalf("%s: tempo %d: row names %v as left out", test.name, tempo, excluded)
+			}
+			idle.Mul(idle, big.NewRat(3, 4))
+		}
+	}
+	// A lost pool is a real loss beside capture the flag too.
+	tiny := append(slices.Clone(pools), ExactWeightInput{UID: 68, Score: big.NewRat(1, 1_000_000_000)})
+	belowHalf := []ExactWeightInput{{UID: 145, Score: big.NewRat(1, 1)}, {UID: idleFleetTestUid, Score: big.NewRat(1, 1_000_000_000)}}
+	if row, err := deriveOwnerRecycleMeasuredRow(stage.authority, withCtf(true), decide(tiny, weighted, belowHalf)); err == nil || !strings.Contains(err.Error(), "quantization loses") || !reflect.DeepEqual(row, OwnerRecycleMeasuredRow{}) {
+		t.Fatalf("a tiny pool beside capture the flag was admitted: %+v %v", row, err)
+	}
+}
