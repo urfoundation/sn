@@ -12,15 +12,16 @@ import (
 	"github.com/urfoundation/sn/protocol"
 )
 
-// goldenKey is a fixed test key, so a sealed statement's bytes are fixed too:
+// A fixed test key, so a sealed statement's bytes are fixed too:
 // go-ethereum signs with a deterministic nonce.
 const goldenKey = "4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d"
 
-// goldenV1 is sample() sealed with goldenKey by the package before version 2
-// existed (sn cbc025ad). A version 1 statement must keep exactly these bytes.
+// The statement sample() makes, sealed with goldenKey by the package before
+// version 2 existed (sn cbc025ad). A version 1 statement must keep exactly
+// these bytes.
 const goldenV1 = `{"schema":"urnetwork-epoch-usage-v1","deployment_id":"sn25-mainnet-test","chain_id":964,"genesis_hash":"0x01","netuid":25,"coordinator":"0x0000000000000000000000000000000000000001","vault_v2":"0x0000000000000000000000000000000000000002","policy_hash":"0x03","no_id":1,"epoch":4,"start":{"number":100,"hash":"0xa"},"end":{"number":200,"hash":"0xb"},"provider_chunks":["sha256:aa"],"provider_rows":2,"total_usage_bytes":30,"total_users":7,"signer":"0x90f8bf6a479f320ead074411a4b0e7944ea8c9c1","signature":"0x748542072b0aeebda5abb4459814ee70c006542e3d2bb546ac105e49494d93c53ac4f0a6223d872071bcfa03bcaa9a5cd94f52c863f53b83249a1111a2deae1a01"}`
 
-// goldenSeal seals statements with goldenKey and returns their bytes.
+// Seals statements with goldenKey and returns their bytes.
 func goldenSeal(t *testing.T) func(*Statement) []byte {
 	t.Helper()
 	key, err := crypto.HexToECDSA(goldenKey)
@@ -40,13 +41,14 @@ func goldenSeal(t *testing.T) func(*Statement) []byte {
 	}
 }
 
+// The text of the test reference whose bytes are b followed by zeros.
 func ref(b byte) string {
 	return ledger.Ref{b}.String()
 }
 
-// sampleV2 is sample() for an epoch with an extender component: the worked
-// example's Z of 1,000,000,000,001 bytes (WHITEPAPER.md §8.6.5), below the cap,
-// so Z' = Z, with N = 3 eligible extenders in M = 2 units.
+// The statement sample() makes, for an epoch with an extender component: the
+// worked example's Z of 1,000,000,000,001 bytes (WHITEPAPER.md §8.6.5), below
+// the cap, so Z' = Z, with N = 3 eligible extenders in M = 2 units.
 func sampleV2() *Statement {
 	statement := sample()
 	statement.Epoch = 8
@@ -85,6 +87,9 @@ func TestVersion1BytesUnchanged(t *testing.T) {
 	}
 }
 
+// A version 2 statement seals under its own schema and kind, writes its
+// extender pool between total_users and signer, verifies, and decodes to what
+// was sealed.
 func TestVersion2SealVerifyAndRoundTrip(t *testing.T) {
 	seal := goldenSeal(t)
 	statement := sampleV2()
@@ -148,6 +153,9 @@ func TestVersion2SealVerifyAndRoundTrip(t *testing.T) {
 	}
 }
 
+// A sealed version 2 statement does not decode when its schema names the other
+// version, a field breaks the extender pool's relations, a list is null or
+// missing, a reference does not parse, or an unknown field appears.
 func TestVersion2DecodeRefusals(t *testing.T) {
 	seal := goldenSeal(t)
 	raw := seal(sampleV2())
@@ -252,7 +260,7 @@ func TestVersion2Rows(t *testing.T) {
 	}
 }
 
-// censusRow is an eligible census row unless flags say otherwise.
+// An eligible census row unless flags say otherwise.
 func censusRow(extender, client byte, unit byte, coldkey byte, flags ledger.CensusFlags) ledger.CensusRow {
 	row := ledger.CensusRow{ExtenderID: [16]byte{extender}, ClientID: [16]byte{client}, Flags: flags}
 	if flags&ledger.CensusActive != 0 {

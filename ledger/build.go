@@ -63,27 +63,27 @@ type EpochInput struct {
 	// ascending source epoch order. Each is allocated by its source epoch's
 	// rows, and the epoch's own rows allocate f_k less their amounts.
 	Recovery []RecoveryInput
-	// Extenders is the epoch's extender pool (WHITEPAPER.md §8.6.2). Set it
-	// for every epoch the extender pool amendment covers, from the first
-	// epoch of its signed amendment entry (E_x), and for no other; Rows are
-	// then the provider rows without the shares the amendment pools. Nil
-	// builds the epoch as before the amendment.
+	// The epoch's extender pool (WHITEPAPER.md §8.6.2). Set it for every
+	// epoch the extender pool amendment covers, from the first epoch of its
+	// signed amendment entry (E_x), and for no other; Rows are then the
+	// provider rows without the shares the amendment pools. Nil builds the
+	// epoch as before the amendment.
 	Extenders *ExtenderInput
 }
 
-// ExtenderInput is one covered epoch's extender pool input.
+// One covered epoch's extender pool input.
 type ExtenderInput struct {
-	// Bytes is Z: the funded intra-platform and intra-network bytes of the
-	// contracts that closed in the epoch's earning window, less declared
-	// measurement and test traffic, before the cap.
+	// Z: the funded intra-platform and intra-network bytes of the contracts
+	// that closed in the epoch's earning window, less declared measurement
+	// and test traffic, before the cap.
 	Bytes uint64
-	// Census is the epoch's census, sorted by client id and extender id
+	// The epoch's census, sorted by client id and extender id
 	// (CheckCensusRows).
 	Census []CensusRow
-	// Chunks, when not nil, are the census chunk references the epoch's
-	// extender component was first built with, and Bytes must be the Z it
-	// was first built with. Census must encode to exactly these chunks.
-	// Leave it nil the first time, or to rebuild on an operator command.
+	// When not nil, the census chunk references the epoch's extender component
+	// was first built with, and Bytes must be the Z it was first built with.
+	// Census must encode to exactly these chunks. Leave it nil the first time,
+	// or to rebuild on an operator command.
 	Chunks []Ref
 }
 
@@ -118,22 +118,22 @@ type EpochAllocation struct {
 	Deltas []protocol.LedgerDelta
 	// Recovery lists the epoch's recovery components and what each allocated.
 	Recovery []RecoveryAllocation
-	// Extenders is the epoch's extender component, nil without one. Its
-	// share rows were allocated with the provider rows.
+	// The epoch's extender component, nil without one. Its share rows were
+	// allocated with the provider rows.
 	Extenders *ExtenderAllocation
 }
 
-// ExtenderAllocation is an epoch's extender component as built: the split,
-// and the chunks the header lists for its census and share rows.
+// An epoch's extender component as built: the split, and the chunks the header
+// lists for its census and share rows.
 type ExtenderAllocation struct {
 	ExtenderSplit
 	Census []Ref
 	Chunks []Ref
 }
 
-// Header is the component as the header lists it.
-func (a *ExtenderAllocation) Header() *HeaderExtenders {
-	return &HeaderExtenders{Bytes: a.Bytes, Census: slices.Clone(a.Census), Rows: slices.Clone(a.Chunks)}
+// The component as the header lists it.
+func (self *ExtenderAllocation) Header() *HeaderExtenders {
+	return &HeaderExtenders{Bytes: self.Bytes, Census: slices.Clone(self.Census), Rows: slices.Clone(self.Chunks)}
 }
 
 // Objects holds ledger objects by reference.

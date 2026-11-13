@@ -211,7 +211,7 @@
 //	  CheckFetch          ErrObjectUnavailable, ErrByteBudget
 //	10 CheckRecovery      ErrRecoveryUnexpected, ErrRecoveryMissing, ErrRecoveryAmount
 //	11 CheckExtenders     ErrExtendersMissing, ErrExtendersUnexpected, ErrExtenderRows,
-//	                      ErrExtenderOverflow, ErrCensusZeroID, ErrCensusUnsorted,
+//	                      ErrExtenderOverflow, ErrCensusZeroId, ErrCensusUnsorted,
 //	                      ErrCensusDuplicate, ErrCensusUnit, ErrCensusFlags,
 //	                      ErrCensusClient
 //
