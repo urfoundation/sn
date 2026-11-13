@@ -1216,17 +1216,25 @@ Every part landed on 2026‑11‑11 and 2026‑11‑12, each merged to its repos
 | web: amendments | `https://ur.xyz/amendments.yml`, its sync and its gate | web `01651c92` |
 | web: the pages | `/ctf` and the 249 `/ctf/<cc>`, the flags, the snapshot import and the SEO gates (`design/ctf/SEO.md` §6) | web `da04ba3c` |
 | web: noindex | Country pages that read alike but for the name are `noindex` until they have data of their own or a local note; `design/ctf/SEO.md` records the owner's decisions | web `8085515e`, sn `23e8a078` |
+| SDK, third pass | A failed network read falls back to the client token; the most accounts a payer can afford, largest first, and none sent when it can afford none; which bearer a 401 answered; `SnLedgerClaimOutcomesFor` reads a batch item under the floor as `AmountTooLow`; one turn per gas key from the nonce read to the broadcast | sdk `1b6c42eb`, `447ed899`, `ae3e494b` |
+| apps, third pass | Wins read again 30, 60 and 120 s after a claim; a failed read keeps the last good lines; a network answer beats a client answer; a claim in flight belongs to the session, not a screen; the figure fixed from the press to Done; one claim at a time; one Apple session for every window | android `9aa998840`, `44bc634ba`, `1820ea290`, `129e022ea`; apple `4254667d`, `6c8daad4`, `c8627d16`; windows `0c6c3ebf`, `c234c1fa`; linux `faf9a9c`, `2286c27`, `5c3450d`; ur.io (mmm) `db41aa84b`, `fe6e60d07` |
+| follow‑ups, second pass | The ledger route's record‑before‑count races; `claimed` kept from the last read when a fresh one fails; `snclaim` reads with `partial=true`; connect's spec and the SDK's comments; the docs' §8.7, §19.5 and §19.7 rows | sn `708795ba`, `e1d74972`; server `10c1e4d48`; sdk `2420817c`; connect `fc949b78`; ur.io (mmm) `e677222e5` |
+| web: the note and countdown | The note that capture the flag starts with epoch 8, with a countdown, on the hub and the 249 country pages; the flags wave out of step as in the design | web `12a6cbfe`, `de80c2d8`; sn `bdfcec46`, `24d80e90` |
+| web: every operator | `/ctf` combines every operator in `operators.yml` (§9.2); "Start mining" opens the miner docs | web `9c556a43`, sn `fffc4598` |
+| web: wording and /mainnet | The draw as a random selection in every language, never drawing lots; the /mainnet notices collapsed, epoch 8 and capture the flag on its timeline | web `53d2c034`, `9463f2cb`, `4b6842d5` |
 
 vault2, the provider pool's ledger and the extender pool did not change. Some of it has run only in tests:
 
 - **On a runtime,** R-9 ran on a local chain of runtime 490 and passed (§4.6), and E-8 runs the whole cycle
-  on the e2e chain, whose runtime is a set of Go fakes. Nothing has run on mainnet.
+  on the e2e chain, whose runtime is a set of Go fakes.
 - **The ctf migrations** (the tables, and `ctf_award.network_id`) have run only on disposable local
   databases, where the database tests that cover them passed.
-- **The apps** ran the unit tests that cover the change. No release build was made, and the Android and
-  Windows apps were not built here at all.
-- **Nothing is deployed:** every server part stays off until ctf.yml and st.yml turn it on, and the site
-  and the validator release are not out.
+- **The apps** ran the unit tests that cover the change. The Android app was built with gradle at android
+  `130ed4526` against an SDK library from sdk `dce4ab69`: it compiles, Hilt's graph validates, and the wallet
+  tests pass. Apple's ran on an iOS simulator and macOS. The Windows app was not built here. No release was made.
+- **Deployed:** the site, ur.xyz, from web `e52d78a7` on 2026‑11‑12. On mainnet, the guardian's association of
+  vault2's coldkey (§3.1), finalized at block 9,492,297. Every server part stays off until ctf.yml and st.yml turn
+  it on; the server, the apps, ur.io and the validator release ship with the owner's next release.
 
 ### 11.2 Deployment plan: `E_c = 8`
 
