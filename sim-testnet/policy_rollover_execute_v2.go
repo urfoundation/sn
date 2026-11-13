@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 type policyRolloverPublicationV2 struct {

@@ -29,10 +29,10 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
 
-	"github.com/urfoundation/sn/crv4"
-	"github.com/urfoundation/sn/protocol"
-	"github.com/urfoundation/sn/stabi"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/crv4"
+	"github.com/urfoundation/sn/v2026/protocol"
+	"github.com/urfoundation/sn/v2026/stabi"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Only serialized endpoint state changes; no acceptance callback is supplied

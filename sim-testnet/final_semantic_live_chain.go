@@ -25,8 +25,8 @@ import (
 	ethTypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
-	"github.com/urfoundation/sn/crv4"
-	"github.com/urfoundation/sn/ss58"
+	"github.com/urfoundation/sn/v2026/crv4"
+	"github.com/urfoundation/sn/v2026/ss58"
 )
 
 // v7 retains the exact transaction envelope and authenticated predecessor

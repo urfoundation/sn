@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 func TestFinalCaptureV2AdoptionRequiresApprovedOriginalConfigAndNamespace(t *testing.T) {

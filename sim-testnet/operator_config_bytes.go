@@ -2,8 +2,8 @@ package main
 
 import (
 	"fmt"
-	"github.com/urnetwork/server/controller"
-	"github.com/urnetwork/server/model"
+	"github.com/urnetwork/server/v2026/controller"
+	"github.com/urnetwork/server/v2026/model"
 	"gopkg.in/yaml.v3"
 )
 
