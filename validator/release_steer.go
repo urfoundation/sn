@@ -25,6 +25,9 @@ type ReleaseMeasurementContext struct {
 	ClientKey        ClientKeyFunc
 	ClientKeyHistory *HTTPClientKeyHistoryReader
 	Artifacts        ArtifactReader
+	// Audits a source epoch settled under settlement v2 and retains what it read.
+	// Only the compact pool gather sets it, for the length of its pass.
+	depositUsage func(context.Context, depositUsageRequest) (DepositAudit, error)
 }
 
 type ReleaseSteerer struct {
@@ -56,6 +59,27 @@ type ReleaseSteerer struct {
 	// Uploads each begun intent's head summary in the background. Nil
 	// uploads nothing; it never takes part in a steering decision.
 	headSummary *headSummaryUploader
+
+	// The signed deposit price sheet. Nil for a deployment with no pinned signer,
+	// and for legacy steering, whose transcript cannot carry a signed price.
+	depositPrices *releaseDepositPrices
+	// The settlement amendments, which fix capture the flag's start and split. Nil
+	// for legacy steering, whose transcript cannot carry capture the flag.
+	amendments *releaseAmendments
+	// What live steering verified of each priced source epoch's committed rows, so
+	// later passes need not read them again. Nil verifies them on every pass.
+	depositUsageMemo *releaseDepositUsageMemo
+	// The most time one operator's usage audit spends reading the operator's answers
+	// in a pass. Zero is depositUsageReadTimeLimit. Each operator's share is fixed
+	// when the pass gathers its pools (depositUsageReadShare).
+	depositUsageReadLimit time.Duration
+	// The source epoch whose retention last ran, so that it runs once an epoch.
+	depositUsagePruned      bool
+	depositUsagePrunedEpoch uint64
+
+	// How far the finalized intent's application look-back has read. Nil reads
+	// only the first step after the reveal block on every poll.
+	applicationHistory *productionApplicationHistoryMemo
 }
 
 func releaseAttemptClaimMatchesBinding(claim AttemptEgressClaim, binding stabi.STCoordinatorBindingRecord, uid uint16) bool {
@@ -145,12 +169,24 @@ func (s *ReleaseSteerer) validatePinnedChains(ctx context.Context, snapshot *Rel
 		snapshot.Policy.FinalizeOffsetBlocks == s.cfg.Policy.ProductionCadence.FinalizeOffsetBlocks &&
 		snapshot.Policy.CloseGraceBlocks == s.cfg.Policy.ProductionCadence.CloseGraceBlocks &&
 		snapshot.Policy.EffectiveEpoch >= s.cfg.Policy.ProductionCadence.AfterAcceleratedEpochs
+	// The one read of the published price in a steering pass. The rest of the pass
+	// takes its price from this refresh, and its amendments from the next.
+	s.depositPrices.refresh(ctx)
+	s.amendments.refresh(ctx)
+	priceEntry, err := s.depositPrices.entryAtEpoch(snapshot.Epoch)
+	if err != nil {
+		return err
+	}
+	// A priced audit cannot tell an epoch settlement v2 settles without its
+	// contracts: it would find no v1 payout artifact and give that pool no weight.
+	if priceEntry != nil && s.cfg.SettlementV2 == nil {
+		fmt.Printf("release steer: error: %s\n", releaseDepositPriceWithoutSettlementV2)
+	}
 	if (!initialCadence && !productionCadence) ||
 		snapshot.Policy.ClaimTTLEpochs != s.cfg.Policy.Settlement.ClaimTTLEpochs ||
 		snapshot.Policy.ClaimGraceEpochs != s.cfg.Policy.Settlement.ClaimGraceEpochs ||
 		snapshot.Policy.MaximumBindingValidityEpochs != s.cfg.Policy.Binding.MaximumValidityEpochs ||
-		snapshot.Policy.EpochDepositCapRao.Cmp(new(big.Int).SetUint64(s.cfg.Policy.Deposit.EpochCapRaoPerOperator)) != 0 ||
-		snapshot.Policy.CampaignDepositCapRao.Cmp(new(big.Int).SetUint64(s.cfg.Policy.Deposit.TotalTestCampaignCapRao)) != 0 {
+		!releaseDepositCapsSuffice(snapshot.Policy.EpochDepositCapRao, snapshot.Policy.CampaignDepositCapRao, s.cfg.Policy.Deposit, priceEntry) {
 		return errors.New("coordinator policy fields do not match the canonical local policy")
 	}
 	lag := snapshot.BlockNumber
@@ -391,6 +427,10 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 		return nil, nil, nil, errors.New("settlement epoch is out of range")
 	}
 	currentEpoch := snapshot.Epoch.Uint64()
+	// The decision epoch's signed price, if any, prices the source epoch's usage.
+	priceEntry := s.depositPrices.entryAt(currentEpoch)
+	depositPolicy := releaseEffectiveDepositPolicy(priceEntry, s.cfg.Policy.Deposit)
+	scoringPolicy := releaseScoringPolicy(s.cfg.Policy, depositPolicy)
 	currentStartBlock, err := s.chain.ReleaseEpochStartBlockAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, snapshot.Epoch)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("current epoch start block: %w", err)
@@ -407,8 +447,8 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 	var sourceEndHash [32]byte
 	// Epoch boundaries are global, so resolve them once before the operator
 	// census instead of consuming four public-RPC calls for every pool.
-	if currentEpoch >= s.cfg.Policy.Deposit.UsageLagEpochs {
-		sourceEpoch = currentEpoch - s.cfg.Policy.Deposit.UsageLagEpochs
+	if currentEpoch >= depositPolicy.UsageLagEpochs {
+		sourceEpoch = currentEpoch - depositPolicy.UsageLagEpochs
 		sourceEpochBig = new(big.Int).SetUint64(sourceEpoch)
 		sourceStartBlock, err = s.chain.ReleaseEpochStartBlockAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, sourceEpochBig)
 		if err != nil {
@@ -483,12 +523,22 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 			return nil, nil, nil, fmt.Errorf("no_id %d conviction snapshot underflow", noID)
 		}
 
+		// Only a signed price in force reads the v2 pool, so every read below
+		// happens as it always has when no signed price is.
+		usageSettled := false
+		usageV2 := s.settlementV2
+		if priceEntry != nil && !depositPolicy.IsZeroPrice() && currentEpoch >= depositPolicy.UsageLagEpochs && usageV2.configured() {
+			usageSettled, err = s.chain.releaseUsageSettledV2Context(ctx, usageV2, snapshot.BlockNumber, snapshot.BlockHash, noID, sourceEpoch)
+			if err != nil {
+				return nil, nil, nil, err
+			}
+		}
 		var audit DepositAudit
-		if s.cfg.Policy.IsZeroPrice() {
+		if depositPolicy.IsZeroPrice() {
 			// Zero price: nothing to size or audit, so no payout artifact is
 			// read for steering; the pool is eligible on chain state alone.
 			audit = ZeroPriceDepositAudit(currentEpoch, sourceEpoch, noID, deposit, convictionBefore)
-		} else if currentEpoch < s.cfg.Policy.Deposit.UsageLagEpochs {
+		} else if currentEpoch < depositPolicy.UsageLagEpochs {
 			audit = baseDepositAudit(currentEpoch, 0, noID, deposit, convictionBefore)
 			audit.Status = DepositAuditBootstrap
 			audit.Disposition = "zero_pool_weight_bootstrap"
@@ -498,6 +548,11 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 				audit.Status = DepositAuditMismatch
 				audit.Disposition = "zero_pool_weight"
 				audit.Error = "bootstrap epoch deposit must be zero without a prior usage artifact"
+			}
+		} else if usageSettled {
+			audit, err = s.gatherDepositUsageAudit(ctx, releaseDepositUsageGather{snapshot: snapshot, measurement: measurement, vault: usageV2.Vault, noID: noID, epoch: currentEpoch, sourceEpoch: sourceEpoch, sourceStart: sourceStartBlock, sourceEnd: sourceEndBlock, sourceStartHash: sourceStartHash, sourceEndHash: sourceEndHash, deposit: deposit, convictionBefore: convictionBefore, policy: depositPolicy})
+			if err != nil {
+				return nil, nil, nil, fmt.Errorf("no_id %d source usage: %w", noID, err)
 			}
 		} else {
 			commitment, commitmentErr := s.chain.ReleaseRootCommitmentAtHashContext(ctx, snapshot.BlockNumber, snapshot.BlockHash, sourceEpochBig, noIDBig)
@@ -540,12 +595,15 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 						End:        payoutartifact.Boundary{Number: sourceEndBlock, Hash: fmt.Sprintf("0x%x", sourceEndHash)},
 						PayoutRoot: commitment.PayoutRoot, ArtifactHash: commitment.ArtifactHash,
 						Committer: commitment.Committer, RootSigner: sourceOperator.RootSigner, CommitBlock: commitment.CommitBlock,
-					}, currentEpoch, deposit, convictionBefore, s.cfg.Policy.Deposit)
+					}, currentEpoch, deposit, convictionBefore, depositPolicy)
 				}
 			}
 		}
 		audit.ObservedAtBlock = snapshot.BlockNumber
-		audit.ArtifactDeadlineBlock = artifactDeadline
+		// A v2 source epoch's audit keeps its own commit window's end.
+		if audit.UsageEvidence == "" {
+			audit.ArtifactDeadlineBlock = artifactDeadline
+		}
 		audits = append(audits, audit)
 		if controlled[noID] {
 			masked[uid] = true
@@ -566,7 +624,7 @@ func (s *ReleaseSteerer) gatherPools(ctx context.Context, snapshot *ReleaseSnaps
 		if qualityErr != nil {
 			return nil, nil, nil, fmt.Errorf("no_id %d pool quality: %w", noID, qualityErr)
 		}
-		score, err := impliedUsageQuality(audit.UsageBytes, audit.Users, convictionBefore, quality, s.cfg.Policy)
+		score, err := impliedUsageQuality(audit.UsageBytes, audit.Users, convictionBefore, quality, scoringPolicy)
 		if err != nil {
 			return nil, nil, nil, fmt.Errorf("no_id %d weight: %w", noID, err)
 		}

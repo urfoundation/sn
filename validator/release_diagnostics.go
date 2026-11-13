@@ -220,7 +220,7 @@ func releaseDiagnostic(ctx context.Context, domain, code string, epoch uint64, k
 		"startup_evm_identity_unavailable", "startup_native_identity_unavailable", "startup_activation_history_unavailable", "startup_server_key_history_unavailable", "startup_disk_intent_history_unavailable", "startup_native_owner_unavailable", "startup_unavailable",
 		"preparation_unavailable", "read_wait", "receipt_transport_wait", "preparation_pending", "receipt_pending", "hard_error", "runtime_active", "jwt_save_failed", "receipt_cache_disabled",
 		"authentication_pending", "authentication_unavailable", "authentication_recovery_required", "authentication_ready", "authentication_revoked", "jwt_rejection_save_failed", "network_sign_in_rejected",
-		"ledger_audit_retrying", "ledger_audit_approve", "ledger_audit_challenge", "ledger_audit_demand", "ledger_audit_refuse",
+		"ledger_audit_retrying", "ledger_audit_approve", "ledger_audit_challenge", "ledger_audit_demand", "ledger_audit_refuse", "ledger_audit_ctf_census_bound",
 		"head_summary_uploaded", "head_summary_upload_failed", "head_summary_dropped", "head_summary_build_failed", "head_fleets_excluded":
 	default:
 		code = "diagnostic_unknown"

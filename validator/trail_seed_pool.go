@@ -16,7 +16,7 @@ package validator
 
 import (
 	"context"
-	mathrand "math/rand"
+	mathrand "math/rand/v2"
 	"sort"
 	"sync"
 	"time"
@@ -79,7 +79,7 @@ func newTrailSeedPool(cfg TrailEngineConfig, self connect.Id, stats *StatsEngine
 		horizon:    horizon,
 		minimum:    trailSeedPoolMinimum,
 		now:        time.Now,
-		intn:       mathrand.Intn,
+		intn:       mathrand.IntN,
 		candidates: map[connect.Id]*trailSeedCandidate{},
 	}
 	if stats != nil {

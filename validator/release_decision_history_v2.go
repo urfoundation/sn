@@ -127,6 +127,7 @@ type releaseIntentDecisionSourcesV2 struct {
 	decision ReleaseMeasurementV2Decision
 	bindings []ReleaseBindingMeasurement
 	pools    []ReleasePoolMeasurement
+	ctfPools []ReleasePoolMeasurement
 	audits   []DepositAudit
 }
 
@@ -163,7 +164,14 @@ func (self *releaseEvidenceV2StartupHistory) readIntentDecisionSourcesV2(ctx con
 		return result, err
 	}
 	bounds := self.cfg.EvidenceV2.Bounds
-	query := releaseDecisionChainV2Query{domain: domain, boundary: AttemptBoundary{SettlementEpoch: artifact.SettlementEpoch, EVMBlock: artifact.EVMSnapshotBlock, EVMBlockHash: artifact.EVMSnapshotHash}, policy: self.cfg.Policy, maxOperators: bounds.MaxOperators, maxProviders: bounds.MaxProviders, maxControlBytes: bounds.MaxControlBytes, settlementV2: releaseSettlementV2Addresses(&self.cfg)}
+	// The artifact's own signed entry is the price replay judges by, today's sheet
+	// never: it may have moved on, and an outage may have kept the validator on an
+	// earlier one. The signature makes the entry self-verifying.
+	priceEntry, err := verifiedReleaseDepositPriceEntry(artifact.DepositPriceEntry, artifact.ChainID, artifact.Netuid, artifact.SettlementEpoch)
+	if err != nil {
+		return result, err
+	}
+	query := releaseDecisionChainV2Query{domain: domain, boundary: AttemptBoundary{SettlementEpoch: artifact.SettlementEpoch, EVMBlock: artifact.EVMSnapshotBlock, EVMBlockHash: artifact.EVMSnapshotHash}, policy: self.cfg.Policy, maxOperators: bounds.MaxOperators, maxProviders: bounds.MaxProviders, maxControlBytes: bounds.MaxControlBytes, settlementV2: releaseSettlementV2Addresses(&self.cfg), priceEntry: priceEntry, ctf: releaseCtfResolves(artifact)}
 	if uint64(len(self.participants)) > bounds.MaxOperators {
 		return result, errors.New("historical decision operator census exceeds its bound")
 	}
@@ -213,11 +221,16 @@ func (self *releaseEvidenceV2StartupHistory) readIntentDecisionSourcesV2(ctx con
 			return result, fmt.Errorf("historical decision operator %d was inactive at the referenced boundary", operator.noID)
 		}
 	}
-	if len(artifact.Bindings) != len(observed.bindings) || !slices.Equal(artifact.Pools, observed.pools) {
-		return result, errors.New("historical decision binding or pool census differs from actual chain state")
+	if len(artifact.Bindings) != len(observed.bindings) || !slices.Equal(artifact.Pools, observed.pools) || verifyReleaseCtfPools(artifact, observed.ctfPools) != nil {
+		return result, errors.New("historical decision binding, pool or CTF pool census differs from actual chain state")
 	}
 	result.bindings = slices.Clone(observed.bindings)
 	result.pools = slices.Clone(observed.pools)
+	// Only the CTF pools the decision weights are its source, so a decision
+	// without capture the flag keeps the observation it always had.
+	if artifact.CaptureTheFlag != nil {
+		result.ctfPools = releaseCtfPoolsExpected(artifact.CaptureTheFlag, observed.ctfPools)
+	}
 	result.decision = ReleaseMeasurementV2Decision{DeploymentID: self.cfg.DeploymentID, ChainID: self.cfg.ChainID, GenesisHash: self.cfg.GenesisHash, Coordinator: self.cfg.Coordinator, SettlementVault: self.cfg.SettlementVault, ValidatorID: self.cfg.ValidatorID, Netuid: self.cfg.Netuid, SubnetEpoch: schedule.SubnetEpochIndex, NativeSnapshotBlock: artifact.NativeSnapshotBlock, NativeSnapshotHash: artifact.NativeSnapshotHash, EVMSnapshotBlock: observed.boundary.EVMBlock, EVMSnapshotHash: observed.boundary.EVMBlockHash, SettlementEpoch: observed.boundary.SettlementEpoch, PolicyHash: self.cfg.PolicyHash, PreviousArtifactHash: artifact.PreviousArtifactHash, SelfUID: schedule.Stake.Identity.UID}
 	keyCtx, keyReads, err := newReleaseClientKeyAuthorityV2Reads(ctx, chain, &self.cfg, artifact, first.Activation.Hotkey, &admission)
 	if err != nil {
@@ -342,10 +355,11 @@ func (self *releaseEvidenceV2StartupHistory) readIntentDecisionSourcesV2(ctx con
 // candidate's path or the API's current mutable history listing.
 func (self *releaseEvidenceV2StartupHistory) historicalDepositAudit(ctx context.Context, observed *releaseDecisionChainV2Observation, operator releaseDecisionChainV2Operator, status string) (DepositAudit, error) {
 	epoch := observed.boundary.SettlementEpoch
+	depositPolicy := releaseEffectiveDepositPolicy(observed.priceEntry, self.cfg.Policy.Deposit)
 	var audit DepositAudit
-	if self.cfg.Policy.IsZeroPrice() {
-		audit = ZeroPriceDepositAudit(epoch, depositAuditSourceEpoch(epoch, self.cfg.Policy.Deposit), operator.noID, operator.deposit, operator.convictionBefore)
-	} else if epoch < self.cfg.Policy.Deposit.UsageLagEpochs {
+	if depositPolicy.IsZeroPrice() {
+		audit = ZeroPriceDepositAudit(epoch, depositAuditSourceEpoch(epoch, depositPolicy), operator.noID, operator.deposit, operator.convictionBefore)
+	} else if epoch < depositPolicy.UsageLagEpochs {
 		audit = baseDepositAudit(epoch, 0, operator.noID, operator.deposit, operator.convictionBefore)
 		audit.Status, audit.Disposition = DepositAuditBootstrap, "zero_pool_weight_bootstrap"
 		if operator.deposit.Sign() == 0 {
@@ -382,7 +396,7 @@ func (self *releaseEvidenceV2StartupHistory) historicalDepositAudit(ctx context.
 		if err != nil {
 			return DepositAudit{}, fmt.Errorf("historical committed payout bytes are unavailable or invalid; current failure is not past outage evidence: %w", err)
 		}
-		audit = EvaluateDepositArtifact(artifact, DepositArtifactExpectation{DeploymentID: self.cfg.DeploymentID, ChainID: self.cfg.ChainID, GenesisHash: self.cfg.GenesisHash, Netuid: self.cfg.Netuid, Coordinator: common.HexToAddress(self.cfg.Coordinator), SettlementVault: common.HexToAddress(self.cfg.SettlementVault), PolicyHash: self.cfg.PolicyHash, Epoch: observed.sourceEpoch, NoID: operator.noID, Signer: common.HexToAddress(config.ArtifactSigner), Start: payoutartifact.Boundary{Number: observed.sourceStart, Hash: releaseHex32(observed.sourceStartHash)}, End: payoutartifact.Boundary{Number: observed.sourceEnd, Hash: releaseHex32(observed.sourceEndHash)}, PayoutRoot: operator.commitment.PayoutRoot, ArtifactHash: operator.commitment.ArtifactHash, Committer: operator.commitment.Committer, RootSigner: operator.sourceVersion.RootSigner, CommitBlock: operator.commitment.CommitBlock}, epoch, operator.deposit, operator.convictionBefore, self.cfg.Policy.Deposit)
+		audit = EvaluateDepositArtifact(artifact, DepositArtifactExpectation{DeploymentID: self.cfg.DeploymentID, ChainID: self.cfg.ChainID, GenesisHash: self.cfg.GenesisHash, Netuid: self.cfg.Netuid, Coordinator: common.HexToAddress(self.cfg.Coordinator), SettlementVault: common.HexToAddress(self.cfg.SettlementVault), PolicyHash: self.cfg.PolicyHash, Epoch: observed.sourceEpoch, NoID: operator.noID, Signer: common.HexToAddress(config.ArtifactSigner), Start: payoutartifact.Boundary{Number: observed.sourceStart, Hash: releaseHex32(observed.sourceStartHash)}, End: payoutartifact.Boundary{Number: observed.sourceEnd, Hash: releaseHex32(observed.sourceEndHash)}, PayoutRoot: operator.commitment.PayoutRoot, ArtifactHash: operator.commitment.ArtifactHash, Committer: operator.commitment.Committer, RootSigner: operator.sourceVersion.RootSigner, CommitBlock: operator.commitment.CommitBlock}, epoch, operator.deposit, operator.convictionBefore, depositPolicy)
 	}
 	audit.ObservedAtBlock, audit.ArtifactDeadlineBlock = observed.boundary.EVMBlock, observed.artifactDeadline
 	return audit, ctx.Err()

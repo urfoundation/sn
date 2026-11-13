@@ -52,9 +52,11 @@ claims across coordinator pause/upgrade.
 - `STCoordinator` source, policy/cap semantics and storage are unchanged. Its
   existing 12-byte runtime size margin requires a fresh build-size check for
   every candidate and exact-artifact creation/readback on the selected runtime.
-- Priced versus explicit zero-price demand remains an authenticated policy and
-  usage-audit gate. These contracts alone do not validate the off-chain pricing
-  schedule or prove eligible usage. Zero-priced demand is distinct from a zero
+- Priced versus explicit zero-price demand remains an authenticated-price and
+  usage-audit gate: the signed price sheet sets the price, or the signed policy
+  while no sheet entry is in force. These contracts alone do not validate the
+  off-chain pricing schedule or prove eligible usage. Zero-priced demand is
+  distinct from a zero
   or unavailable native alpha spot price, which cannot authorize a transfer
   below the runtime floor. Principal caps also do not replace the
   production lifetime ledger for gas, staging allowance and outstanding intents.

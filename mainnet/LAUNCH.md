@@ -331,7 +331,7 @@ deleting journals or issuing another signature casually.
 
 ### Contract graph: exact action requests
 
-Build the CLI from the reviewed checkout with the pinned Go 1.27.3 toolchain.
+Build the CLI from the reviewed checkout with the pinned Go 1.27.4 toolchain.
 It runs on Linux (amd64/arm64) and macOS (arm64/amd64); on macOS, custody
 volumes follow [MACOS.md](MACOS.md). Retain the binary's SHA-256 and
 `go version -m` output with the other launch locks:
@@ -517,7 +517,8 @@ The owner approved the mainnet policy on October 7:
 `0x6b188830b47e3b7dbfafc2839d7e1f460125115c9fbded053fa46293c79130a2`. It has one
 operator and one validator, the treasury's 32768 weight cap, the zero-price launch
 and 12-epoch fleet bindings. It is the deployed policy
-([as launched](#as-launched--october-8)).
+([as launched](#as-launched--october-8)). Prices are turned on later under this
+same hash, without a new policy: [DEPOSIT-PRICES.md](DEPOSIT-PRICES.md).
 
 Its first epoch is accelerated (`after_accelerated_epochs: 1`) so the validator can
 start a day after the contracts deploy rather than a week. `validator activate`
@@ -659,7 +660,7 @@ The owner decided on October 6 ([operator discovery design](../docs/OPERATOR-DIS
 sections 1.6 and 7):
 
 - Our validator hotkey is the dedicated hotkey **`ur-mainnet`** (btcli wallet
-  `root/subtensor/wallets/ur-mainnet`, hotkey `default`), not the SN25 owner hotkey.
+  `vault/subtensor/wallets/ur-mainnet`, hotkey `default`), not the SN25 owner hotkey.
   It is the `hotkey_seed_file` of the signed UR validator config, sits on root
   (netuid 0) and validates SN25
   ([current root participation](ROOT-CURRENT-PARTICIPANT.md)). **Superseded:**

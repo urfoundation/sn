@@ -22,7 +22,10 @@
 >   with deposits/conviction summed from the on-chain `Deposited` log (`DepositedSums`, chunked `eth_getLogs`)
 >   and the tier→rate schedule floored above zero; head weight = **split-adjusted routable-IP score**
 >   (`score(u) = Σ_{h∈IPs(u)} 1/claim(h)`, EMA-smoothed) from the trail egress-hashes; `chain.DT` removed.
->   `go build/vet/test ./...` green.
+>   `go build/vet/test ./...` green. Now implied usage is the audited usage priced at the conviction-zero rate;
+>   validators read deposits and conviction from the coordinator's finalized counters and the rates from the
+>   signed price sheet, else the signed policy; and an all-zero schedule is the explicit zero-price mode
+>   (`WHITEPAPER.md` §7.1, §8.1).
 > - **Launch: testnet-first (D28)** — reverts the D24 mainnet-direct note below; `docs/LAUNCH.md` and
 >   `WHITEPAPER §16.3` are back to the M0→M6 testnet ladder (mainnet = the later Phase-E promotion).
 > - **Infra (new).** `xops/main/ansible/run-subtensor.sh` + `playbook-subtensor.yml` deploy a subtensor

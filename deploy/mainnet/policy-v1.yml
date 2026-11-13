@@ -66,9 +66,9 @@ policy:
     arithmetic: integer_rational_v1
   deposit:
     unit: rao_per_gib
-    # At zero price no deposit is ever sent, so neither cap binds yet. Both must
-    # be nonzero, with the per-operator epoch cap at most the lifetime campaign
-    # cap; a successor policy sets real caps when deposits start.
+    # At zero price neither cap binds. Both must be nonzero, with the epoch cap
+    # at most the campaign cap. For priced deposits, a schedulePolicy under this
+    # same hash raises the coordinator's caps (see mainnet/DEPOSIT-PRICES.md).
     epoch_cap_rao_per_operator: 10000000000
     total_test_campaign_cap_rao: 196000000000
     tier_snapshot: conviction_before_epoch

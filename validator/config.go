@@ -85,6 +85,13 @@ type ReleaseConfig struct {
 	ProductionCapacityRevision *ProductionCapacityRevision        `yaml:"production_capacity_revision,omitempty" json:"production_capacity_revision,omitempty"`
 	// Absent until adoption, so a config without it keeps its original hash.
 	SettlementV2 *ReleaseSettlementV2Config `yaml:"settlement_v2,omitempty" json:"settlement_v2,omitempty"`
+	// Ctf is the capture the flag setting, support or off (CAPTURETHEFLAG.md
+	// §2.3). Absent is support, so a config without it keeps its original hash.
+	Ctf string `yaml:"ctf,omitempty" json:"ctf,omitempty"`
+	// AmendmentFallback holds configured settlement amendment lines, used only for
+	// an amendment whose signing cannot happen before its first epoch
+	// (WHITEPAPER.md §8.6.7). Absent in every config that does not need one.
+	AmendmentFallback []string `yaml:"amendment_fallback,omitempty" json:"amendment_fallback,omitempty"`
 
 	ProvisionalDeferClosedNativeInput bool   `yaml:"provisional_defer_closed_native_input,omitempty" json:"provisional_defer_closed_native_input,omitempty"`
 	ProvisionalRuntimeCompatibility   string `yaml:"provisional_runtime_compatibility,omitempty" json:"provisional_runtime_compatibility,omitempty"`
@@ -511,6 +518,12 @@ func (c ReleaseConfig) validateWithMode(historical, provisionalActivationObserva
 		if err := c.SettlementV2.validate(); err != nil {
 			return err
 		}
+	}
+	if err := validateReleaseCtfSetting(c.Ctf); err != nil {
+		return err
+	}
+	if _, err := releaseAmendmentFallback(&c); err != nil {
+		return err
 	}
 	genesis, err := parseHash32("genesis_hash", c.GenesisHash)
 	if err != nil {

@@ -1,0 +1,16 @@
+# Runs the capture the flag watcher every hour at half past, half an hour from
+# the settlement v2 watcher, which uses the same key. An hour is about 300
+# blocks at 12 seconds, so vault2's 14,400-block challenge window (48 hours)
+# holds about 48 runs, as for the pool. A run that is still sending a demand
+# set is never started twice.
+[Unit]
+Description=Hourly capture the flag watcher run
+
+[Timer]
+OnCalendar=*-*-* *:30:00
+Persistent=true
+AccuracySec=1min
+Unit=sn-mainnet-settlement-v2-ctf-watcher.service
+
+[Install]
+WantedBy=timers.target

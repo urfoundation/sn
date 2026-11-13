@@ -149,9 +149,10 @@ and the key's later sends go out.
   signed when its deadline finalized, is signed as reserved: the coordinator
   reverts it (`DeadlineExpired`) before it moves any stake, and the revert
   frees the key (server `ed453384d` to `adc257c06`, merged as `d43dd4af1`).
-  Two cases still block a key (section 3, item 12): a deposit's staging
-  transfer reserved but not signed before its epoch rolled, and an intent of
-  a replaced deployment that holds an unsigned execution reservation.
+  A deposit's staging transfer reserved but not signed before its epoch
+  rolled no longer blocks the key either (section 3, item 12; server `6e098952b`, merged as `fa06458db`). One case still
+  does: an intent of a replaced deployment that holds an unsigned execution
+  reservation.
 
 The dual-stack validator hops, in all four repositories: server `72699c819`,
 connect `8d22832d`, sdk `1ee41b40` and sn `00e383fe`. The launch's builds
@@ -428,11 +429,12 @@ gate runs again.
      liability of 3.24·10^17 wei and a lifetime liability of 5·10^19 wei. At
      a 30 gwei fee cap these meet the runbook's O13: `maximum_gas` at least
      3,200,000, and an intent liability of at least 3 × `maximum_gas` × the
-     fee cap, 3.24·10^17 at 3.6M. The lifetime cap is above the 2·10^19
-     that priced deposits need: a year of floored closes, stagings and
-     deposits at that fee cap comes to about 1.5·10^19.
-   - Every later revision sets `maximum_lifetime_liability_wei` to at least
-     2·10^19 once deposits are priced.
+     fee cap, 3.24·10^17 at 3.6M. The lifetime cap is above what priced
+     deposits need: at one conversion per epoch, a year of sends, each
+     counted at its 30 gwei ceiling, comes to about 1.9·10^19.
+   - Every later revision sets `maximum_lifetime_liability_wei` to
+     2.5–3·10^19 or more once deposits are priced, and its validity window
+     is checked at the same time.
    - The server's budget row moves to revision 1 at the first signing under
      it (runbook step 5, "Expect"). Whether that signing has happened is to
      confirm.
@@ -597,13 +599,13 @@ gate runs again.
       later sends stopped at it (server `ed453384d` to `adc257c06`, merged as
       `d43dd4af1`, which run 5's server head `e22d50d09` contains; ibid.,
       "Recognizing a stranded intent");
-    - still open: a deposit's staging transfer (`transferStake`) reserved but
-      not signed before its epoch rolled stays refused ("st: retained deposit
+    - a deposit's staging transfer (`transferStake`) reserved but not signed
+      before its epoch rolled no longer blocks the key. The server retires
+      the unsigned reservation with a self-transfer at the same nonce, and
+      starts no staging transfer or conversion within 150 blocks of the
+      deposit's deadline (server `6e098952b`, merged as `fa06458db`). Before, it stayed refused ("st: retained deposit
       intent belongs to another immutable operation"), and the key's later
-      sends stop at it. Signing it would move stake, so the engine does not.
-      No operator step frees it; it needs a change to the engine (ibid.). It
-      is dormant while deposits are at zero price, since the deposit task
-      then sends nothing;
+      sends stopped at it;
     - pre-existing and adjacent: an intent of a replaced deployment that
       holds an unsigned execution reservation blocks its key too. Its
       cancellation is refused while the reservation stands, and only an

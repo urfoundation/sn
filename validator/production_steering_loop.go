@@ -58,8 +58,16 @@ func runReleaseProductionSteeringLoopWithCutWait(ctx context.Context, submit fun
 			return releaseRuntimeError(ctx, errors.Join(pendingErr, err))
 		}
 		err := observeReleaseError(submit())
+		gapHold := productionSteeringNativeGapHoldOf(err)
 		if ctx.Err() != nil {
+			// A completed refusal is the answer, not a failure of this shutdown.
+			if gapHold != nil && gapHold.cause == nil {
+				err = nil
+			}
 			return releaseRuntimeError(ctx, errors.Join(pendingErr, err, ctx.Err()))
+		}
+		if recorded := releaseErrorMarker[*productionNativeGapEdgeRecorded](err); recorded != nil && releaseOnlyErrors(err, recorded) {
+			return recorded
 		}
 		readWait := releaseErrorMarker[*productionSteeringReadWait](err)
 		originalPending := releaseErrorMarker[*productionPendingReconciliation](err)
@@ -100,6 +108,21 @@ func runReleaseProductionSteeringLoopWithCutWait(ctx context.Context, submit fun
 			progress.observeSteering(transition.nativeEpoch, true, outcome, true)
 			if !transition.revealWait {
 				failures, pendingErr = 0, nil
+			}
+		case gapHold != nil:
+			// Nothing here can change the refusal, so it spends no failures and
+			// the failures before it cannot end a process that has nothing left
+			// to retry. The hold still reads as a failure on every health signal.
+			failures, pendingErr = 0, nil
+			observeProductionNativeGapHold(ctx, progress, gapHold, err)
+			if gapHold.cause == nil {
+				// This epoch's cut is done. Trails, settlement and the audit run
+				// on; steering looks again at its slower pace.
+				for range productionNativeGapHoldPolls - 1 {
+					if !wait() {
+						return releaseRuntimeError(ctx, pendingErr)
+					}
+				}
 			}
 		case cutWait && now().Sub(cutWaitSince) <= cutWaitLimit:
 			// The drain keeps the failure budget: it neither spends nor

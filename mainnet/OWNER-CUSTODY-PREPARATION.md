@@ -108,6 +108,10 @@ and the same `plan`/`apply` sequence under `storage-prepare`. Pass that result's
 declaration to the host commands. An owner-local declaration cannot open host
 action custody, and a daemon declaration cannot open the owner device store.
 
+A mainnet fleet's journals have their own preparation,
+[`provider fleet storage`](../miner/FLEET-MAINNET-RUNTIME.md#preparing-storage-for-mainnet-writes),
+because `fleet register` opens two roots under the one declaration a write takes.
+
 Preparation returns `restart_authorized: false`. Original action approval,
 owner signature, independent submission approval and canonical finality remain
 separate steps in [OWNER-SIGNING.md](OWNER-SIGNING.md) and

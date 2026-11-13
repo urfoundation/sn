@@ -34,7 +34,8 @@ func (self *ReleaseEvidenceV2Archive) payoutSourceForMeasurementV2(ctx context.C
 			audit = &artifact.DepositAudits[index]
 		}
 	}
-	if audit == nil || audit.HttpObservationHash == "" {
+	// A usage statement's observation holds no payout artifact.
+	if audit == nil || audit.HttpObservationHash == "" || audit.UsageEvidence != "" {
 		return nil, errors.New("archive payout has no original signed HTTP observation")
 	}
 	var origin string

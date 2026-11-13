@@ -7,8 +7,11 @@ future snapshot's block is computed from the preceding cadence, so scheduling
 cannot shorten or extend the active epoch. All boundary decisions use the
 finalized block hash. Policy, operator conviction tier,
 provider membership, payout wallet, fleet binding, and head/tail eligibility are
-snapshotted at that boundary. Changes scheduled during `e` apply no earlier than
-`e+1`.
+snapshotted at that boundary. Changes scheduled on chain during `e` apply no
+earlier than `e+1`. Deposit rates and the per-epoch deposit cap are not chain
+state: for `e` they are those of the latest signed price sheet entry effective by
+`e`, else the signed policy's (`WHITEPAPER.md` §7.1). Readers do not check when an
+entry was published, so a signed entry can name an epoch already under way.
 
 Each `(epoch,no_id)` advances exactly once through:
 

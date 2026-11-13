@@ -13,6 +13,7 @@ import (
 
 	gojwt "github.com/golang-jwt/jwt/v5"
 	"github.com/urfoundation/sn/protocol"
+	"github.com/urfoundation/sn/ss58"
 	"github.com/urnetwork/connect"
 	"github.com/urnetwork/sdk"
 )
@@ -63,6 +64,20 @@ func snWalletMappingIdentity(message, token string, coldkey [32]byte) (*protocol
 		}
 	}
 	return statement, nil
+}
+
+// Which part of a consent signed elsewhere isn't this command's: the message
+// was changed on the way, or it was issued for another coldkey or provider.
+func snWalletConsentMismatch(message string, coldkey [32]byte) string {
+	statement, err := protocol.DecodeWalletMappingStatement(message)
+	if err != nil || statement.Schema != protocol.WalletMappingProspectiveSchema {
+		return "the message isn't the challenge exactly as provider wallet challenge printed it, so it changed on the way (a shell or a copy often changes its quotes, spaces or line break); pass the file provider wallet challenge saves it in, with --message-file"
+	}
+	if statement.Coldkey != coldkey {
+		issued, _ := ss58.Encode(statement.Coldkey, ss58.BittensorPrefix)
+		return "the message was issued for coldkey " + issued + ", not this one"
+	}
+	return "the message was issued for another provider or sign-in than the one this command uses"
 }
 
 // A fresh challenge never signs a different client, coldkey or earning window.
@@ -154,12 +169,18 @@ func snSetProviderWallet(ctx context.Context, api snWalletMappingApi, apiUrl, to
 				return err
 			}
 		}
+		// a consent signed elsewhere that fails here is refused on this host,
+		// before anything is retained or sent: say which check failed
+		external := proof.SeedFile == ""
 		statement, err := snWalletMappingIdentity(message, token, coldkey)
 		if err != nil {
+			if external && errors.Is(err, protocol.ErrWalletMappingIntegrity) {
+				return fmt.Errorf("%s: %w", snWalletConsentMismatch(message, coldkey), err)
+			}
 			return err
 		}
 		if proof.fromEpoch != nil && (statement.FromEpoch != uint64(*proof.fromEpoch) || statement.ThroughEpoch != uint64(*proof.throughEpoch)) {
-			return protocol.ErrWalletMappingIntegrity
+			return fmt.Errorf("the message's earning epochs %d through %d differ from --wallet-from-epoch and --wallet-through-epoch: %w", statement.FromEpoch, statement.ThroughEpoch, protocol.ErrWalletMappingIntegrity)
 		}
 		encoded, err := snNormalizeSignatureHex(signature)
 		if err != nil {
@@ -171,6 +192,9 @@ func snSetProviderWallet(ctx context.Context, api snWalletMappingApi, apiUrl, to
 		}
 		original = &protocol.WalletMappingConsent{Message: message, Signature: [64]byte(raw)}
 		if _, _, err := protocol.VerifyWalletMappingConsent(ctx, *original); err != nil {
+			if external && errors.Is(err, protocol.ErrWalletMappingIntegrity) {
+				return fmt.Errorf("the signature doesn't verify for coldkey %s over this message; sign exactly the message provider wallet challenge printed, with nothing added or taken away (or its hex bytes), with that coldkey: %w", address, err)
+			}
 			return err
 		}
 		if err := owner.retain(ctx, *original); err != nil {

@@ -105,6 +105,8 @@ type attemptRecordStore struct {
 	db         *leveldb.DB
 	disk       *attemptRecordStoreStorage
 	custody    *attemptLedgerCustody
+	// Records the last verifyContents checked hash and signature for in full.
+	recordsAuthenticated uint64
 }
 
 // Opens a single-owner private namespace. Reopen verifies records and the
@@ -435,11 +437,17 @@ func (self *attemptRecordStore) openContents(ctx context.Context) error {
 // retaining either collection. The first pass reads only chain headers; the
 // exact marker bijection fully decodes and authenticates every record once in
 // the second pass. No result is admitted until both passes and the key census
-// succeed against this exclusively owned database.
+// succeed against this exclusively owned database. Under a startup verified
+// owner, records inside a remembered byte-exact prefix skip only their hash and
+// signature check (attempt_record_store_prefix.go).
 func (self *attemptRecordStore) verifyContents(ctx context.Context) error {
 	if self.head.LastSequence > self.bounds.MaxRecordCount || self.head.RecordBytes > self.bounds.MaxRawRecordBytes || self.head.TrailCount > self.bounds.MaxTrailCount {
 		return errAttemptRecordStoreLimit
 	}
+	verified := releaseStartupVerifiedFrom(ctx)
+	var prefix, rememberedUnit [32]byte
+	var remembered uint64
+	self.recordsAuthenticated = 0
 	readOptions := &opt.ReadOptions{DontFillCache: true, Strict: opt.StrictAll}
 	iterator := self.db.NewIterator(util.BytesPrefix([]byte(attemptStoreRecordPrefix)), readOptions)
 	var count, recordBytes uint64
@@ -474,6 +482,12 @@ func (self *attemptRecordStore) verifyContents(ctx context.Context) error {
 		root = record.RecordHash
 		count++
 		recordBytes += uint64(len(raw))
+		if verified != nil {
+			prefix = attemptRecordStorePrefixStep(prefix, count, raw)
+			if unit, ok := self.prefixUnit(count, root, prefix); ok && verified.knows(unit) {
+				remembered, rememberedUnit = count, unit
+			}
+		}
 	}
 	err := iterator.Error()
 	iterator.Release()
@@ -507,7 +521,14 @@ func (self *attemptRecordStore) verifyContents(ctx context.Context) error {
 		var trailID connect.Id
 		copy(trailID[:], key[len(attemptStoreTrailRecordPrefix):])
 		sequence := binary.BigEndian.Uint64(key[len(key)-8:])
-		record, err := self.readRecord(sequence)
+		var record AttemptRecord
+		var err error
+		if sequence <= remembered {
+			record, err = self.readRememberedRecord(sequence)
+		} else {
+			record, err = self.readRecord(sequence)
+			self.recordsAuthenticated++
+		}
 		if err != nil || record.TrailID != trailID || !bytes.Equal(iterator.Value(), []byte(record.RecordHash)) {
 			iterator.Release()
 			return errors.Join(errors.New("attempt record store marker does not identify its signed record"), err)
@@ -572,6 +593,16 @@ func (self *attemptRecordStore) verifyContents(ctx context.Context) error {
 	iterator.Release()
 	if err != nil || metadataKeys != 2 || recordKeys != count || markerKeys != count || trailKeys != trails {
 		return errors.Join(errors.New("attempt record store key census differs"), err)
+	}
+	if verified != nil {
+		if remembered != 0 {
+			verified.has(rememberedUnit)
+		}
+		// Every record through this head has now passed in full, here or when a
+		// remembered prefix did.
+		if unit, ok := self.prefixUnit(count, root, prefix); ok && count != 0 {
+			verified.add(unit)
+		}
 	}
 	return nil
 }

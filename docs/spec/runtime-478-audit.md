@@ -472,6 +472,7 @@ a capturing close 2,513,577 again. Only the gas used is paid.
 | Server commit, finalize, answer | same engine | No | Unchanged |
 | SDK claim | `sdk/sn_ledger_claim.go:298-303`: estimate + 25% | Yes | Floor of 2,600,000 on SDK `main` (`3bc7ec95`) |
 | `absorbStake` | no tool sends it (phase C) | Yes | Sign it at 2,600,000 or more |
+| Server claim relay | `server/controller/sn_claim_relay.go`: estimate + 20%, on purpose | Yes: a list lengthened after the estimate reverts the one claim | Not floored: its daily cap of 0.01 TAO is less than the floor's 0.013 TAO at 5 gwei; its stop catches the jump (VERSION2-FINAL.md §10.3) |
 
 **The bound of the close floor.** A close that defers `k` missed epochs before
 capturing needs about 19,027 gas of limit for each (measured: the closes

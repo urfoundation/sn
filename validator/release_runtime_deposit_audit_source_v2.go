@@ -25,7 +25,7 @@ func releaseDepositAuditV2Artifact(decision ReleaseMeasurementV2Decision, audits
 
 // Only audit source fields are queried; provider/trail replay already belongs
 // to the actual measurement and is not repeated merely to publish this slot.
-func (self *releaseRuntimeV2) depositAuditSourcesV2(ctx context.Context, decision ReleaseMeasurementV2Decision, claimed []DepositAudit) (payloads []ValidatorEvidenceDepositAuditV2Payload, window protocol.ValidatorEvidenceWindow, resultErr error) {
+func (self *releaseRuntimeV2) depositAuditSourcesV2(ctx context.Context, decision ReleaseMeasurementV2Decision, claimed []DepositAudit, priceEntry *ReleaseDepositPriceEntry) (payloads []ValidatorEvidenceDepositAuditV2Payload, window protocol.ValidatorEvidenceWindow, resultErr error) {
 	if ctx == nil || self == nil || self.history == nil || self.chain == nil || self.native == nil || self.hotkey == nil || len(self.history.participants) == 0 {
 		return nil, window, errors.New("deposit audit source owner is incomplete")
 	}
@@ -51,8 +51,14 @@ func (self *releaseRuntimeV2) depositAuditSourcesV2(ctx context.Context, decisio
 	if err != nil {
 		return nil, window, err
 	}
+	verifiedEntry, err := verifiedReleaseDepositPriceEntry(priceEntry, decision.ChainID, decision.Netuid, decision.SettlementEpoch)
+	if err != nil {
+		return nil, window, err
+	}
+	// The reader resolves every active pool. Without the settlement v2 contracts it
+	// would look for a v1 pool hotkey that a v2 pool no longer needs on the metagraph.
 	query := releaseDecisionChainV2Query{domain: queryDomain, boundary: AttemptBoundary{SettlementEpoch: decision.SettlementEpoch, EVMBlock: decision.EVMSnapshotBlock, EVMBlockHash: decision.EVMSnapshotHash}, policy: decisionCfg.Policy,
-		maxOperators: bounds.MaxOperators, maxProviders: bounds.MaxProviders, maxControlBytes: bounds.MaxControlBytes}
+		maxOperators: bounds.MaxOperators, maxProviders: bounds.MaxProviders, maxControlBytes: bounds.MaxControlBytes, settlementV2: releaseSettlementV2Addresses(decisionCfg), priceEntry: verifiedEntry}
 	for index, participant := range self.history.participants {
 		if claimed[index].NoID != participant.NoID || self.sources[participant.NoID] == nil {
 			return nil, window, errors.New("deposit audit omitted or reordered an actual source")
@@ -92,7 +98,7 @@ func (self *releaseRuntimeV2) depositAuditSourcesV2(ctx context.Context, decisio
 		if err := releaseRpcObservationError(err, audit == claimed[index], errors.New("deposit audit differs from actual pinned chain and retained payout source replay")); err != nil {
 			return nil, window, err
 		}
-		payload := ValidatorEvidenceDepositAuditV2Payload{Schema: ValidatorEvidenceDepositAuditV2Schema, Decision: decision, Audit: audit}
+		payload := ValidatorEvidenceDepositAuditV2Payload{Schema: ValidatorEvidenceDepositAuditV2Schema, Decision: decision, Audit: audit, DepositPriceEntry: priceEntry}
 		if audit.HttpObservationHash != "" {
 			var origin string
 			for _, configured := range self.cfg.Operators {
@@ -105,7 +111,7 @@ func (self *releaseRuntimeV2) depositAuditSourcesV2(ctx context.Context, decisio
 			if err != nil {
 				return nil, window, err
 			}
-			expected, path, err := releaseArtifactHttpRequestV2(&self.cfg, self.hotkey.PublicKey(), projection, operator.noID, observed.sourceEpoch, reader)
+			expected, path, err := releaseDepositObservationRequestV2(&self.cfg, self.hotkey.PublicKey(), projection, audit, reader)
 			if err != nil {
 				return nil, window, err
 			}

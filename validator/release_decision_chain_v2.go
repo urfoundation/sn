@@ -15,6 +15,7 @@ import (
 	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/urfoundation/sn/demand/pricesheet"
 	"github.com/urfoundation/sn/protocol"
 	"github.com/urfoundation/sn/stabi"
 	"github.com/urnetwork/connect"
@@ -39,6 +40,11 @@ type releaseDecisionChainV2Query struct {
 	maxControlBytes uint64
 	// The settlement v2 contracts of the decision's configuration (§9.1).
 	settlementV2 SettlementV2Addresses
+	// The authenticated signed price the decision was judged under, nil for none.
+	priceEntry *pricesheet.Entry
+	// ctf resolves the active operators' CTF pools: for a decision that weights
+	// capture the flag. Without it none is read, as before capture the flag.
+	ctf bool
 }
 
 // Uint256 values retain exact owned integers; no float or candidate audit is
@@ -52,6 +58,14 @@ type releaseDecisionChainV2Operator struct {
 	convictionBefore *big.Int
 	sourceVersion    stabi.STCoordinatorOperatorVersion
 	commitment       stabi.RootCommitmentsOutput
+	// Under a signed price: whether the source epoch settled under settlement v2,
+	// and the root committed for it within its window, if any.
+	usageSettled bool
+	usageVault   common.Address
+	usageCommit  *releaseDepositUsageCommit
+	// The last block the source epoch's commit window admits, from the source
+	// epoch's own policy as STSettlement2 applies it.
+	usageDeadline uint64
 }
 
 // LocalClientKey stays zero until a separate real key observation is owned.
@@ -69,7 +83,14 @@ type releaseDecisionChainV2Observation struct {
 	hotkeyUIDs       map[[32]byte]uint16
 	bindings         []ReleaseBindingMeasurement
 	pools            []ReleasePoolMeasurement
-	operators        []releaseDecisionChainV2Operator
+	// ctfPools are the active operators' CTF pools that resolve at the decision
+	// (releaseCtfPoolsContext), whether or not capture the flag is in force.
+	ctfPools  []ReleasePoolMeasurement
+	operators []releaseDecisionChainV2Operator
+	// The query's signed price, and the finalized head it read vault2's pools at.
+	priceEntry    *pricesheet.Entry
+	finalized     uint64
+	finalizedHash [32]byte
 }
 
 // Only fixed-width coordinator views are used. Canonical re-encoding rejects
@@ -243,6 +264,11 @@ func ownReleaseDecisionChainV2Query(ctx context.Context, query releaseDecisionCh
 		return query, budget, errors.Join(errors.New("decision policy differs from its independent deployment domain"), err)
 	}
 	query.policy.Deposit.Tiers = slices.Clone(query.policy.Deposit.Tiers)
+	if query.priceEntry != nil {
+		entry := *query.priceEntry
+		entry.Tiers, entry.Signature = slices.Clone(entry.Tiers), slices.Clone(entry.Signature)
+		query.priceEntry = &entry
+	}
 	query.operators = slices.Clone(query.operators)
 	providers := map[connect.Id]uint64{}
 	for index, operator := range query.operators {
@@ -374,7 +400,7 @@ func (self *ChainClient) readOwnedReleaseDecisionChainV2Context(ctx context.Cont
 		}
 		seen[id.Uint64()] = true
 	}
-	observed := &releaseDecisionChainV2Observation{boundary: query.boundary, policy: policy, epochStart: start.Uint64(), artifactDeadline: start.Uint64() + policy.RootCommitWindowBlocks, operators: make([]releaseDecisionChainV2Operator, len(query.operators)), bindings: []ReleaseBindingMeasurement{}, pools: []ReleasePoolMeasurement{}}
+	observed := &releaseDecisionChainV2Observation{boundary: query.boundary, policy: policy, epochStart: start.Uint64(), artifactDeadline: start.Uint64() + policy.RootCommitWindowBlocks, operators: make([]releaseDecisionChainV2Operator, len(query.operators)), bindings: []ReleaseBindingMeasurement{}, pools: []ReleasePoolMeasurement{}, priceEntry: query.priceEntry, finalized: finalized, finalizedHash: finalizedHash}
 	observed.hotkeyUIDs, err = chain.readReleaseDecisionHotkeysV2Context(ctx, block, hash, query.domain.Netuid, &budget)
 	if err != nil {
 		return nil, err
@@ -438,6 +464,12 @@ func (self *ChainClient) readOwnedReleaseDecisionChainV2Context(ctx context.Cont
 	}
 	if len(observed.pools) < query.policy.Safety.MinimumHealthyNOCount {
 		return nil, errors.New("decision active operator census is below the policy minimum")
+	}
+	if query.ctf {
+		observed.ctfPools, err = chain.releaseCtfPoolsContext(ctx, query.settlementV2, finalized, finalizedHash, block, hash, query.boundary.SettlementEpoch, observed.pools, observed.hotkeyUIDs)
+		if err != nil {
+			return nil, err
+		}
 	}
 	if err := readReleaseDecisionChainV2Source(ctx, chain, query, observed, read, readUint); err != nil {
 		return nil, err

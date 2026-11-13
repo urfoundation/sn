@@ -58,6 +58,29 @@ func (c *v2TestChain) setAccounts(entries ...v2TestEntry) {
 	c.accounts["0x"+aliceHex] = string(data)
 }
 
+// setPartialAccounts sets the account endpoint's reply for alice as the
+// server answers partial=true: the entries, and the pools whose ledger it
+// could not read, as given.
+func (c *v2TestChain) setPartialAccounts(unavailable []uint64, entries ...v2TestEntry) {
+	pools := []map[string]any{}
+	for _, noID := range unavailable {
+		kind, label := "pool", fmt.Sprintf("Pool %d", noID)
+		if 1<<32 <= noID {
+			kind, label = "ctf", "Capture the flag"
+		}
+		pools = append(pools, map[string]any{"vault": strings.ToLower(v2TestVault), "no_id": noID, "kind": kind, "label": label})
+	}
+	data, err := json.Marshal(map[string]any{"coldkey": "0x" + aliceHex, "accounts": append([]v2TestEntry{}, entries...), "unavailable_pools": pools})
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	c.accounts["0x"+aliceHex] = string(data)
+}
+
+// v2TestCtfPool is the capture the flag pool of operator 3, which
+// v2TestPool is.
+const v2TestCtfPool = 1<<32 + v2TestPool
+
 func v2Ptr[T any](v T) *T { return &v }
 
 // v2ClaimScenario is pool 3 with two finalized roots. Alice is account 1 of
@@ -190,18 +213,143 @@ func TestV2StatusUnavailable(t *testing.T) {
 	s := newV2ClaimScenario(t)
 	s.c.accountStatus = http.StatusServiceUnavailable
 	output, err := s.c.run(s.c.statusArgv())
-	if err != nil || !strings.HasSuffix(output, "  accounts:     unavailable (GET "+s.c.api.URL+"/sn/ledger/account?coldkey=0x"+aliceHex+": 503 Service Unavailable)\n") || strings.Contains(output, "0.000000000") {
+	if err != nil || !strings.HasSuffix(output, "  accounts:     unavailable (GET "+s.c.api.URL+"/sn/ledger/account?coldkey=0x"+aliceHex+"&partial=true: 503 Service Unavailable)\n") || strings.Contains(output, "0.000000000") {
 		t.Fatalf("refusing endpoint: %v\n%s", err, output)
 	}
 	closed := newV2ClaimScenario(t)
 	closed.c.api.Close()
-	if output, err := closed.c.run(closed.c.statusArgv()); err != nil || !strings.Contains(output, "  accounts:     unavailable (Get \""+closed.c.api.URL+"/sn/ledger/account?coldkey=0x"+aliceHex+"\": dial tcp ") {
+	if output, err := closed.c.run(closed.c.statusArgv()); err != nil || !strings.Contains(output, "  accounts:     unavailable (Get \""+closed.c.api.URL+"/sn/ledger/account?coldkey=0x"+aliceHex+"&partial=true\": dial tcp ") {
 		t.Fatalf("unreachable endpoint: %v\n%s", err, output)
 	}
 	s = newV2ClaimScenario(t)
 	delete(s.c.accounts, "0x"+aliceHex)
 	if output, err := s.c.run(s.c.statusArgv()); err != nil || !strings.HasSuffix(output, "  accounts:     none\n") || s.c.observed() != "eth_chainId=1" {
 		t.Fatalf("unknown coldkey: %v\n%s", err, output)
+	}
+}
+
+// Status asks the ledger endpoint with partial=true, so a pool whose ledger
+// the server cannot read, a capture the flag pool included, is named
+// unavailable in no_id order among the accounts, never left out or taken as
+// none, and the others are shown. The command succeeds.
+func TestV2StatusNamesUnavailablePools(t *testing.T) {
+	s := newV2ClaimScenario(t)
+	s.c.setPartialAccounts([]uint64{2, v2TestCtfPool}, s.entry)
+	output, err := s.c.run(s.c.statusArgv("--chain_id=945"))
+	want := "settlement v2 account status — vault " + common.HexToAddress(v2TestVault).Hex() + " (chain id 945, rpc " + s.c.rpc.URL + ")\n" +
+		"  coldkey:      " + aliceSS58 + " (0x" + aliceHex + ")\n" +
+		"  pool 2: unavailable (the ledger endpoint cannot read it now; whether the coldkey has an account there is unknown)\n" +
+		"  pool 3, account 1:\n" +
+		"    finalized:  5.000000007 α (5000000007 rao) at root 1\n" +
+		"    claimed:    1.000000000 α (1000000000 rao)\n" +
+		"    claimable:  4.000000007 α (4000000007 rao)\n" +
+		"    pending:    6.000000000 α (6000000000 rao)\n" +
+		"  pool 4294967299: unavailable (the ledger endpoint cannot read it now; whether the coldkey has an account there is unknown)\n"
+	if err != nil || output != want || s.c.observed() != "eth_call:claimed=1 eth_chainId=1" {
+		t.Fatalf("status = %v:\n%s\nwant:\n%s\nobserved %s", err, output, want, s.c.observed())
+	}
+	if !slices.Equal(s.c.accountQueries, []string{"coldkey=0x" + aliceHex + "&partial=true"}) {
+		t.Fatalf("account queries %q", s.c.accountQueries)
+	}
+
+	// only an unavailable pool: no account is known, so none is not shown
+	s = newV2ClaimScenario(t)
+	s.c.setPartialAccounts([]uint64{v2TestCtfPool})
+	output, err = s.c.run(s.c.statusArgv())
+	if err != nil || !strings.HasSuffix(output, ")\n  pool 4294967299: unavailable (the ledger endpoint cannot read it now; whether the coldkey has an account there is unknown)\n") || strings.Contains(output, "none") || s.c.observed() != "eth_chainId=1" {
+		t.Fatalf("an unavailable pool alone: %v\n%s\nobserved %s", err, output, s.c.observed())
+	}
+}
+
+// A pool named unavailable in another vault than --vault is refused, as an
+// entry of another vault is, by status and by claim, before any chain read.
+func TestV2StatusAndClaimRefuseAnUnavailablePoolOfAnotherVault(t *testing.T) {
+	other := "0x3333333333333333333333333333333333333333"
+	for _, argv := range []func(*v2TestChain) []string{
+		func(c *v2TestChain) []string { return c.statusArgv() },
+		func(c *v2TestChain) []string { return c.claimArgv("--all") },
+	} {
+		s := newV2ClaimScenario(t)
+		s.c.accounts["0x"+aliceHex] = fmt.Sprintf(`{"coldkey":"0x%s","accounts":[],"unavailable_pools":[{"vault":"%s","no_id":%d,"kind":"ctf","label":"Capture the flag"}]}`, aliceHex, other, v2TestCtfPool)
+		want := fmt.Sprintf(`the ledger endpoint names pool %d of vault "%s" unavailable, not of --vault %s`, v2TestCtfPool, other, common.HexToAddress(v2TestVault).Hex())
+		if _, err := s.c.run(argv(s.c)); err == nil || err.Error() != want || s.c.observed() != "eth_chainId=1" {
+			t.Fatalf("%q: %v, want %q; observed %s", argv(s.c), err, want, s.c.observed())
+		}
+	}
+}
+
+// --all --batch with a pool the endpoint cannot read: the batch claims the
+// accounts it can read, in one transaction, and the command then fails naming
+// the pool.
+func TestV2ClaimAllBatchNamesAnUnavailablePool(t *testing.T) {
+	s := newV2BatchScenario(t)
+	var reply map[string]any
+	if err := json.Unmarshal([]byte(s.c.accounts["0x"+aliceHex]), &reply); err != nil {
+		t.Fatal(err)
+	}
+	reply["unavailable_pools"] = []map[string]any{{"vault": strings.ToLower(v2TestVault), "no_id": v2TestCtfPool, "kind": "ctf", "label": "Capture the flag"}}
+	data, err := json.Marshal(reply)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.c.accounts["0x"+aliceHex] = string(data)
+	output, err := s.c.run(s.c.claimArgv("--all", "--batch="+v2TestBatcher))
+	want := "pool 4294967299 is unavailable at the ledger endpoint, so an account of coldkey " + aliceSS58 + " (0x" + aliceHex + ") there cannot be claimed until it can be read"
+	if err == nil || err.Error() != want || !strings.HasPrefix(output, v2PoolUnavailable(v2TestCtfPool)+"\n") {
+		t.Fatalf("claim --all --batch: %v, want %q\n%s", err, want, output)
+	}
+	sent := s.c.transactions()
+	if len(sent) != 1 {
+		t.Fatalf("batch sent %d transactions", len(sent))
+	}
+	requireBatchTx(t, sent[0], 7, v2BatchLeast(3), s.calldata(t, ClaimBatchGasPerClaim, v2BatchPools...))
+}
+
+// Claim asks with partial=true too. A pool the endpoint names unavailable is
+// never taken as holding nothing: a selection that picks nothing from the
+// other pools fails naming it, with nothing read or sent, and --all claims
+// the others and then fails naming it. One account picked from the other
+// pools is claimed, and a --no_id of another pool ignores it.
+func TestV2ClaimNamesUnavailablePools(t *testing.T) {
+	line := "pool 4294967299: unavailable (the ledger endpoint cannot read it now; whether the coldkey has an account there is unknown)\n"
+	refusal := "pool 4294967299 is unavailable at the ledger endpoint, so an account of coldkey " + aliceSS58 + " (0x" + aliceHex + ") there cannot be claimed until it can be read"
+	for _, c := range []struct {
+		name    string
+		flags   []string
+		entries bool
+		err     string
+		line    bool
+		sent    int
+	}{
+		{"the unavailable pool picked", []string{"--no_id=4294967299"}, true, refusal, true, 0},
+		{"nothing else to pick", nil, false, refusal, true, 0},
+		{"one account picked from the others", nil, true, "", true, 1},
+		{"another pool picked", []string{"--no_id=3"}, true, "", false, 1},
+		{"every account", []string{"--all"}, true, refusal, true, 1},
+		{"every account, none readable", []string{"--all"}, false, refusal, true, 0},
+	} {
+		s := newV2ClaimScenario(t)
+		if c.entries {
+			s.c.setPartialAccounts([]uint64{v2TestCtfPool}, s.entry)
+		} else {
+			s.c.setPartialAccounts([]uint64{v2TestCtfPool})
+		}
+		output, err := s.c.run(s.c.claimArgv(c.flags...))
+		if (c.err == "" && err != nil) || (c.err != "" && (err == nil || err.Error() != c.err)) {
+			t.Fatalf("%s: %v, want %q\n%s", c.name, err, c.err, output)
+		}
+		if strings.HasPrefix(output, line) != c.line || strings.Contains(output, "nothing to claim") || len(s.c.transactions()) != c.sent {
+			t.Fatalf("%s: %d sent\n%s", c.name, len(s.c.transactions()), output)
+		}
+		if c.sent == 0 && s.c.observed() != "eth_chainId=1" {
+			t.Fatalf("%s: observed %s", c.name, s.c.observed())
+		}
+		if c.sent == 1 {
+			requireV2Tx(t, s.c.transactions()[0], 7, ClaimBatchGasPerClaim, 0, s.calldata(t))
+		}
+		if !slices.Equal(s.c.accountQueries, []string{"coldkey=0x" + aliceHex + "&partial=true"}) {
+			t.Fatalf("%s: account queries %q", c.name, s.c.accountQueries)
+		}
 	}
 }
 
@@ -406,13 +554,13 @@ func TestV2ClaimRefusesEndpoint(t *testing.T) {
 		mutate func(*v2ClaimScenario)
 		want   string
 	}{
-		{"refused", func(s *v2ClaimScenario) { s.c.accountStatus = http.StatusInternalServerError }, "ledger endpoint: GET " + "%s/sn/ledger/account?coldkey=0x" + aliceHex + ": 500 Internal Server Error"},
-		{"unreachable", func(s *v2ClaimScenario) { s.c.api.Close() }, "ledger endpoint: Get \"%s/sn/ledger/account?coldkey=0x" + aliceHex + "\": dial tcp "},
-		{"malformed", func(s *v2ClaimScenario) { s.c.accounts["0x"+aliceHex] = `{"coldkey":` }, "ledger endpoint: GET %s/sn/ledger/account?coldkey=0x" + aliceHex + ": unexpected EOF"},
-		{"another coldkey", func(s *v2ClaimScenario) { s.c.accounts["0x"+aliceHex] = `{"coldkey":"0x00","accounts":[]}` }, `ledger endpoint: GET %s/sn/ledger/account?coldkey=0x` + aliceHex + ` answered for coldkey "0x00" with accounts []`},
+		{"refused", func(s *v2ClaimScenario) { s.c.accountStatus = http.StatusInternalServerError }, "ledger endpoint: GET " + "%s/sn/ledger/account?coldkey=0x" + aliceHex + "&partial=true: 500 Internal Server Error"},
+		{"unreachable", func(s *v2ClaimScenario) { s.c.api.Close() }, "ledger endpoint: Get \"%s/sn/ledger/account?coldkey=0x" + aliceHex + "&partial=true\": dial tcp "},
+		{"malformed", func(s *v2ClaimScenario) { s.c.accounts["0x"+aliceHex] = `{"coldkey":` }, "ledger endpoint: GET %s/sn/ledger/account?coldkey=0x" + aliceHex + "&partial=true: unexpected EOF"},
+		{"another coldkey", func(s *v2ClaimScenario) { s.c.accounts["0x"+aliceHex] = `{"coldkey":"0x00","accounts":[]}` }, `ledger endpoint: GET %s/sn/ledger/account?coldkey=0x` + aliceHex + `&partial=true answered for coldkey "0x00" with accounts []`},
 		{"null accounts", func(s *v2ClaimScenario) {
 			s.c.accounts["0x"+aliceHex] = `{"coldkey":"0x` + aliceHex + `","accounts":null}`
-		}, `ledger endpoint: GET %s/sn/ledger/account?coldkey=0x` + aliceHex + ` answered for coldkey "0x` + aliceHex + `" with accounts []`},
+		}, `ledger endpoint: GET %s/sn/ledger/account?coldkey=0x` + aliceHex + `&partial=true answered for coldkey "0x` + aliceHex + `" with accounts []`},
 		{"another vault", func(s *v2ClaimScenario) { s.entry.Vault = strings.ToLower(withdrawTestVault); s.c.setAccounts(s.entry) }, `the ledger endpoint lists pool 3 in vault "` + strings.ToLower(withdrawTestVault) + `"`},
 		{"cumulative", func(s *v2ClaimScenario) { s.entry.Cumulative = "0x12"; s.c.setAccounts(s.entry) }, `ledger account cumulative "0x12": `},
 		{"proof hash", func(s *v2ClaimScenario) { s.entry.Proof[1]["hash"] = "0x1234"; s.c.setAccounts(s.entry) }, `ledger account proof node 1 hash "0x1234" is not 32 bytes of 0x hex`},

@@ -29,6 +29,16 @@ const (
 	evmChainID = 964
 )
 
+// rehearsalSources admits the runtime mainnet runs before its owner-source
+// review, so that the rehearsal can qualify contracts on it in time. It grants
+// nothing outside this package: crv4 still refuses the version
+// (TestRuntime490InterfaceGrantsNoSourceOrCatalogAuthority).
+var rehearsalSources = map[uint32]string{
+	// v490, mainnet's runtime from block 9,478,217, built by upstream as
+	// ghcr.io/raofoundation/subtensor-localnet:v490 (fast-runtime).
+	490: "d967d13588834f4f5aaa8ef4c8fc1a865d581462",
+}
+
 // node is one rehearsal chain. Blocks are sealed on demand, one per submitted
 // transaction, and finalized at once. staking and neuron are the precompile
 // interfaces the contracts compile against (evm/src/interfaces). http is the
@@ -118,11 +128,17 @@ func startNode(t *testing.T) *node {
 		time.Sleep(200 * time.Millisecond)
 	}
 	t.Cleanup(n.sub.API.Client.Close)
-	source, reviewed := crv4.ReviewedNativeOwnerSpecSource(uint32(n.sub.Runtime.SpecVersion))
+	spec := uint32(n.sub.Runtime.SpecVersion)
+	source, reviewed := crv4.ReviewedNativeOwnerSpecSource(spec)
+	kind := "reviewed source"
+	if !reviewed {
+		source, reviewed = rehearsalSources[spec]
+		kind = "rehearsal-only source, no owner-source review"
+	}
 	if n.sub.Runtime.SpecName != specName || !reviewed {
 		t.Fatalf("node runs %s/%d, which has no reviewed source", n.sub.Runtime.SpecName, n.sub.Runtime.SpecVersion)
 	}
-	t.Logf("node runs %s/%d, reviewed source %s", specName, n.sub.Runtime.SpecVersion, source)
+	t.Logf("node runs %s/%d, %s %s", specName, spec, kind, source)
 	n.http = "http://" + endpoint
 	if n.eth, err = evmrpc.DialContext(n.ctx, n.http); err != nil {
 		t.Fatal(err)

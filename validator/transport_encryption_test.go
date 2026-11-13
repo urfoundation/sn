@@ -58,6 +58,9 @@ func TestTunnelClientSettingsEnableProviderReplyEncryption(t *testing.T) {
 	if encryptionManager.Settings().Mode != connect.EncryptionModeOpportunistic {
 		t.Fatalf("client encryption mode = %v, want opportunistic", encryptionManager.Settings().Mode)
 	}
+	if encryptionManager.Settings().TlsTimeout != 10*time.Second {
+		t.Fatalf("client TLS establishment timeout = %s, want the tunnel's 10s", encryptionManager.Settings().TlsTimeout)
+	}
 	if len(encryptionManager.ProvideTlsCertificatePem()) == 0 {
 		t.Fatal("opportunistic tunnel client has no TLS responder certificate")
 	}
@@ -82,5 +85,32 @@ func TestTunnelClientSettingsAreIndependent(t *testing.T) {
 	first.EncryptionSettings.Mode = connect.EncryptionModeOff
 	if second.EncryptionSettings.Mode != connect.EncryptionModeOpportunistic {
 		t.Fatalf("second tunnel encryption mode = %v after mutating first, want opportunistic", second.EncryptionSettings.Mode)
+	}
+}
+
+// About 30% of the validator's hop contracts in the 11-03 journal went to
+// providers whose TLS session never established, and each such session
+// held its handshake workers and proof resends for connect's full 60 s, 30 s
+// past the end of the step. A session that establishes does so within a few
+// seconds, and with no establish hold the session never holds the /verify
+// exchange, so the tunnel ends an establishment at 10 s: the hop's outcome is
+// unchanged and the session is freed 50 s sooner. Its retry pacing stays
+// connect's.
+func TestTunnelClientSettingsBoundTlsEstablishment(t *testing.T) {
+	settings := newTunnelClientSettings().EncryptionSettings
+	defaults := connect.DefaultClientSettings().EncryptionSettings
+	if settings.TlsTimeout != 10*time.Second {
+		t.Fatalf("tunnel TLS establishment timeout = %s, want 10s (connect's default is %s)", settings.TlsTimeout, defaults.TlsTimeout)
+	}
+	if defaults.TlsTimeout != 60*time.Second {
+		t.Fatalf("connect's default TLS establishment timeout is now %s; revisit the tunnel's 10s", defaults.TlsTimeout)
+	}
+	// the timeout decides no hop only while the session never holds a send
+	if settings.OpportunisticEstablishHold != 0 {
+		t.Fatalf("tunnel sessions hold application sends for %s while they establish", settings.OpportunisticEstablishHold)
+	}
+	if settings.TlsInitialRetryInterval != defaults.TlsInitialRetryInterval || settings.TlsInitialRetryStagger != defaults.TlsInitialRetryStagger ||
+		settings.TlsInitialRetryMaxInterval != defaults.TlsInitialRetryMaxInterval || settings.IdentityProofResendInterval != defaults.IdentityProofResendInterval {
+		t.Fatalf("tunnel TLS retry pacing differs from connect's: %+v", settings)
 	}
 }

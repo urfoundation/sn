@@ -70,12 +70,13 @@ var cliCommandHelp = map[string]struct {
 		},
 	},
 	"doctor": {
-		summary: "Look for why the miner can't sign in or connect: the state folder, DNS, the\nconnection, a TLS-inspecting proxy, the clock, and whether updates can install.",
+		summary: "Look for why the miner can't sign in or connect: the state folder, DNS, the\nconnection, a TLS-inspecting proxy, the clock, and whether updates can install.\nIt also checks inbound TCP 443 for the extender: the bind and the last activation.",
 	},
 	"service": {
 		summary: "Run the miner in the background and on every boot (systemd on Linux, launchd on\nmacOS), with automatic updates checked every 6 hours. If the URnetwork installer's\nurnetwork.service is already there, start, stop, status and logs work on it.",
 		examples: []string{
 			"provider service install     # start now and on every boot",
+			"sudo \"$(command -v provider)\" service install --system --as=$USER   # Linux: may bind TCP 443 for the extender",
 			"provider service logs --follow",
 			"provider service uninstall   # your sign-in and identity are kept",
 		},
@@ -118,8 +119,8 @@ var cliCommandHelp = map[string]struct {
 	"wallet": {
 		summary: "Set the wallet your rewards are paid to: a Bittensor coldkey address (ss58,\nstarts with 5). You prove you own it by signing a challenge, either here with\nthe seed file or on another device.",
 		examples: []string{
-			"provider wallet challenge 5Grw...utQY      # print the text to sign elsewhere",
-			"provider wallet set 5Grw...utQY --message=\"$(cat challenge.txt)\" --signature=0x...",
+			"provider wallet challenge 5Grw...utQY      # print the text to sign elsewhere, and save it",
+			"provider wallet set 5Grw...utQY --message-file=<the file it names> --signature=0x...",
 			"provider wallet set 5Grw...utQY --coldkey_seed_file=$HOME/.keys/cold.seed",
 		},
 	},
@@ -142,7 +143,10 @@ var cliCommandHelp = map[string]struct {
 		summary: "Claim each account automatically once its balance passes a threshold.",
 	},
 	"fleet": {
-		summary: "Head-tier fleet management: manifests, registration, bindings and revocation.\nRegistration is a dry run unless --apply is given.",
+		summary: "Head-tier fleet management: manifests, registration, bindings and revocation.\nRegistration is a dry run unless --apply is given. On mainnet the writes need the\nstorage declaration that provider fleet storage prepares.",
+	},
+	"fleet storage": {
+		summary: "Prepare this machine for mainnet fleet writes: two private journal directories below\nthe state directory, and the one declaration that names them. Every\nfleet register, publish, bind and revoke takes it as --durable-volumes and\n--durable-volumes-sha256. Nothing here reads a key or touches the chain.\nEach step takes the exact file and digest the last one printed:\n\n    request  says what to prepare, from what you state about this machine\n    plan     checks that against the filesystem; the journal directories don't change\n    apply    prepares them durably; if interrupted, run the same command again",
 	},
 	"proxy": {
 		summary: "Add or remove SOCKS5 exits. Each exit gets its own provider slot.",

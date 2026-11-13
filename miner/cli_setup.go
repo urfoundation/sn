@@ -2,6 +2,7 @@ package miner
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -56,7 +57,7 @@ var startSelf = func(args []string, stdout io.Writer, stderr io.Writer) (*exec.C
 }
 
 type setupRun struct {
-	in     *os.File
+	in     io.Reader
 	out    io.Writer
 	errOut io.Writer
 	yes    bool
@@ -324,12 +325,21 @@ func setupPayout(run *setupRun) {
 	match := setupMessagePattern.FindStringSubmatch(challenge.String())
 	if match == nil {
 		run.warn("The wallet challenge looked different than expected; showing it as is:")
-		fmt.Fprintln(run.out, indent(challenge.String()))
+		fmt.Fprintln(run.out, strings.TrimRight(challenge.String(), "\n"))
 		return
 	}
-	fmt.Fprintln(run.out, "  Sign this message in your wallet app (btcli, Polkadot.js or Talisman). It expires in 5 minutes:")
-	fmt.Fprintf(run.out, "\n%s\n\n", indent(match[1]))
-	fmt.Fprint(run.out, "  Signature (0x…), or Enter to skip: ")
+	// the person signs what is shown, so it is shown exactly as it is
+	// submitted: unindented, between marker lines, and as hex
+	fmt.Fprintln(run.out, "  Sign this message in your wallet app (btcli, Polkadot.js or Talisman). It expires in 5 minutes.")
+	fmt.Fprintln(run.out, "  Sign exactly the text between the marker lines, with nothing added or taken away and its line break kept:")
+	fmt.Fprintf(run.out, "\n----- message -----\n%s\n----- end -----\n\n", match[1])
+	fmt.Fprintf(run.out, "  The same message as hex, for a signing tool that takes hex: 0x%s\n", hex.EncodeToString([]byte(match[1])))
+	if path, err := snCredentialPath(snCredentialSelection{}); err == nil {
+		if saved, err := os.ReadFile(snWalletChallengeFile(path)); err == nil && string(saved) == match[1] {
+			fmt.Fprintf(run.out, "  It's also saved in %s, to copy from.\n", snWalletChallengeFile(path))
+		}
+	}
+	fmt.Fprint(run.out, "\n  Signature (0x…), or Enter to skip: ")
 	signature, ok := cliReadLine(run.in)
 	signature = strings.TrimSpace(signature)
 	if !ok || signature == "" {

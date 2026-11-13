@@ -170,7 +170,11 @@ func newReleaseSteererV2Context(ctx context.Context, cfg *ReleaseConfig, chain *
 	ema.v2.provisionalEpochGaps = runtime.history != nil && runtime.history.retainedStartup && provisionalClosedNativeInputEnabled(&ownedCfg)
 	ema.v2.historyAdoption = runtime.history.historyAdoption
 	ema.v2.nativeGapBridge = runtime.history.nativeGapBridge
-	self := &ReleaseSteerer{cfg: &ownedCfg, chain: chain, native: native, hotkey: runtime.hotkey, contexts: byNo, operators: operators, intents: intents, headEMA: ema, runtimeV2: runtime, settlementV2: releaseSettlementV2Addresses(&ownedCfg)}
+	amendments, err := newReleaseAmendments(&ownedCfg)
+	if err != nil {
+		return nil, err
+	}
+	self := &ReleaseSteerer{cfg: &ownedCfg, chain: chain, native: native, hotkey: runtime.hotkey, contexts: byNo, operators: operators, intents: intents, headEMA: ema, runtimeV2: runtime, settlementV2: releaseSettlementV2Addresses(&ownedCfg), depositPrices: newReleaseDepositPrices(&ownedCfg), amendments: amendments, depositUsageMemo: newReleaseDepositUsageMemo(), applicationHistory: newProductionApplicationHistoryMemo()}
 	if err := requireReleaseEvidenceV2Runtime(self); err != nil {
 		return nil, err
 	}
@@ -431,6 +435,7 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 	if err := self.validatePinnedChains(ctx, snapshot, nativeState, nativeHash); err != nil {
 		return err
 	}
+	self.pruneDepositUsageV2(ctx, snapshot)
 	var hotkeyUids map[[32]byte]uint16
 	loadHotkeyUids := func() error {
 		if hotkeyUids != nil {
@@ -456,6 +461,9 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 	}
 	if err := self.intents.v2.nativeGapBridge.requireFirstEpoch(current, nativeState.SubnetEpochIndex); err != nil {
 		return err
+	}
+	if held := self.runtimeV2.heldNativeGap(current, nativeState.SubnetEpochIndex); held != nil {
+		return held
 	}
 	if err := self.restoreHeadEmaV2(ctx, current); err != nil {
 		return err
@@ -509,10 +517,15 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 	if err := releaseRpcObservationError(err, scheduleMatches, errors.New("V2 current native validator schedule/stake/permit differs from independent EVM registration")); err != nil {
 		return err
 	}
+	// A gap no edge admits is already decided here, but the attempt still takes
+	// this epoch's cut, as it always has: the cut rotates the egress window, so
+	// the first fold after a bridge measures one tempo, and a failed one would
+	// otherwise leave new trails refused. Only the verdict skips the budget.
+	nativeGap := self.nativeGapHoldFor(current, nativeState.SubnetEpochIndex)
 	diagnostic.move(releasePreparationCollect)
 	inputs, options, err := self.runtimeV2.collect(ctx, self, current, snapshot, nativeState.SubnetEpochIndex, nativeState.CurrentBlock, nativeHash.Hex(), hotkeyUids)
 	if err != nil {
-		return err
+		return nativeGap.attemptFailed(err)
 	}
 	if current != nil {
 		options.Expected.PreviousArtifactHash = current.MeasurementArtifactHash
@@ -525,7 +538,16 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 	diagnostic.move(releasePreparationGatherHead)
 	head, err := self.gatherHeadV2(ctx, snapshot, nativeState.SubnetEpochIndex, nativeState.CurrentBlock, nativeHash.Hex(), hotkeyUids, inputs, options)
 	if err != nil {
-		return err
+		if nativeGap != nil && releaseOnlyErrors(err, errReleaseHeadEMANativeGap) {
+			// After this epoch's cut, so the first fold across the edge measures
+			// one tempo, exactly as it does across a pinned edge.
+			if err := self.recordNativeGapEdge(ctx, current, nativeGap, nativeHash); err != nil {
+				return err
+			}
+			self.runtimeV2.holdNativeGap(nativeGap)
+			return nativeGap
+		}
+		return nativeGap.attemptFailed(err)
 	}
 	diagnostic.move(releasePreparationMeasurement)
 	selfUid, found := hotkeyUids[self.hotkey.PublicKey()]
@@ -550,7 +572,7 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 		PolicyHash: strings.ToLower(self.cfg.PolicyHash), Policy: self.cfg.Policy,
 		PreviousArtifactHash: previousArtifactHash, ControlledNOIDs: controlledNoIds,
 		Inputs: head.Inputs, Bindings: head.Bindings, HeadEMA: head.HeadEMA,
-		SelfUID: selfUid,
+		SelfUID: selfUid, DepositPriceEntry: newReleaseDepositPriceEntry(self.depositPrices.entryAt(snapshot.Epoch.Uint64())),
 	}
 	closure, err := self.runtimeV2.closureForDecision(ctx, snapshot.Epoch.Uint64())
 	if err != nil {
@@ -568,6 +590,9 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 	}
 	measurementArtifact.Pools, measurementArtifact.DepositAudits = poolObservations, depositAudits
 	options.Bindings, options.Pools, options.DepositAudits = head.Bindings, poolObservations, depositAudits
+	if err := self.gatherCaptureTheFlagV2(ctx, snapshot, hotkeyUids, measurementArtifact, &options); err != nil {
+		return err
+	}
 	if err := installReleaseBindingKeysV2(ctx, measurementArtifact, &options); err != nil {
 		return err
 	}

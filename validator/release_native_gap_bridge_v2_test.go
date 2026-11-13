@@ -430,8 +430,8 @@ func TestNativeGapBridgeIdlesBeforeFirstEpoch(t *testing.T) {
 		return polls, err
 	}
 	polls, err := loop(submitAt(nil, 25661))
-	if err == nil || !strings.Contains(err.Error(), "compact head EMA epoch jumped") || polls != releaseSteeringFailureLimit {
-		t.Fatalf("unbridged production failure changed: %d polls, %v", polls, err)
+	if err != nil || polls != releaseSteeringFailureLimit+3 {
+		t.Fatalf("unbridged production refusal did not hold: %d polls, %v", polls, err)
 	}
 	polls, err = loop(submitAt(owner, F-1))
 	if err != nil || polls != releaseSteeringFailureLimit+3 {
@@ -869,9 +869,9 @@ func TestNativeGapBridgeStartupReplayAcceptsCrossedHistory(t *testing.T) {
 
 // The incident's shape: the last applied intent is native epoch 25730, the
 // crash loop let 25731 pass with no intent, and the validator resumes at
-// 25732 or later. Without an edge every poll is the same hard error until the
-// failure limit, and a restart reads the same head EMA state, so the halt is
-// permanent. One edge from 25730 to 25732, the smallest gap a bridge names,
+// 25732 or later. Without an edge every poll is the same refusal, and a restart
+// reads the same head EMA state, so steering holds until an edge exists. One edge
+// from 25730 to 25732, the smallest gap a bridge names,
 // admits 25732 and any later epoch, here 25736, at the idle check, the head
 // EMA, the intent successor and the artifact lineage, and still refuses a
 // second gap.
@@ -930,11 +930,11 @@ func TestNativeGapBridgeResumesAfterOneMissedNativeEpoch(t *testing.T) {
 		}, func() bool { return len(errs) < releaseSteeringFailureLimit+3 }, nil)
 		return errs, err
 	}
-	halted := func(store *HeadEMAStore, epoch uint64) {
+	held := func(store *HeadEMAStore, epoch uint64) {
 		t.Helper()
 		errs, err := loop(store, nil, epoch)
-		if err == nil || !strings.Contains(err.Error(), fmt.Sprintf("failed %d consecutive attempts", releaseSteeringFailureLimit)) || len(errs) != releaseSteeringFailureLimit {
-			t.Fatalf("unbridged epoch %d did not stop at the failure limit: %d polls: %v", epoch, len(errs), err)
+		if err != nil || len(errs) != releaseSteeringFailureLimit+3 {
+			t.Fatalf("unbridged epoch %d did not hold: %d polls: %v", epoch, len(errs), err)
 		}
 		for index, err := range errs {
 			if err == nil || !strings.Contains(err.Error(), "compact head EMA epoch jumped") {
@@ -944,13 +944,13 @@ func TestNativeGapBridgeResumesAfterOneMissedNativeEpoch(t *testing.T) {
 	}
 	stopped := applied()
 	for _, epoch := range []uint64{F, F + 4} {
-		halted(stopped, epoch)
+		held(stopped, epoch)
 	}
 	restarted := open(filepath.Dir(stopped.path))
 	if restarted.lastSubnetEpoch == nil || *restarted.lastSubnetEpoch != L {
 		t.Fatal("restart did not reload the applied epoch's head EMA")
 	}
-	halted(restarted, F)
+	held(restarted, F)
 	// While the missed epoch is still current, the bridge idles instead.
 	errs, err := loop(applied(), owner, L+1)
 	if err != nil || len(errs) != releaseSteeringFailureLimit+3 || !releaseOnlyErrors(errors.Join(errs...), ErrSteeringAlreadyFinal) {

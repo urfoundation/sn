@@ -76,7 +76,7 @@ Usage:
     provider setup [--auth-code-file=<path>] [--yes] [--no-service] [--system] [-v...]
     provider status [--json] [-v...]
     provider doctor [-v...]
-    provider service install [--system] [-v...]
+    provider service install [--system [--as=<user>]] [-v...]
     provider service uninstall [--system] [-v...]
     provider service (start | stop | restart | status) [--system] [-v...]
     provider service logs [--follow] [--system] [-v...]
@@ -91,6 +91,7 @@ Usage:
     provider provide --all-operators [--operators-url=<url>] [--operators-refresh=<duration>]
         [--auto-register --hotkey_seed_file=<path> | --hotkey_seed_file=<path>]
         [--port=<port>] [--max-memory=<mem>] [--allow-client-registration]
+        [--no-port-mapping]
         [-v...]
     provider operators [--operators-url=<url>] [-v...]
     provider provide [--port=<port>]
@@ -101,6 +102,7 @@ Usage:
 		[--require-original-contract-capture]
 		[--allow-client-registration | --adopt-legacy-provider-key]
 		[--quarantine-rejected-sign-in]
+        [--no-port-mapping]
         [--api_url=<api_url>]
         [--connect_url=<connect_url>]
         [--wallet=<coldkey_ss58> [--provider-jwt=<path>] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]]
@@ -116,6 +118,7 @@ Usage:
 		[--require-original-contract-capture]
 		[--allow-client-registration | --adopt-legacy-provider-key]
     	[--port=<port>]
+        [--no-port-mapping]
         [--api_url=<api_url>]
         [--connect_url=<connect_url>]
         [--wallet=<coldkey_ss58> [--provider-jwt=<path>] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]]
@@ -123,7 +126,7 @@ Usage:
         [--max-memory=<mem>]
         [--pprof=<addr>]
         [-v...]
-    provider wallet set <coldkey_ss58> [--provider-jwt=<path> | --legacy-network-wallet] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]
+    provider wallet set <coldkey_ss58> [--provider-jwt=<path> | --legacy-network-wallet] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--coldkey_seed_file=<path> | (--message=<text> | --message-file=<path>) --signature=<hex>]
         [--api_url=<api_url>]
         [-v...]
     provider wallet challenge <coldkey_ss58> [--provider-jwt=<path> | --legacy-network-wallet] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>]
@@ -133,7 +136,7 @@ Usage:
         [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--operators-url=<url>]
         [-v...]
     provider wallet hotkey set <coldkey_ss58> --hotkey_seed_file=<path>
-        [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]
+        [--coldkey_seed_file=<path> | (--message=<text> | --message-file=<path>) --signature=<hex>]
         [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--operators-url=<url>]
         [-v...]
     provider wallet hotkey status [--hotkey_seed_file=<path>] [--operators-url=<url>] [-v...]
@@ -176,6 +179,13 @@ Usage:
         [--mainnet-runtime-authority=<path> --mainnet-runtime-authority-sha256=<hex>]
         [--durable-volumes=<path> --durable-volumes-sha256=<hash>]
         [-v...]
+    provider fleet storage request --mount_path=<path> --filesystem_uuid=<uuid> --filesystem_type=<type>
+        --former-writers-stopped --no-previous-owner-state --evidence=<text>
+        [-v...]
+    provider fleet storage plan --request=<path> --request-sha256=<hash>
+        [-v...]
+    provider fleet storage apply --plan=<path> --plan-sha256=<hash>
+        [-v...]
     provider proxy auth add [<key>] <proxy_user> <proxy_password> [-f]
     provider proxy auth remove [<key>] [--all]
     provider proxy add [<key_address>...] [--proxy_file=<proxy_file>] [-f]
@@ -192,13 +202,17 @@ Options:
 	--original-contract-capture=<path>  Exact approved original request/admission source profile with prepared private custody.
 	--original-contract-capture-sha256=<hash>  Independently reviewed sha256: digest of the original contract source profile.
 	--require-original-contract-capture  Refuse startup without the complete original contract source profile and retained provider identity.
-    --durable-volumes=<path>          Exact external storage declaration; fleet writes require the owner-local schema.
+    --durable-volumes=<path>          Exact external storage declaration; fleet writes require the owner-local schema,
+                                      which provider fleet storage prepares.
     --durable-volumes-sha256=<hash>   Reviewed sha256: digest; claim daemons require the daemon-volume schema.
     --auth-code-file=<path>          With setup, read the auth code from this file instead of asking.
     --yes                            With setup, take the default answer to every question (no prompts).
     --no-service                     With setup, don't install the background service.
     --system                         With setup and service, a system-wide service run as root, with its
                                      state in /var/lib/urnetwork. Needs sudo.
+    --as=<user>                      With service install --system (Linux), run the system service as this
+                                     user, with their state folder and binary and only the right to bind
+                                     ports below 1024, such as the extender's TCP 443. Needs sudo.
     --json                           With status, print JSON for scripts and monitoring.
     --follow                         With service logs, keep printing new lines.
     --check                          With update, only say whether a newer release is out.
@@ -260,6 +274,9 @@ Options:
     --message=<text>                 With --wallet / wallet set: the challenge printed by "provider wallet challenge",
                                      signed elsewhere (a literal \n stands for a newline). Needs --signature.
                                      With wallet hotkey set: the statement "provider wallet hotkey challenge" printed.
+    --message-file=<path>            With wallet set / wallet hotkey set: read the message from this file, the one
+                                     "provider wallet challenge" or "provider wallet hotkey challenge" saves it in,
+                                     so no shell changes it on the way. Instead of --message; needs --signature.
     --signature=<hex>                The coldkey's 64-byte sr25519 signature over --message, hex (0x optional), made
                                      in the "substrate" signing context over the exact UTF-8 text (LF line endings,
                                      no trailing newline) or over that text wrapped in <Bytes>...</Bytes> (what a
@@ -273,6 +290,9 @@ Options:
                                      run that reads the live burn economics and quotes the signed extrinsic.
 	--quarantine-rejected-sign-in        When the network rejects the saved sign-in, set it aside and exit 75 so
 	                                     the --all-operators supervisor signs in again and restarts this provider.
+	--no-port-mapping                    Don't ask the router (UPnP, NAT-PMP or PCP) to forward the extender's
+	                                     TCP 443, UDP 443 and UDP 4053 to this device, which the miner does by
+	                                     default behind a router. The same as URNETWORK_PORT_MAPPING=0.
 	--test-egress-source-ip=<source_ip>  Integration-harness-only IPv4 loopback source bound to both
 	                                     platform control and provider exit sockets.
     <coldkey_ss58>                   Subnet claim wallet: an ss58 coldkey address (prefix 42).
@@ -328,6 +348,20 @@ Options:
 	--valid_to_epoch=<e>               Last settlement epoch in which a binding is active.
 	--effective_epoch=<e>              Future epoch at which a fleet revocation takes effect.
 	--relayer_key_file=<path>          EVM transaction relayer key; it receives no binding ownership.
+	--mount_path=<path>                fleet storage request: the exact mount point of the filesystem holding the
+	                                   state directory. On macOS the data volume is /System/Volumes/Data, so set
+	                                   URNETWORK_STATE_DIR to the physical path below it.
+	--filesystem_uuid=<uuid>           fleet storage request: that filesystem's uuid, in lowercase.
+	--filesystem_type=<type>           fleet storage request: ext4 or xfs on Linux, apfs on macOS.
+	--former-writers-stopped           fleet storage request: you state that nothing else writes these journal
+	                                   directories and no other machine signs with this fleet's keys.
+	--no-previous-owner-state          fleet storage request: you state that these signers have no earlier mainnet
+	                                   fleet journal anywhere. A retained journal can't be prepared as new.
+	--evidence=<text>                  fleet storage request: what you checked to say both; kept in the request files.
+	--request=<path>                   fleet storage plan: the request file fleet storage request printed.
+	--request-sha256=<hash>            fleet storage plan: its sha256: digest, as printed.
+	--plan=<path>                      fleet storage apply: the plan file fleet storage plan printed.
+	--plan-sha256=<hash>               fleet storage apply: its sha256: digest, as printed.
     --key_file=<key_file>            Path to a hex-encoded 32-byte secp256k1 EVM private key. When given,
                                      claim signs and submits the settlement-vault claim (via the
                                      sn/miner/onchain path) instead of only printing the calldata.
@@ -349,6 +383,28 @@ Options:
 // the argument slice (os.Args[1:]) so it can be driven from tests. The miner is
 // the subnet's provider: it runs the provide/proxy/auth flows plus the on-chain
 // wallet / claim / fleet actions (formerly connect/provider).
+// selectedFrontCommand names the operator command the parsed arguments choose,
+// or "" for the rest of the command line. docopt sets one flag per word, so a
+// longer command that reuses a word sets that word's flag too: service status,
+// fleet status and wallet hotkey status all set "status". Each of those goes to
+// its own command, never to the provider's status screen.
+func selectedFrontCommand(opts docopt.Opts) string {
+	if service, _ := opts.Bool("service"); service {
+		return "service"
+	}
+	for _, owner := range []string{"fleet", "wallet"} {
+		if chosen, _ := opts.Bool(owner); chosen {
+			return ""
+		}
+	}
+	for _, name := range []string{"setup", "status", "doctor", "update"} {
+		if chosen, _ := opts.Bool(name); chosen {
+			return name
+		}
+	}
+	return ""
+}
+
 func Run(args []string) {
 	defer recoverCliPanic(args, os.Stderr)
 	if code, done := minerServiceRun(args); done {
@@ -393,20 +449,17 @@ func Run(args []string) {
 		}
 	}
 
-	for _, command := range []struct {
-		name string
-		run  func(docopt.Opts, io.Writer, io.Writer) int
-	}{
-		// service first: its subcommands reuse the words status and start
-		{"service", serviceCmd},
-		{"setup", setupCmd},
-		{"status", func(opts docopt.Opts, stdout io.Writer, _ io.Writer) int { return statusCmd(opts, stdout) }},
-		{"doctor", func(opts docopt.Opts, stdout io.Writer, _ io.Writer) int { return doctorCmd(opts, stdout) }},
-		{"update", updateCmd},
-	} {
-		if chosen, _ := opts.Bool(command.name); chosen {
-			os.Exit(command.run(opts, os.Stdout, os.Stderr))
-		}
+	switch selectedFrontCommand(opts) {
+	case "service":
+		os.Exit(serviceCmd(opts, os.Stdout, os.Stderr))
+	case "setup":
+		os.Exit(setupCmd(opts, os.Stdout, os.Stderr))
+	case "status":
+		os.Exit(statusCmd(opts, os.Stdout))
+	case "doctor":
+		os.Exit(doctorCmd(opts, os.Stdout))
+	case "update":
+		os.Exit(updateCmd(opts, os.Stdout, os.Stderr))
 	}
 
 	if proxy, _ := opts.Bool("proxy"); proxy {
@@ -710,6 +763,12 @@ func provideWith(opts docopt.Opts, start bool) {
 	)
 	applyProviderProcessMemory(memoryPlan)
 
+	// the extender's router port mapping is on unless this run or its
+	// environment turns it off (connect/EXTENDER.md S10); the environment is
+	// what every slot and every operator child reads
+	if noPortMapping, _ := opts.Bool("--no-port-mapping"); noPortMapping {
+		os.Setenv(minerPortMappingEnv, "0")
+	}
 	allowClientRegistration, _ := opts.Bool("--allow-client-registration")
 	adoptLegacyProviderKey, _ := opts.Bool("--adopt-legacy-provider-key")
 	// internal: an operator child of provide --all-operators --auto-register
@@ -834,7 +893,11 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 	}
 	defer progress.close()
 	// provider status reads this; it stops before progress closes
-	defer startMinerStatusFile(ctx, progress)()
+	extenderStandings := newMinerExtenderStandings()
+	extenderBindFix := minerExtenderBindFix()
+	// what the extender slot's router port mapping comes to (S10)
+	portMapping := newMinerPortMappingHolder(minerPortMappingEnabled())
+	defer startMinerStatusFile(ctx, progress, extenderStandings, portMapping)()
 	status, err := newProviderStatusServer(self.port, output, cancel, progress)
 	if err != nil {
 		output.observe(providerStatusFailed, 0, false, err, 0, nil)
@@ -867,6 +930,7 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 	})
 	defer func() { returnErr = errors.Join(returnErr, stopRenewal()) }()
 
+	extenderSlot := providerExtenderSlot(providers)
 	provideWithProxy := func(index uint64, proxySettings *connect.ProxySettings) (returnErr error) {
 		defer func() {
 			// Registered first, this runs after every real cleanup below.
@@ -955,7 +1019,7 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 
 		certPem, keyPem, _ := readProviderTlsCertAndKey()
 		extenderKeySeed, _ := readProviderExtenderKeySeed()
-		settings := providerSlotDeviceSettings(self.closeReportDomainHash, proxySettings)
+		settings := providerSlotDeviceSettings(self.closeReportDomainHash, providerRegistrationSlot(proxySettings) == extenderSlot)
 		settings.KeyMaterial = providerDeviceKeyMaterial(seed, certPem, keyPem, extenderKeySeed)
 		applyProviderMemoryTarget(settings, self.memoryPlan.DeviceMemoryTargetByteCount)
 		settings.ProviderDialContextSettings = self.testEgressDialer
@@ -1003,8 +1067,11 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 		observeProviderExtenderIdentity(output, index, keyMaterial.GetExtenderKeySeed())
 		// one line per change, so the activation prints once it settles and
 		// nothing repeats while it holds (connect/EXTENDER.md F3, G3)
-		extenderStatusSub := device.AddExtenderProvideStatusChangeListener(
-			newProviderExtenderStatusListener(output, index))
+		extenderStatusListener := newProviderExtenderStatusListener(output, index).withStanding(extenderStandings, extenderBindFix)
+		if providerRegistrationSlot(proxySettings) == extenderSlot {
+			extenderStatusListener.portMapping = portMapping
+		}
+		extenderStatusSub := device.AddExtenderProvideStatusChangeListener(extenderStatusListener)
 		defer extenderStatusSub.Close()
 
 		select {

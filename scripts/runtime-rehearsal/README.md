@@ -702,3 +702,244 @@ closed it at one boundary. Then, in order:
 
 Every refusal R-8 names reverted with its own error on the runtime.
 
+## Capture the flag (R-9)
+
+Capture the flag adds a second vault2 pool for each network operator, the CTF
+pool `2^32 + n`. It comes through an upgrade of `STSettlement2` to
+`STSettlement2Ctf`, and an immutable, ownerless carry contract,
+`STCtfCarry`, returns each root's pots to the pool (`CAPTURETHEFLAG.md` §3.1,
+§4.6). §4.6 requires the carry to pass the same runtime qualification as
+vault2's own moves, and the deployment plan puts that rehearsal ahead of the
+timelock operation (§11.2). `TestR9CaptureTheFlag` (`rehearsal/r9_ctf_test.go`)
+is that case.
+
+**R-9 passed on runtime 490, mainnet's, on 2026-11-12** ([R-9 on runtime
+490](#r-9-on-runtime-490)). It has to pass on the runtime mainnet runs before
+anyone creates the carry contract, and before the Safe schedules the timelock
+operation that upgrades `STSettlement2` and registers UR's CTF pool; on a
+later runtime, run it again.
+
+```sh
+RUNTIME_REHEARSAL_NODE=/path/to/target/release/node-subtensor \
+  go test -tags runtime_rehearsal -count=1 -v -timeout=90m -run '^TestR9CaptureTheFlag$' ./rehearsal/
+```
+
+The R battery's package command runs it too, on its own node.
+
+The stack is the R battery's, with two v1 operators, of which only operator 1
+has a provider pool. Every epoch from 1 has the 14,410-block cadence, so the
+CTF pool's first epoch is 1. As on mainnet, a root committed in an epoch's
+window finalizes before the next epoch ends, so each carry cycle returns
+before the next close. Epochs stop (tempo 0). First a guardian coldkey makes
+vault2's coldkey a hotkey account (`try_associate_hotkey`), as mainnet should
+before the operation, and the case requires it to own that hotkey; everything
+below runs with it, which qualifies vault2's calls with its coldkey a hotkey
+account. The case seals about 43,500 blocks: epochs 0 to 2 and the second
+root's challenge window. At the sealing rate recorded above, that is about six
+minutes. Its subtests run in this order:
+
+1. **upgrade** (epoch 0). Phase C is installed as R-8 installs it. A relayer
+   then creates `STSettlement2Ctf` through the deterministic deployment
+   proxy's exact code. The owner, standing in for the timelock, sends the
+   folded call,
+   `upgradeToAndCall(implementation, registerCtfPool(1, maximumBurn, 1))`,
+   with the burn ceiling as its value. The case checks that:
+   - a stranger's identical call is refused (`OwnableUnauthorizedAccount`),
+     and so is the implementation's own `initialize`;
+   - slots 0 to 50 are kept, and the ERC-1967 slot names the new
+     implementation;
+   - vault2 registers pool 4,294,967,297 from epoch 1, under a hotkey whose
+     UID vault2's coldkey owns;
+   - the hotkey is `keccak256(abi.encode(proxy, 2^32 + 1, block, parent))`,
+     where `parent` is the hash that `eth_getBlockByNumber` reports for the
+     previous block. This qualifies `BLOCKHASH` on the runtime. A hotkey
+     derived from a zero parent fails the case with `BLOCKHASH RETURNED ZERO`,
+     and one derived from the Substrate parent hash also fails it;
+   - the owner pays at most the burn read before the call and gets the rest
+     of the ceiling back, while vault2's account and the proxy's stay
+     unchanged;
+   - `ctfPoolId`, `ctfSettlementAt` and `settlementAt` resolve the pool; and
+   - `registerCtfPool` is refused for operator 2, which has no provider pool
+     (`UnknownPool`), and for operator 1 a second time (vault2's
+     `InvalidConfiguration`).
+2. **census** (the end of epoch 1). Operator 1's root signer commits epoch
+   1's census hash once, inside `[end(1), end(1) + window/2]`. A commitment
+   before the window is refused (`InvalidWindow`), and so is a second one
+   (`CensusAlreadyCommitted`). `ctfCensus` reads the hash and the block,
+   which also sit in slot 51's mapping. After the CTF pool's root is
+   committed, a census past the window is refused (`InvalidWindow`).
+3. **carry** (§4.6, "Qualifying it"). Emission reaches the CTF pool hotkey
+   during epoch 1, and the pool's close captures it. Its root pays four
+   fifths to the carry contract's coldkey and the rest to a winner. The root
+   names that coldkey before the contract exists, from its CREATE2 address,
+   which the case derives with the zero salt, the worst case. The guardian
+   makes that coldkey a hotkey account, which the case requires it to own,
+   and the factory's mapped account gets 0.001 TAO, above its existential
+   deposit, which a CREATE2 carrying value needs (`OutOfFund` otherwise). A
+   third party then fills that coldkey's `StakingHotkeys` list to 128
+   entries, as R-3 filled vault2's, each entry a hotkey of its own staked and
+   transferred whole, and a 129th entry is refused (`TooManyStakingHotkeys`).
+   Anyone then creates `STCtfCarry` through the same proxy with a seed of 1
+   TAO plus the 500-rao existential deposit as the call's value. The case
+   requires that:
+   - its `coldkey()`, from the runtime's 0x080c address mapping, is the
+     mirror of its address, and its other views are vault2's;
+   - its constructor staked the seed on the escrow hotkey by its own
+     `addStake`, the 256-entry cap's, not the third parties' 128: `Seeded`
+     names 1 TAO, `residual()` equals the carry's position there, the list
+     holds the 128 entries, the escrow hotkey and the pool hotkey, and the
+     account keeps no more than its existential deposit;
+   - `getAutoStakeDestination` names the CTF pool hotkey on the subnet;
+   - `getRejectStakingHotkeyGrowth` and `getRejectLockedAlpha` read true;
+   - the carry refuses another account (`InvalidColdkey`) and a recycle with
+     nothing above its residual (`NothingToRecycle`);
+   - a third party's new entry is then refused
+     (`AccountRejectsStakingHotkeyGrowth`), while a stake transferred on the
+     escrow hotkey is a donation; and
+   - a coldkey swap announced into the carry's coldkey from a coldkey with a
+     hotkey of its own is refused at its announcement (`NewColdKeyIsHotkey`).
+
+   Once the root finalizes, a stranger's `recycle` claims the account. The
+   case requires that:
+   - vault2's `Claimed` pays the carry's coldkey, with the carry as caller,
+     although third parties filled its list;
+   - the carry keeps its residual on the escrow hotkey, within a rao, and
+     nothing on the pool hotkey, and both stay on its list;
+   - vault2's position on the pool hotkey grows by the `Recycled` amount,
+     recorded in `recycledFor(2)` and within 3 rao of the claim and the
+     donation; and
+   - epoch 2's close captures the returned stake with that epoch's emission,
+     and conservation holds throughout.
+4. **griefing** (§4.6, what the residual cannot stop). Root 2 grows the
+   carry's account and finalizes. Then:
+   - root raises the nominator minimum to twice the residual's worth at the
+     subnet's spot price (`sudo_set_nominator_min_required_stake`; the seed's
+     own buy lifts that price on the rehearsal's shallow pool, so twice the
+     seed's TAO need not be enough), and its sweep clears the residual back
+     to the carry's TAO and the escrow hotkey off its list. A
+     recycle is refused (`ResidualMissing`), and simulated from vault2 the
+     claim's transfer answers `AccountRejectsStakingHotkeyGrowth`. A seed of
+     the returned TAO alone is refused (`SeedTooSmall`), since
+     `seedMinimum()` is now ten times the new minimum; a stranger's `seed()`
+     with that much restores the residual (`ResidualLowered`, then the new
+     residual on the escrow hotkey, listed);
+   - a blank coldkey can reserve neither the carry's coldkey nor vault2's as
+     a coldkey swap's destination: both announcements are refused
+     (`NewColdKeyIsHotkey`);
+   - third parties hold vault2's list at 128 entries without the CTF pool
+     hotkey, which epoch 2's capture left empty. A recycle is refused, and a
+     return to that list, simulated from a coldkey holding stake on the CTF
+     pool hotkey, answers `TooManyStakingHotkeys` (the carry holds nothing
+     there before its claim and move, and the runtime checks the stake to
+     withdraw before the destination's list). vault2's permissionless
+     `absorbStake` frees one entry; and
+   - the recycle then pays: vault2's `claimed` reaches the account's
+     cumulative, the carry keeps its residual, and conservation holds.
+
+It logs:
+
+- the gas of each creation, and the runtime size of both implementations
+  and of the carry, with its seed and residual;
+- the gas of both upgrades, the folded call's calldata size, the UID, and the
+  burn and refund;
+- the derived hotkey, its block and the parent hash;
+- the census commitment's gas, least gas limit and `eth_estimateGas` limit;
+- each `recycle`'s gas, least gas limit and `eth_estimateGas` limit, with the
+  carry coldkey's list then, and the rao it lost to rounding;
+- each close's capture and its gas;
+- vault2's `StakingHotkeys` list before and after the first recycle;
+- what root's sweep returned to the carry, its list after, and the new
+  `seedMinimum()`, and `seed()`'s gas;
+- the refused announcements; and
+- vault2's full list, the runtime's refusal of the return, and
+  `absorbStake`'s gas.
+
+Runtime 486's source predicts each outcome
+(`pallets/subtensor/src/staking/stake_utils.rs`). Mainnet reported spec
+version 490 at block 9,487,555 (2026-11-11). In `v490`'s source
+(`d967d13588834f4f5aaa8ef4c8fc1a865d581462`) the functions behind these
+rules read as in 486 (`ensure_third_party_staking_hotkeys_can_grow`,
+`ensure_staking_hotkeys_can_grow`, `validate_stake_transition`,
+`validate_add_stake`, `clear_small_nomination_if_required`,
+`coldkey_swap_hotkeys_bounded`, the share pool's `withdrawal_drains_member`),
+except that `try_associate_hotkey` and a swap's destination check first
+apply a new hotkey owner policy for hashed accounts, which allows classical
+accounts as before; the destination check still refuses a hotkey account
+and the association still refuses a reserved one. 490 also maps an EVM
+address to a hashed account's alias first, which leaves existing addresses'
+mapping as it was, and meters each precompile's mapping, which adds gas. R-9
+runs on the runtime mainnet then runs:
+
+- A transfer from another coldkey can add a hotkey to a list only while the
+  list holds fewer than 128 entries (`TooManyStakingHotkeys`), and not at all
+  to a coldkey that rejects growth, unless it owns the hotkey
+  (`AccountRejectsStakingHotkeyGrowth`); a hotkey already on the list always
+  passes (`ensure_third_party_staking_hotkeys_can_grow`). A coldkey's own add
+  or move faces only the 256-entry cap.
+- A position withdrawn in full loses its entry, because 486's share pool
+  zeroes the dust that a full withdrawal leaves, and a partial one keeps it
+  (`maybe_remove_staking_hotkey`, `primitives/share-pool/src/lib.rs`).
+- Root's sweep clears positions below the nominator minimum on hotkeys their
+  coldkey does not own, to TAO (`staking/helpers.rs`).
+- A coldkey swap's announcement refuses a destination that is a hotkey
+  account (`NewColdKeyIsHotkey`), and one that rejects growth when the source
+  brings a new hotkey; otherwise it reserves the destination until its
+  reannouncement window ends (`swap/swap_coldkey.rs`), and every transfer to
+  a reserved coldkey from another is refused.
+- A CREATE2 that carries value first requires the creating contract's
+  spendable balance, which Frontier reports less the existential deposit, to
+  cover the value (evm 0.43.4 `executor/stack/executor.rs`).
+
+### R-9 on runtime 490
+
+`TestR9CaptureTheFlag` passed on 2026-11-12 on runtime 490, which mainnet runs
+from block 9,478,217: twice, in 827.7 s and, on the code as merged, in 1,706.0 s
+on a loaded host. The node line read `node runs
+node-subtensor/490, rehearsal-only source, no owner-source review
+d967d13588834f4f5aaa8ef4c8fc1a865d581462`: 490 has no crv4 owner-source
+review, so the harness admits it for the rehearsal alone (`rehearsalSources`
+in `node_test.go`), and crv4 still refuses it.
+
+The node is not a build from this directory's `build.sh`: it is upstream's
+own build of tag `v490` (`d967d13588834f4f5aaa8ef4c8fc1a865d581462`), the
+image `ghcr.io/raofoundation/subtensor-localnet:v490` (arm64 manifest
+`sha256:dfe2f1085103110c7780ca64898904c4e0e194759b3ae4b1ee532f318d1b2c86`,
+binary `/target/fast-runtime/release/node-subtensor`, SHA-256
+`8fdee28e99394caf943652f6daa9304b4b859e8e7fb585a1f243597ecbb8a39e`), built with
+`pow-faucet metadata-hash fast-runtime`. `pow-faucet` adds a faucet call and
+drops the default subnet-registration rate limit, which R-9 does not use. The
+binary needs Ubuntu 24.04's glibc, so the Go test ran in a container `FROM`
+that image with Go 1.27.4 and forge 1.7.1 added, through this directory's
+`run-node.sh`.
+
+Two of the griefing part's checks were corrected on that run; the runtime
+behaved as 486's source predicts. The sweep values a nomination at the spot
+price, which the seed's own buy had lifted to 2,005 TAO per alpha: the
+residual, 3,932,334 rao of alpha, was worth 7,885,410,231 rao, so a minimum of
+1 or 2 TAO left it in place; the minimum is now twice that worth. The
+simulated return to vault2's full list came from the carry, which held
+nothing on the CTF pool hotkey, so the runtime answered
+`NotEnoughStakeToWithdraw`; it now comes from a coldkey holding stake there.
+
+vault2's coldkey was the guardian's hotkey account throughout, so these ran
+with it: the folded upgrade's `registerCtfPool` and vault2's `registerPool`,
+the census, both captures, the claims to the carry, the carry's transfers into
+vault2 and `absorbStake`. Coldkey swaps announced into vault2's coldkey and
+into the carry's were refused (`NewColdKeyIsHotkey`). Measured:
+
+| Step | Result |
+| --- | --- |
+| `STSettlement2Ctf` creation | 11,677 runtime bytes, 2,608,468 gas |
+| Folded `upgradeToAndCall` | 228 calldata bytes, value 100 TAO, 1,607,476 gas; UID 6; burn 2.968833999 TAO, the rest refunded |
+| `commitCtfCensus` at `end(1) + 1` | 141,317 gas (least limit 143,106, `eth_estimateGas` 143,773) |
+| `closeOperatorEpoch` | 230,988 gas (epoch 1), 213,888 gas (epoch 2); each captured all of the pool hotkey's stake |
+| `STCtfCarry` creation, 1 TAO seed | 4,580 runtime bytes, 1,224,124 gas; residual 3,932,334 rao of alpha |
+| First `recycle`, the carry's list at 130 entries | 2,664,040 gas (least limit 2,688,917, `eth_estimateGas` 2,761,072); 0 rao lost; vault2's list 2 → 3 entries |
+| Root's sweep, then `seed()` | 10,910,577,959 rao of TAO returned to the carry; `seed()` 128,881 gas, residual 161,518,741 rao |
+| `absorbStake`, vault2's list full | 1,220,874 gas, the list at 127 entries |
+| Last `recycle` | 1,500,714 gas (least limit 1,525,591, `eth_estimateGas` 1,561,392) |
+
+`TestRehearsalSmoke` does not pass on this node: in its floor bisection, the
+largest amount `eth_call` refused was accepted as a transaction in the next
+block. R-9 does not depend on it; the rest of the R battery has not been rerun
+on 490.

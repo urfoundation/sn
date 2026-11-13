@@ -9,6 +9,9 @@
 // epoch, vault2's surplus and the pool's scheduled recovery), builds the Safe
 // transaction and the owner's execTransaction exactly as upgrade-settlement2
 // review does, and preflights it from the owner. It neither signs nor sends.
+// Since 2026-11-06 a timelock owns the proxy; with --timelock, review
+// schedules the call through it, or reviews its execute step
+// (evm_v2_timelock.go).
 package main
 
 import (
@@ -54,7 +57,7 @@ var settlement2PhaseCAbi = func() abi.ABI {
 // artifact hash.
 type settlement2OwnerCall struct {
 	settlement   common.Address
-	safe         common.Address
+	governance   settlement2Governance
 	function     string
 	noId         uint64
 	epoch        uint64
@@ -63,20 +66,23 @@ type settlement2OwnerCall struct {
 }
 
 // The review's result. chain names the facts the call was checked against.
+// Only a review in timelock mode has the timelock section, and the execute
+// step of an open executor has no Safe transaction.
 type settlement2OwnerCallReview struct {
 	Schema      string                      `json:"schema"`
 	ChainId     uint64                      `json:"chain_id"`
 	HeadBlock   uint64                      `json:"head_block"`
 	Settlement2 settlement2UpgradeProxy     `json:"settlement2"`
 	Chain       map[string]string           `json:"chain"`
-	Safe        settlement2UpgradeSafe      `json:"safe"`
-	SafeTx      settlement2UpgradeSafeTx    `json:"safe_transaction"`
-	OwnerTx     settlement2UpgradeOwnerTx   `json:"owner_transaction"`
+	Timelock    *settlement2UpgradeTimelock `json:"timelock,omitempty"`
+	Safe        *settlement2UpgradeSafe     `json:"safe,omitempty"`
+	SafeTx      *settlement2UpgradeSafeTx   `json:"safe_transaction,omitempty"`
+	OwnerTx     *settlement2UpgradeOwnerTx  `json:"owner_transaction,omitempty"`
 	Preflight   settlement2UpgradePreflight `json:"preflight"`
 }
 
 func runSettlement2OwnerCallCommand(ctx context.Context, args []string, stdout, stderr io.Writer) int {
-	const usage = "usage: owner-call-settlement2 review --rpc URL --settlement2 ADDRESS --safe ADDRESS --no-id N --epoch E (--function assignSurplus --amount RAO | --function recordV1Sweep --artifact-hash 0xHASH)"
+	const usage = "usage: owner-call-settlement2 review --rpc URL --settlement2 ADDRESS --safe ADDRESS --no-id N --epoch E (--function assignSurplus --amount RAO | --function recordV1Sweep --artifact-hash 0xHASH) [--timelock ADDRESS [--timelock-salt 0xSALT] [--execute]]"
 	if len(args) == 0 || args[0] != "review" {
 		fmt.Fprintln(stderr, usage)
 		return 2
@@ -87,19 +93,21 @@ func runSettlement2OwnerCallCommand(ctx context.Context, args []string, stdout, 
 	var settlement, safe, amount, artifactHash string
 	rpcUrl := flags.String("rpc", "", "explicit owned HTTP(S) EVM JSON-RPC URL")
 	flags.StringVar(&settlement, "settlement2", "", "the STSettlement2 proxy")
-	flags.StringVar(&safe, "safe", "", "the governance Safe, which owns STSettlement2")
+	flags.StringVar(&safe, "safe", "", "the governance Safe, which owns STSettlement2 or proposes to the timelock that does")
 	flags.StringVar(&call.function, "function", "", "assignSurplus or recordV1Sweep")
 	flags.Uint64Var(&call.noId, "no-id", 0, "the pool's no_id")
 	flags.Uint64Var(&call.epoch, "epoch", 0, "assignSurplus: the pool's next unfunded epoch; recordV1Sweep: the v1 sweep epoch")
 	flags.StringVar(&amount, "amount", "", "assignSurplus: the surplus to assign, in rao")
 	flags.StringVar(&artifactHash, "artifact-hash", "", "recordV1Sweep: the committed artifact hash, 0x and 32 bytes of hex")
+	timelocked := settlement2TimelockFlags(flags)
 	parsed := flags.Parse(args[1:]) == nil && flags.NArg() == 0
 	set := map[string]bool{}
 	flags.Visit(func(given *flag.Flag) { set[given.Name] = true })
 	complete := parsed && set["rpc"] && set["settlement2"] && set["safe"] && set["function"] && set["no-id"] && set["epoch"]
 	var settlementOk, safeOk bool
 	call.settlement, settlementOk = poolAddress(settlement)
-	call.safe, safeOk = poolAddress(safe)
+	call.governance.safe, safeOk = poolAddress(safe)
+	complete = complete && timelocked(set, &call.governance)
 	switch call.function {
 	case "assignSurplus":
 		var ok bool
@@ -112,7 +120,7 @@ func runSettlement2OwnerCallCommand(ctx context.Context, args []string, stdout, 
 		complete = false
 	}
 	if !complete || !settlementOk || !safeOk || call.noId == 0 || call.epoch == 0 {
-		fmt.Fprintln(stderr, "owner-call-settlement2 review requires nonzero 0x addresses, a no_id and epoch, and either --function assignSurplus with a positive decimal --amount or --function recordV1Sweep with a 0x 32-byte --artifact-hash")
+		fmt.Fprintln(stderr, "owner-call-settlement2 review requires nonzero 0x addresses, a no_id and epoch, and either --function assignSurplus with a positive decimal --amount or --function recordV1Sweep with a 0x 32-byte --artifact-hash; --timelock-salt (0x and 32 bytes) and --execute only with --timelock, another nonzero 0x address")
 		fmt.Fprintln(stderr, usage)
 		return 2
 	}
@@ -209,7 +217,7 @@ var settlement2SurplusAssignedTopic = func() common.Hash {
 // ownerCallView is upgradeView for a contract binding's packed call.
 func ownerCallView[T any](ctx context.Context, chain *upgradeChain, to common.Address, data []byte, unpack func([]byte) (T, error)) (T, error) {
 	var value T
-	output, err := chain.call(ctx, nil, to, data)
+	output, err := chain.call(ctx, nil, nil, to, data)
 	if err != nil {
 		return value, fmt.Errorf("view 0x%x of %s: %w", data[:4], to.Hex(), err)
 	}
@@ -225,7 +233,7 @@ func reviewSettlement2OwnerCall(ctx context.Context, client *rpcClient, call set
 	if err != nil {
 		return result, err
 	}
-	current, err := readSettlement2Proxy(ctx, chain, call.settlement, call.safe)
+	current, err := readSettlement2Proxy(ctx, chain, call.settlement, call.governance)
 	if err != nil {
 		return result, err
 	}
@@ -335,22 +343,37 @@ func reviewSettlement2OwnerCall(ctx context.Context, client *rpcClient, call set
 		function, args = "recordV1Sweep(uint256,uint256,bytes32)", map[string]string{"noId": noId.String(), "epoch": epoch.String(), "artifactHash": call.artifactHash.Hex()}
 	}
 
-	safe, owner, nonce, err := readUpgradeSafe(ctx, chain, call.safe)
-	if err != nil {
-		return result, err
-	}
-	safeTx, ownerTx, execData, err := buildOwnerSafeCall(ctx, chain, call.safe, owner, nonce, call.settlement, data, function, args)
-	if err != nil {
-		return result, err
-	}
-	if err := preflightOwnerCall(ctx, chain, owner, call.safe, execData); err != nil {
-		return result, err
-	}
-	result = settlement2OwnerCallReview{
+	review := settlement2OwnerCallReview{
 		Schema: settlement2OwnerCallReviewSchema, ChainId: mainnetEvmChainId, HeadBlock: head,
-		Settlement2: settlement2UpgradeProxy{Proxy: call.settlement.Hex(), Owner: call.safe.Hex(), CurrentImplementation: current.Hex()},
-		Chain:       facts, Safe: safe, SafeTx: safeTx, OwnerTx: ownerTx,
-		Preflight: settlement2UpgradePreflight{Ran: true, Result: "execTransaction from the owner returns true at the head"},
+		Settlement2: settlement2UpgradeProxy{Proxy: call.settlement.Hex(), Owner: call.governance.owner().Hex(), CurrentImplementation: current.Hex()},
+		Chain:       facts,
 	}
-	return result, ctx.Err()
+
+	// Through the timelock, the Safe schedules the call, or the operation's
+	// execute step is reviewed.
+	if call.governance.timelocked() {
+		timelocked, err := reviewSettlement2Timelock(ctx, chain, call.governance, call.settlement,
+			settlement2TimelockCall{Target: call.settlement.Hex(), ValueWei: "0", Data: hexutil.Encode(data), Function: function, Args: args}, data, new(big.Int), true, nil)
+		if err != nil {
+			return result, err
+		}
+		review.Schema, review.Timelock, review.Preflight = settlement2OwnerCallTimelockReviewSchema, &timelocked.timelock, timelocked.preflight
+		review.Safe, review.SafeTx, review.OwnerTx = timelocked.safe, timelocked.safeTx, timelocked.ownerTx
+		return review, ctx.Err()
+	}
+
+	safe, owner, nonce, err := readUpgradeSafe(ctx, chain, call.governance.safe)
+	if err != nil {
+		return result, err
+	}
+	safeTx, ownerTx, execData, err := buildOwnerSafeCall(ctx, chain, call.governance.safe, owner, nonce, call.settlement, data, function, args)
+	if err != nil {
+		return result, err
+	}
+	if err := preflightOwnerCall(ctx, chain, owner, call.governance.safe, execData); err != nil {
+		return result, err
+	}
+	review.Safe, review.SafeTx, review.OwnerTx = &safe, &safeTx, &ownerTx
+	review.Preflight = settlement2UpgradePreflight{Ran: true, Result: "execTransaction from the owner returns true at the head"}
+	return review, ctx.Err()
 }

@@ -32,6 +32,12 @@ The document is a strict JSON object, at most 16 KiB, with these fields:
 | `runtime_code_hash` | Exact reviewed `:code` BLAKE2b-256, lowercase nonzero `0x` plus 64 hex digits |
 | `runtime_metadata_hash` | Exact reviewed SCALE metadata BLAKE2b-256, same hash grammar |
 
+[`mainnet/fleet-runtime-authority/README.md`](../mainnet/fleet-runtime-authority/README.md)
+says how a document gets reviewed, approved and published, and which source
+checks each value. None is approved yet. `urnetwork-mainnet-fleet-runtime-authority-v2`
+(`miner/fleet_runtime_catalog.go`) instead lists up to 8 reviewed runtimes, each with
+the purposes it is reviewed for.
+
 The review must establish source-to-Wasm provenance and bind those exact code
 and metadata bytes. It must cover the consumed signed extensions, account and
 registration storage/calls, fee quotation, commitment encoding/storage, finality
@@ -67,6 +73,97 @@ cannot use a connection carrying provisional authority. A new runtime requires
 a new independent review and approved document; no runtime is auto-adopted.
 The offline `fleet manifest` command remains independent of network admission.
 
+## Preparing storage for mainnet writes
+
+`provider fleet storage` prepares, on the machine that will run the fleet writes,
+the two journal directories and the one declaration they take. It reads no key and
+sends nothing. It runs on Linux (ext4 or xfs) and macOS (a local APFS volume with
+ownership enforced); elsewhere it refuses, as mainnet fleet writes do.
+
+| Directory below the state directory | Opened by |
+| --- | --- |
+| `fleet-mainnet-recovery` | `register`, `publish`, `bind`, `revoke` |
+| `fleet-native` | `register` |
+
+**1. Read the filesystem's facts.** On Linux, for the mount point, uuid and type:
+
+```sh
+mkdir -p -m 700 ~/.urnetwork
+findmnt -no TARGET,UUID,FSTYPE -T ~/.urnetwork
+```
+
+On macOS, home directories are on the data volume, which custody reaches by its
+physical path. Set the state directory for these steps and for every later fleet
+write. The mount point is `/System/Volumes/Data` and the type is `apfs`, and this
+prints the uuid ([other volumes](../mainnet/MACOS.md#custody-volume)):
+
+```sh
+export URNETWORK_STATE_DIR="/System/Volumes/Data$HOME/.urnetwork"
+mkdir -p -m 700 "$URNETWORK_STATE_DIR"
+diskutil info -plist /System/Volumes/Data | plutil -extract VolumeUUID raw - | tr A-F a-f
+```
+
+**2. Write the request.**
+
+```sh
+provider fleet storage request \
+  --mount_path=<mount point> --filesystem_uuid=<uuid> --filesystem_type=<type> \
+  --former-writers-stopped --no-previous-owner-state \
+  --evidence="what you checked"
+```
+
+The two flags and `--evidence` are your statement, and they are kept in the request
+files. `--former-writers-stopped` says nothing else writes these directories and no
+other machine signs with this fleet's keys. `--no-previous-owner-state` says these
+signers have no earlier mainnet fleet journal anywhere, which
+[the journal's guarantee depends on](#durable-mainnet-fleet-recovery). A local check
+can't establish either one. If either isn't true, don't prepare new storage: a retained
+journal must continue where it is.
+
+This creates the directories it needs below the state directory, each with mode 0700,
+and writes the request files to `fleet-custody`. It never changes an existing
+directory's mode, and it refuses a journal directory that already holds files. It prints
+a `{"path", "sha256"}` reference to the request and, on stderr, the next command with
+that exact file and digest.
+
+**3. Plan, and read what it plans.**
+
+```sh
+provider fleet storage plan --request=<path> --request-sha256=sha256:<digest>
+```
+
+This checks the request against the filesystem and changes nothing in the journal
+directories. It refuses, among others: facts that differ from the kernel's for that mount
+point, a directory that isn't private or isn't empty, leftover custody metadata, a full
+or read-only filesystem, and any owner or capacity other than each journal's fixed
+format. It prints the same kind of reference, to the plan, and the next command.
+
+**4. Apply the plan.**
+
+```sh
+provider fleet storage apply --plan=<path> --plan-sha256=sha256:<digest>
+```
+
+The result's `declaration.path` and `declaration.sha256` are the values of
+`--durable-volumes` and `--durable-volumes-sha256` on every later fleet write.
+
+Each directory goes through its own control journal, with every step synced and read
+back. The declaration appears only once both are complete. If apply is interrupted, or
+its output is lost, run the same command again: until the first fleet write it continues,
+and returns the same declaration. A plan never runs again over a journal in use.
+
+**Afterwards,** keep the state directory and everything in `fleet-custody`, and use the
+same `URNETWORK_STATE_DIR` on every fleet write. Don't restore any of it from a backup:
+an older copy is refused, or rolls a journal back. Keep testnet fleet writes in another
+state directory, since they use `fleet-native` too. On macOS, don't browse these directories
+in Finder. To correct a request before any apply has run, remove `fleet-custody` and start
+again. Once apply has run, don't remove anything: these directories can't be prepared a
+second time.
+
+This is the same preparation as `sn-mainnet storage-owner-prepare`, with the same checks
+and the same fixed owners. That command produces one declaration per directory, and a
+write takes only one, so `register` needs this one.
+
 ## Durable mainnet fleet recovery
 
 Native absence checkpoints carry a signed semantic proof identifier,
@@ -86,12 +183,20 @@ tracks qualification; source and tests are sealed before any pass is claimed.
 
 All four production write commands own the same private
 `$URNETWORK_STATE_DIR/fleet-mainnet-recovery` directory (default
-`~/.urnetwork/fleet-mainnet-recovery`). One directory-descriptor lock excludes
+`~/.urnetwork/fleet-mainnet-recovery`), and `register` also owns `fleet-native` beside
+it. One directory-descriptor lock excludes
 other processes for the entire operation. Every process using these fleet
 signers must use that same retained state directory. Changing or deleting the
 state directory, restoring an older backup, or independently operating the same
 keys elsewhere is outside this local custody guarantee. Use a filesystem with
 working exclusive locks and file/directory fsync; failures stop the command.
+
+Both directories must be roots of one owner-local durable declaration
+(`urnetwork-owner-local-volumes-v2`), named on every write with `--durable-volumes`
+and `--durable-volumes-sha256`; without them a write stops with "explicit
+durable-volume declaration and hash are required".
+[`provider fleet storage`](#preparing-storage-for-mainnet-writes) prepares them and
+produces it. `fleet status` and `fleet sign` open no journal and need no declaration.
 
 Before the first send, the owner durably stores the exact signed transaction,
 actor, nonce, transaction hash, native finalized checkpoint, original approved

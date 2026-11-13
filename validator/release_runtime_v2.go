@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/protocol"
@@ -45,9 +46,11 @@ type releaseRuntimeV2 struct {
 	publishEpoch         func(uint64)
 	progress             *releaseProgress
 	preparation          *releaseProductionPreparation
-	nativeReservations   map[uint64]uint64                       // no_id -> native epoch, owned by gate
-	nativeInputNoIdKVs   map[uint64]*releaseRuntimeNativeInputV2 // one unpublished/adopting cut per operator, owned by gate
-	settlementV2Verified bool                                    // the settlement_v2 identity check passed, owned by gate
+	nativeReservations   map[uint64]uint64                        // no_id -> native epoch, owned by gate
+	nativeInputNoIdKVs   map[uint64]*releaseRuntimeNativeInputV2  // one unpublished/adopting cut per operator, owned by gate
+	uploadMemos          map[uint64]*releaseAttemptUploadMemo     // objects each operator's origin acknowledged, owned by gate
+	settlementV2Verified bool                                     // the settlement_v2 identity check passed, owned by gate
+	nativeGapHeld        *atomic.Pointer[productionNativeGapHold] // this native epoch's completed refusal
 }
 
 // Semantic startup is called while the complete disk census is still dormant.
@@ -94,7 +97,7 @@ func newReleaseRuntimeV2WithRuntime(ctx context.Context, cfg *ReleaseConfig, cha
 		disk.states[participant.NoID].uploadSource = sources[participant.NoID]
 	}
 	self := &releaseRuntimeV2{receiptCache: &productionReceiptCacheState{}, ctx: ctx, cfg: history.cfg, chain: chain, native: native, hotkey: ownHotkey, disk: disk, history: history, origins: slices.Clone(origins), sources: sources,
-		gate: make(chan struct{}, 1), publications: maps.Clone(history.terminals), publicationContexts: maps.Clone(history.terminalContexts)}
+		gate: make(chan struct{}, 1), publications: maps.Clone(history.terminals), publicationContexts: maps.Clone(history.terminalContexts), nativeGapHeld: new(atomic.Pointer[productionNativeGapHold])}
 	if isOwnerRecycleProductionConfig(cfg) {
 		self.preparation = &releaseProductionPreparation{requested: make(chan struct{}), ready: make(chan struct{})}
 	}
@@ -236,9 +239,28 @@ func (self *releaseRuntimeV2) seal(ctx context.Context, noId uint64, replicas []
 	if err != nil {
 		return AttemptCutV2SealOptions{}, err
 	}
+	// The read-back below proves a skipped object only at the origin it reads,
+	// so a second replica keeps being written in full.
+	var uploaded *releaseAttemptUploadMemo
+	if len(replicas) == 1 {
+		uploaded = self.uploadMemo(noId)
+	}
 	return AttemptCutV2SealOptions{ReplayBounds: self.cfg.EvidenceV2.Bounds.Replay, ScratchDirectory: paths, ServerKeys: self.history.keys[noId],
-		WriteRecords: publisher.writer(AttemptStreamV2Records), WriteProofs: publisher.writer(AttemptStreamV2Proofs), WriteMetadata: publisher.writer("metadata"),
-		ReadMetadata: publisher.readers[0].ReadMetadata, OpenData: publisher.readers[0].OpenData}, nil
+		WriteRecords: uploaded.writer(AttemptStreamV2Records, publisher.writer(AttemptStreamV2Records)), WriteProofs: uploaded.writer(AttemptStreamV2Proofs, publisher.writer(AttemptStreamV2Proofs)), WriteMetadata: uploaded.writer("metadata", publisher.writer("metadata")),
+		ReadMetadata: uploaded.metadataReader(publisher.readers[0].ReadMetadata), OpenData: uploaded.dataOpener(publisher.readers[0].OpenData)}, nil
+}
+
+// One operator's acknowledged objects, for the life of this process.
+func (self *releaseRuntimeV2) uploadMemo(noId uint64) *releaseAttemptUploadMemo {
+	if self.uploadMemos == nil {
+		self.uploadMemos = make(map[uint64]*releaseAttemptUploadMemo)
+	}
+	memo := self.uploadMemos[noId]
+	if memo == nil {
+		memo = newReleaseAttemptUploadMemo()
+		self.uploadMemos[noId] = memo
+	}
+	return memo
 }
 
 // Both geometric endpoints are read at the authenticated finalized observer.
@@ -530,6 +552,7 @@ func (self *releaseRuntimeV2) collect(ctx context.Context, steerer *ReleaseSteer
 		Coordinator: self.cfg.Coordinator, SettlementVault: self.cfg.SettlementVault, ValidatorID: self.cfg.ValidatorID, Netuid: self.cfg.Netuid, SubnetEpoch: subnetEpoch,
 		NativeSnapshotBlock: nativeBlock, NativeSnapshotHash: nativeHash, EVMSnapshotBlock: snapshot.BlockNumber, EVMSnapshotHash: attemptHex32(snapshot.BlockHash),
 		SettlementEpoch: snapshot.Epoch.Uint64(), PolicyHash: self.cfg.PolicyHash, SelfUID: uid}, Policy: self.cfg.Policy, ControlledNOIDs: slices.Clone(self.cfg.ControlledNOIDs),
+		CtfSupport: releaseCtfSupported(&self.cfg), AmendmentFallback: slices.Clone(self.cfg.AmendmentFallback),
 		Operators: make(map[uint64]ReleaseMeasurementV2OperatorOptions, len(self.history.participants)), MaxOperators: bounds.MaxOperators, MaxHeadEntries: bounds.MaxHeadEntries, MaxArtifactBytes: bounds.MaxArtifactBytes, MaxControlBytes: bounds.MaxControlBytes}
 	replicas, err := releaseReservedAttemptCensusReplicasV2(&self.cfg, self.origins, self.runtimes)
 	if err != nil {

@@ -52,6 +52,9 @@ type ValidatorEvidenceDepositAuditV2Payload struct {
 	Decision        ReleaseMeasurementV2Decision `json:"decision"`
 	Audit           DepositAudit                 `json:"audit"`
 	HttpObservation []byte                       `json:"http_observation,omitempty"`
+	// The signed price the audit was judged under, so its rates need no other
+	// authority. Absent while the signed policy's schedule is in force.
+	DepositPriceEntry *ReleaseDepositPriceEntry `json:"deposit_price_entry,omitempty"`
 }
 
 // Canonical decision identity is checked against independent activation pins;
@@ -170,6 +173,9 @@ func validateValidatorEvidenceDepositAuditV2Publication(ctx context.Context, pub
 		if payload.Schema != ValidatorEvidenceDepositAuditV2Schema || payload.Decision != census.Decision || payload.Audit.NoID != activation.NoID || payload.Audit.Epoch != manifest.Subject.ObservationEpoch || payload.Audit.SourceEpoch != manifest.Epoch || payload.Audit.ObservedAtBlock != header.BoundaryBlock {
 			return errors.New("deposit audit payload differs from the containing actual observation")
 		}
+		if _, err := verifiedReleaseDepositPriceEntry(payload.DepositPriceEntry, census.Decision.ChainID, census.Decision.Netuid, census.Decision.SettlementEpoch); err != nil {
+			return err
+		}
 		if len(payload.HttpObservation) == 0 {
 			if payload.Audit.HttpObservationHash != "" {
 				return errors.New("deposit audit omits its retained actual request")
@@ -182,7 +188,11 @@ func validateValidatorEvidenceDepositAuditV2Publication(ctx context.Context, pub
 			if err := decodeAttemptStreamV2JSON(payload.HttpObservation, options.Bounds.MaxTransitionBytes, &observation); err != nil {
 				return err
 			}
-			expected := releaseArtifactHttpObservationV2{Schema: releaseArtifactHttpObservationSchemaV2, Decision: census.Decision, ValidatorHotkey: releaseHex32(activation.Hotkey), NoId: activation.NoID, SourceEpoch: manifest.Epoch, Origin: observation.Origin}
+			schema := releaseArtifactHttpObservationSchemaV2
+			if payload.Audit.UsageEvidence != "" {
+				schema = releaseUsageHttpObservationSchemaV2
+			}
+			expected := releaseArtifactHttpObservationV2{Schema: schema, Decision: census.Decision, ValidatorHotkey: releaseHex32(activation.Hotkey), NoId: activation.NoID, SourceEpoch: manifest.Epoch, Origin: observation.Origin}
 			if _, err := decodeArtifactHttpObservationV2(ctx, payload.HttpObservation, options.Bounds.MaxTransitionBytes, expected); err != nil {
 				return err
 			}

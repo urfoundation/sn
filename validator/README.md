@@ -345,3 +345,15 @@ do not regenerate a fresh identity or erase state to resume an existing one.
 An independent validator does not need `--ledger_auditor_key_file`, a subnet
 owner key, a treasury signing key or a native gap bridge. Those are separate
 roles or recovery operations.
+
+`--amendments-fallback=<path>` names a file of configured settlement amendment
+lines, one per line (`#` comments and blank lines are passed over). It is the
+fallback for an amendment entry, such as the extender pool's from epoch 8,
+whose signing cannot happen before its first epoch starts, and it stands in
+only where no signed entry of its kind is in force, never for an amendments
+file that cannot be read. Configure it only when the subnet owner publishes
+such a line, with exactly the lines every other reader uses, and remove it once
+the signed entry is published. It is a run flag, outside the signed
+configuration, so it needs no successor. VALIDATOR.md §11.6 gives the rules;
+the validator keeps its verified copy of `https://ur.xyz/amendments.yml` in
+`<state_dir>/settlement-v2-amendments/`.

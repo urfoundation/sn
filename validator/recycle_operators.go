@@ -70,6 +70,35 @@ type OwnerRecycleOperatorEvidence struct {
 	Operators               []OwnerRecycleOperatorState       `json:"operators"`
 }
 
+// Positive and priced mismatch audits carry a complete commitment. Internal
+// self-consistency of those claims is not on-chain authority. Failure-only audits
+// still need a later historical outage/key owner. The event of a v2 source epoch,
+// not the v1 root it does not have, names its commit.
+func verifyOwnerRecycleDepositAuditSource(claimed DepositAudit, operator releaseDecisionChainV2Operator, observed *releaseDecisionChainV2Observation, artifact *ReleaseMeasurementArtifact) error {
+	if operator.usageSettled != (claimed.UsageEvidence != "") {
+		return errors.New("owner-recycle deposit audit differs from its source epoch's settlement")
+	}
+	if operator.usageSettled {
+		if claimed.Status == DepositAuditCompliant || claimed.Status == DepositAuditMismatch {
+			commit, signer := operator.usageCommit, strings.ToLower(operator.sourceVersion.RootSigner.Hex())
+			if commit == nil || claimed.CommittedArtifactHash != releaseHex32(commit.ledgerHash) || claimed.PayoutRoot != releaseHex32(commit.root) || claimed.RootCommitter != signer || claimed.RootSigner != signer || claimed.RootCommitBlock != commit.block ||
+				claimed.SourceStartBlock != observed.sourceStart || claimed.SourceEndBlock != observed.sourceEnd || claimed.SourceStartHash != releaseHex32(observed.sourceStartHash) || claimed.SourceEndHash != releaseHex32(observed.sourceEndHash) {
+				return errors.New("owner-recycle usage audit differs from its canonical source commitment or boundaries")
+			}
+		}
+		return nil
+	}
+	if claimed.Status == DepositAuditCompliant || claimed.Status == DepositAuditMismatch && artifact.SettlementEpoch >= artifact.Policy.Deposit.UsageLagEpochs {
+		if claimed.CommittedArtifactHash != releaseHex32(operator.commitment.ArtifactHash) || claimed.PayoutRoot != releaseHex32(operator.commitment.PayoutRoot) ||
+			claimed.RootCommitter != strings.ToLower(operator.commitment.Committer.Hex()) || claimed.RootSigner != strings.ToLower(operator.sourceVersion.RootSigner.Hex()) ||
+			claimed.RootCommitBlock != operator.commitment.CommitBlock || claimed.SourceStartBlock != observed.sourceStart || claimed.SourceEndBlock != observed.sourceEnd ||
+			claimed.SourceStartHash != releaseHex32(observed.sourceStartHash) || claimed.SourceEndHash != releaseHex32(observed.sourceEndHash) {
+			return errors.New("owner-recycle payout audit differs from its canonical source commitment or boundaries")
+		}
+	}
+	return nil
+}
+
 // Upgrades only this exact immutable measurement authority after actual V2
 // replay and coordinator reads. Callers own the immutable connection lifecycle;
 // the returned owner is detached and the input authority is never modified.
@@ -156,9 +185,13 @@ func ObserveOwnerRecycleMeasurementOperators(ctx context.Context, authority *Own
 	if _, err := deriveOwnerRecycleMeasuredRow(authority, artifact, verified.Decision); err != nil {
 		return nil, err
 	}
+	priceEntry, err := verifiedReleaseDepositPriceEntry(artifact.DepositPriceEntry, artifact.ChainID, artifact.Netuid, artifact.SettlementEpoch)
+	if err != nil {
+		return nil, err
+	}
 	query := releaseDecisionChainV2Query{domain: domain, policy: authority.config.Policy,
 		boundary:     AttemptBoundary{SettlementEpoch: artifact.SettlementEpoch, EVMBlock: artifact.EVMSnapshotBlock, EVMBlockHash: artifact.EVMSnapshotHash},
-		maxOperators: options.MaxOperators, maxControlBytes: options.MaxControlBytes, settlementV2: releaseSettlementV2Addresses(&authority.config)}
+		maxOperators: options.MaxOperators, maxControlBytes: options.MaxControlBytes, settlementV2: releaseSettlementV2Addresses(&authority.config), priceEntry: priceEntry, ctf: releaseCtfResolves(artifact)}
 	for _, input := range artifact.Inputs {
 		operator := releaseDecisionChainV2OperatorQuery{noID: input.NoID}
 		// The full verifier already bounded and authenticated this membership.
@@ -186,8 +219,9 @@ func ObserveOwnerRecycleMeasurementOperators(ctx context.Context, authority *Own
 			return nil, errors.New("owner-recycle native and decision EVM hotkey/UID mappings differ")
 		}
 	}
-	if len(artifact.Bindings) != len(observed.bindings) || !slices.Equal(artifact.Pools, observed.pools) || len(artifact.DepositAudits) != len(observed.operators) {
-		return nil, errors.New("owner-recycle measured operator, binding, pool or deposit census differs from chain")
+	if len(artifact.Bindings) != len(observed.bindings) || !slices.Equal(artifact.Pools, observed.pools) || len(artifact.DepositAudits) != len(observed.operators) ||
+		verifyReleaseCtfPools(artifact, observed.ctfPools) != nil {
+		return nil, errors.New("owner-recycle measured operator, binding, pool, CTF pool or deposit census differs from chain")
 	}
 	for index, actual := range observed.bindings {
 		claimed := artifact.Bindings[index]
@@ -207,21 +241,18 @@ func ObserveOwnerRecycleMeasurementOperators(ctx context.Context, authority *Own
 			return nil, fmt.Errorf("owner-recycle operator %d was inactive at the decision", operator.noID)
 		}
 		claimed := artifact.DepositAudits[index]
+		// A v2 source epoch's audit keeps its own commit window's end.
+		deadline := observed.artifactDeadline
+		if operator.usageSettled {
+			deadline = operator.usageDeadline
+		}
 		if claimed.NoID != operator.noID || claimed.Epoch != artifact.SettlementEpoch || claimed.SourceEpoch != observed.sourceEpoch ||
-			claimed.ObservedAtBlock != observed.boundary.EVMBlock || claimed.ArtifactDeadlineBlock != observed.artifactDeadline ||
+			claimed.ObservedAtBlock != observed.boundary.EVMBlock || claimed.ArtifactDeadlineBlock != deadline ||
 			claimed.ObservedDepositRao != operator.deposit.String() || claimed.ConvictionBeforeRao != operator.convictionBefore.String() {
 			return nil, errors.New("owner-recycle deposit audit differs from exact decision amounts or window")
 		}
-		// Positive and priced mismatch audits carry a complete commitment.
-		// Internal self-consistency of those claims is not on-chain authority.
-		// Failure-only audits still need a later historical outage/key owner.
-		if claimed.Status == DepositAuditCompliant || claimed.Status == DepositAuditMismatch && artifact.SettlementEpoch >= artifact.Policy.Deposit.UsageLagEpochs {
-			if claimed.CommittedArtifactHash != releaseHex32(operator.commitment.ArtifactHash) || claimed.PayoutRoot != releaseHex32(operator.commitment.PayoutRoot) ||
-				claimed.RootCommitter != strings.ToLower(operator.commitment.Committer.Hex()) || claimed.RootSigner != strings.ToLower(operator.sourceVersion.RootSigner.Hex()) ||
-				claimed.RootCommitBlock != operator.commitment.CommitBlock || claimed.SourceStartBlock != observed.sourceStart || claimed.SourceEndBlock != observed.sourceEnd ||
-				claimed.SourceStartHash != releaseHex32(observed.sourceStartHash) || claimed.SourceEndHash != releaseHex32(observed.sourceEndHash) {
-				return nil, errors.New("owner-recycle payout audit differs from its canonical source commitment or boundaries")
-			}
+		if err := verifyOwnerRecycleDepositAuditSource(claimed, operator, observed, artifact); err != nil {
+			return nil, err
 		}
 		evidence.Operators = append(evidence.Operators, OwnerRecycleOperatorState{NoId: operator.noID,
 			Current: operator.version, Source: operator.sourceVersion, SourceCommitment: operator.commitment,

@@ -24,6 +24,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/urnetwork/connect"
 
+	"github.com/urfoundation/sn/demand/usage"
 	"github.com/urfoundation/sn/protocol"
 	"github.com/urfoundation/sn/protocol/headscore"
 )
@@ -129,6 +130,12 @@ type ReleaseMeasurementArtifact struct {
 	DepositAudits        []DepositAudit              `json:"deposit_audits"`
 	SelfUID              uint16                      `json:"self_uid"`
 	SettlementClosureV2  *AttemptSettlementClosureV2 `json:"settlement_closure_v2,omitempty"`
+	// DepositPriceEntry is the signed price in force for the decision epoch. It is
+	// absent while the signed policy's schedule is in force.
+	DepositPriceEntry *ReleaseDepositPriceEntry `json:"deposit_price_entry,omitempty"`
+	// CaptureTheFlag is capture the flag in force for the decision epoch. It is
+	// absent before E_c, while the signed policy's theta splits the row.
+	CaptureTheFlag *ReleaseCaptureTheFlag `json:"capture_the_flag,omitempty"`
 }
 
 // VerifiedReleasePool is one independently derived pool decision. Ineligible
@@ -156,6 +163,9 @@ type VerifiedReleaseMeasurement struct {
 	Scores         []*big.Rat
 	BoundProviders map[uint64]map[connect.Id]bool
 	StatsByNO      map[uint64]VerifiedReleaseStats
+	// Ctf is the CTF channel: each weighted CTF pool with its operator's pool
+	// score. Empty without capture the flag.
+	Ctf []ExactWeightInput
 }
 
 // parseReleaseHex32 requires the unique lowercase 0x-prefixed representation.
@@ -197,6 +207,12 @@ func verifyReleaseMeasurementIdentityWithHexWork(artifact *ReleaseMeasurementArt
 	}
 	if artifact.SettlementClosureV2 != nil {
 		return errors.New("legacy release measurement rejects compact settlement evidence")
+	}
+	if artifact.DepositPriceEntry != nil {
+		return errors.New("legacy release measurement rejects a signed deposit price")
+	}
+	if artifact.CaptureTheFlag != nil {
+		return errors.New("legacy release measurement rejects capture the flag")
 	}
 	for _, input := range artifact.Inputs {
 		if input.AttemptCutV2 != nil {
@@ -569,14 +585,25 @@ func verifyCanonicalDepositAddressWithWork(name, encoded string, work canonicalH
 	return nil
 }
 
-func verifyDepositCommitmentEvidence(audit DepositAudit, conviction, required *big.Int, artifact *ReleaseMeasurementArtifact) error {
+func verifyDepositCommitmentEvidence(audit DepositAudit, conviction, required *big.Int, deposit protocol.DepositPolicy) error {
 	if _, err := parseReleaseContentHash(audit.ArtifactHash); err != nil {
 		return fmt.Errorf("payout artifact hash: %w", err)
 	}
 	contentHash, _ := parseReleaseContentHash(audit.ArtifactHash)
 	committedHash, err := parseReleaseHex32("committed payout artifact hash", audit.CommittedArtifactHash, false)
-	if err != nil || committedHash != contentHash {
-		return errors.New("payout artifact hash does not equal its on-chain commitment")
+	if audit.UsageEvidence == "" {
+		if err != nil || committedHash != contentHash {
+			return errors.New("payout artifact hash does not equal its on-chain commitment")
+		}
+	} else {
+		// A v2 root commits a ledger header, and a retained observation holds the
+		// statement that names its chunks, so the two hashes are different objects.
+		if err != nil {
+			return errors.New("committed ledger hash is invalid")
+		}
+		if _, err := parseReleaseContentHash(audit.HttpObservationHash); err != nil {
+			return fmt.Errorf("usage statement observation hash: %w", err)
+		}
 	}
 	if _, err := parseReleaseHex32("payout root", audit.PayoutRoot, false); err != nil {
 		return err
@@ -601,7 +628,7 @@ func verifyDepositCommitmentEvidence(audit DepositAudit, conviction, required *b
 	if _, err := parseReleaseHex32("payout source end hash", audit.SourceEndHash, false); err != nil {
 		return err
 	}
-	want, tier, err := protocol.RequiredDepositRao(audit.UsageBytes, audit.Users, conviction, artifact.Policy.Deposit)
+	want, tier, err := protocol.RequiredDepositRao(audit.UsageBytes, audit.Users, conviction, deposit)
 	if err != nil {
 		return fmt.Errorf("reconstruct required deposit: %w", err)
 	}
@@ -611,9 +638,10 @@ func verifyDepositCommitmentEvidence(audit DepositAudit, conviction, required *b
 	return nil
 }
 
-// verifyDepositAuditShape independently recomputes the demand signal and
-// enforces the fail-closed status, deadline and commitment contract.
-func verifyDepositAuditShape(audit DepositAudit, artifact *ReleaseMeasurementArtifact) error {
+// verifyDepositAuditShape independently recomputes the demand signal under the
+// deposit policy in force and enforces the fail-closed status, deadline and
+// commitment contract.
+func verifyDepositAuditShape(audit DepositAudit, artifact *ReleaseMeasurementArtifact, deposit protocol.DepositPolicy) error {
 	if artifact == nil || audit.NoID == 0 || audit.Epoch != artifact.SettlementEpoch || audit.Status == "" || audit.Disposition == "" || audit.ObservedAtBlock != artifact.EVMSnapshotBlock || audit.ArtifactDeadlineBlock == 0 {
 		return errors.New("deposit audit identity is incomplete")
 	}
@@ -629,7 +657,7 @@ func verifyDepositAuditShape(audit DepositAudit, artifact *ReleaseMeasurementArt
 	if err != nil {
 		return err
 	}
-	usageLag := artifact.Policy.Deposit.UsageLagEpochs
+	usageLag := deposit.UsageLagEpochs
 	bootstrap := artifact.SettlementEpoch < usageLag
 	wantSource := uint64(0)
 	if !bootstrap {
@@ -638,10 +666,16 @@ func verifyDepositAuditShape(audit DepositAudit, artifact *ReleaseMeasurementArt
 	if audit.SourceEpoch != wantSource {
 		return errors.New("deposit audit source epoch does not match policy lag")
 	}
-	// A zero-price policy admits only zero-price audits, and a priced policy
-	// never admits one: the status is a function of the signed policy.
-	if artifact.Policy.IsZeroPrice() != (audit.Status == DepositAuditZeroPrice) {
+	// A zero price admits only zero-price audits, and a priced policy never admits
+	// one: the status is a function of the signed policy and signed price in force.
+	if deposit.IsZeroPrice() != (audit.Status == DepositAuditZeroPrice) {
 		return fmt.Errorf("deposit audit status %q does not match the policy price", audit.Status)
+	}
+	// A usage statement is read only under a signed price in force, as version 1,
+	// or as version 2 for an epoch with an extender component (WHITEPAPER.md
+	// §8.6.4).
+	if audit.UsageEvidence != "" && (audit.UsageEvidence != usage.EvidenceKind && audit.UsageEvidence != usage.EvidenceKindV2 || artifact.DepositPriceEntry == nil || deposit.IsZeroPrice()) {
+		return fmt.Errorf("deposit audit usage evidence %q is not admitted by the price in force", audit.UsageEvidence)
 	}
 	switch audit.Status {
 	case DepositAuditZeroPrice:
@@ -652,7 +686,7 @@ func verifyDepositAuditShape(audit DepositAudit, artifact *ReleaseMeasurementArt
 		if bootstrap || !audit.Compliant || audit.Disposition != "pool_weight_eligible" || audit.Error != "" || observed.Cmp(required) != 0 {
 			return errors.New("compliant deposit audit is inconsistent")
 		}
-		if err := verifyDepositCommitmentEvidence(audit, conviction, required, artifact); err != nil {
+		if err := verifyDepositCommitmentEvidence(audit, conviction, required, deposit); err != nil {
 			return err
 		}
 	case DepositAuditBootstrap:
@@ -664,7 +698,7 @@ func verifyDepositAuditShape(audit DepositAudit, artifact *ReleaseMeasurementArt
 			return errors.New("mismatched deposit audit is inconsistent")
 		}
 		if !bootstrap {
-			if err := verifyDepositCommitmentEvidence(audit, conviction, required, artifact); err != nil {
+			if err := verifyDepositCommitmentEvidence(audit, conviction, required, deposit); err != nil {
 				return err
 			}
 		} else if required.Sign() != 0 || audit.UsageBytes != 0 || audit.ArtifactHash != "" {
@@ -691,13 +725,18 @@ func verifyDepositAuditShape(audit DepositAudit, artifact *ReleaseMeasurementArt
 // releaseMeasurementPools reconstructs every pool's quality, eligibility and
 // score while retaining rejected operators as explicit zero-score decisions.
 func releaseMeasurementPools(artifact *ReleaseMeasurementArtifact, statsByNO map[uint64]VerifiedReleaseStats, bound map[uint64]map[connect.Id]bool, controlled map[uint64]bool) ([]VerifiedReleasePool, []ExactWeightInput, map[uint16]bool, error) {
+	deposit, err := releaseMeasurementDepositPolicy(artifact)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	scoring := releaseScoringPolicy(artifact.Policy, deposit)
 	audits := make(map[uint64]DepositAudit, len(artifact.DepositAudits))
 	priorNOID := uint64(0)
 	for index, audit := range artifact.DepositAudits {
 		if index > 0 && audit.NoID <= priorNOID {
 			return nil, nil, nil, errors.New("deposit audits are not strictly ordered")
 		}
-		if err := verifyDepositAuditShape(audit, artifact); err != nil {
+		if err := verifyDepositAuditShape(audit, artifact, deposit); err != nil {
 			return nil, nil, nil, fmt.Errorf("deposit audit no_id %d: %w", audit.NoID, err)
 		}
 		audits[audit.NoID] = audit
@@ -736,7 +775,7 @@ func releaseMeasurementPools(artifact *ReleaseMeasurementArtifact, statsByNO map
 			masked[pool.UID] = true
 		} else if audit.Compliant && audit.Status != DepositAuditBootstrap {
 			conviction, _ := new(big.Int).SetString(audit.ConvictionBeforeRao, 10)
-			score, err := impliedUsageQuality(audit.UsageBytes, audit.Users, conviction, qualityPPM, artifact.Policy)
+			score, err := impliedUsageQuality(audit.UsageBytes, audit.Users, conviction, qualityPPM, scoring)
 			if err != nil {
 				return nil, nil, nil, fmt.Errorf("pool no_id %d score: %w", pool.NoID, err)
 			}
@@ -795,6 +834,11 @@ func assembleReleaseMeasurement(artifact *ReleaseMeasurementArtifact, statsByNO 
 	if err != nil {
 		return nil, err
 	}
+	ctf, err := verifiedReleaseCaptureTheFlag(artifact)
+	if err != nil {
+		return nil, err
+	}
+	ctfWeights := ctf.ctfInputs(pools, masked)
 	for uid, members := range membersByUID {
 		for _, member := range members {
 			if controlled[member.NoID] {
@@ -808,14 +852,21 @@ func assembleReleaseMeasurement(artifact *ReleaseMeasurementArtifact, statsByNO 
 		maskedUIDs = append(maskedUIDs, uid)
 	}
 	sort.Slice(maskedUIDs, func(i, j int) bool { return maskedUIDs[i] < maskedUIDs[j] })
-	uids, scores, err := BuildWeightVectorExact(poolWeights, selection.Selected, artifact.Policy.Steering.Theta, masked)
+	// From E_c capture the flag's shares replace theta (CAPTURETHEFLAG.md §2.1).
+	var uids []uint16
+	var scores []*big.Rat
+	if ctf != nil {
+		uids, scores, err = BuildWeightVectorCtf(poolWeights, ctfWeights, selection.Selected, ctf.shares, masked)
+	} else {
+		uids, scores, err = BuildWeightVectorExact(poolWeights, selection.Selected, artifact.Policy.Steering.Theta, masked)
+	}
 	if err != nil && (!emptyProviders || artifact.Policy.NetworkProfile != "mainnet" || !errors.Is(err, errNoPositiveUnmaskedWeights)) {
 		return nil, err
 	}
 	return &VerifiedReleaseMeasurement{
 		EligibleHead: eligible, SelectedHead: selection.Selected, RejectedHead: selection.Rejected,
 		StaleBindings: stale, Pools: pools, MaskedUIDs: maskedUIDs, UIDs: uids,
-		Scores: scores, BoundProviders: bound, StatsByNO: statsByNO,
+		Scores: scores, BoundProviders: bound, StatsByNO: statsByNO, Ctf: ctfWeights,
 	}, nil
 }
 

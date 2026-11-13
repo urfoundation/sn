@@ -2,6 +2,7 @@ package miner
 
 import (
 	"archive/tar"
+	"cmp"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -46,8 +47,11 @@ const minerUpdateDefaultSource = "https://api.github.com/repos/urnetwork/build/r
 const minerUpdateRollout = 16 * time.Hour
 
 // How long a new version has to come back connected before it is rolled
-// back, and how long a rolled back version is skipped.
-const minerUpdateHealthWindow = 10 * time.Minute
+// back, how often that is looked at, and how long a rolled back version is
+// skipped. Variables only so tests can shorten the wait.
+var minerUpdateHealthWindow = 10 * time.Minute
+var minerUpdateHealthPoll = 3 * time.Second
+
 const minerUpdateHoldBack = 7 * 24 * time.Hour
 
 // The largest download an update reads, and the largest binary it accepts.
@@ -111,31 +115,61 @@ func minerAutoUpdate(state minerUpdateState) (bool, string) {
 	return true, ""
 }
 
-// minerReleaseVersion is a release version, YYYY.MM.DD-N.
+// minerReleaseVersion is a release version: a date, YYYY.M.D (warpctl
+// doesn't pad the month or the day), and a build number. The version
+// stamped into a release binary joins them with a "+"
+// (2026.11.11+1096286830); its tag joins them with a "-"
+// (v2026.11.11-1096286830), as warpctl spells the version wherever a "+"
+// can't go, such as docker tags. Both spellings are one version.
 type minerReleaseVersion struct {
-	date  string
+	year  uint64
+	month uint64
+	day   uint64
 	build uint64
 }
 
-var minerReleaseVersionPattern = regexp.MustCompile(`^v?(\d{4}\.\d{2}\.\d{2})-(\d+)$`)
+var minerReleaseVersionPattern = regexp.MustCompile(`^v?(\d{4})\.(\d{1,2})\.(\d{1,2})[-+](\d+)$`)
 
 func parseMinerReleaseVersion(version string) (minerReleaseVersion, bool) {
 	match := minerReleaseVersionPattern.FindStringSubmatch(strings.TrimSpace(version))
 	if match == nil {
 		return minerReleaseVersion{}, false
 	}
-	build, err := strconv.ParseUint(match[2], 10, 64)
-	if err != nil {
-		return minerReleaseVersion{}, false
+	var parts [4]uint64
+	for i := range parts {
+		part, err := strconv.ParseUint(match[i+1], 10, 64)
+		if err != nil {
+			return minerReleaseVersion{}, false
+		}
+		parts[i] = part
 	}
-	return minerReleaseVersion{date: match[1], build: build}, true
+	return minerReleaseVersion{year: parts[0], month: parts[1], day: parts[2], build: parts[3]}, true
+}
+
+// compare orders releases by date and, on the same date, by build number.
+func (self minerReleaseVersion) compare(other minerReleaseVersion) int {
+	return cmp.Or(
+		cmp.Compare(self.year, other.year),
+		cmp.Compare(self.month, other.month),
+		cmp.Compare(self.day, other.day),
+		cmp.Compare(self.build, other.build),
+	)
 }
 
 func (self minerReleaseVersion) newerThan(other minerReleaseVersion) bool {
-	if self.date != other.date {
-		return other.date < self.date
+	return 0 < self.compare(other)
+}
+
+// sameMinerVersion is true when a and b name one version: the same text, or
+// two spellings of one release, such as its tag and its binary's stamp.
+func sameMinerVersion(a string, b string) bool {
+	a, b = strings.TrimSpace(a), strings.TrimSpace(b)
+	if a == b {
+		return true
 	}
-	return other.build < self.build
+	x, ok := parseMinerReleaseVersion(a)
+	y, okOther := parseMinerReleaseVersion(b)
+	return ok && okOther && x.compare(y) == 0
 }
 
 // minerUpdateSource is the release feed: GitHub's latest release of
@@ -390,7 +424,8 @@ func installMinerRelease(ctx context.Context, release *minerRelease, executable 
 	if err != nil {
 		return fmt.Errorf("the new binary doesn't run on this device: %w", err)
 	}
-	if got := strings.TrimSpace(string(versionOut)); got != release.version() {
+	// the binary says 2026.11.11+1096286830 for the tag v2026.11.11-1096286830
+	if got := strings.TrimSpace(string(versionOut)); !sameMinerVersion(got, release.version()) {
 		return fmt.Errorf("the new binary says it is %q, not %s; nothing was changed", got, release.version())
 	}
 	return replaceMinerBinary(newPath, executable)
@@ -472,7 +507,8 @@ type minerRunningState struct {
 	service   minerServiceManager
 }
 
-func readMinerRunningState() minerRunningState {
+// readMinerRunningState is a variable so tests can stand in a service.
+var readMinerRunningState = func() minerRunningState {
 	state := minerRunningState{}
 	if status, err := readMinerLocalStatus(); err == nil && status.running(time.Now()) {
 		state.running = true
@@ -488,11 +524,13 @@ func readMinerRunningState() minerRunningState {
 }
 
 // waitMinerHealthy waits for the miner to run version, connected if it was
-// connected before. It reports false when the window passes first.
+// connected before. It reports false when the window passes first. The
+// running miner reports its binary's stamp, with a "+" where the release's
+// tag has a "-".
 func waitMinerHealthy(version string, needConnected bool, window time.Duration, tick func()) bool {
 	deadline := time.Now().Add(window)
 	for time.Now().Before(deadline) {
-		if status, err := readMinerLocalStatus(); err == nil && status.running(time.Now()) && status.Version == version {
+		if status, err := readMinerLocalStatus(); err == nil && status.running(time.Now()) && sameMinerVersion(status.Version, version) {
 			if !needConnected || status.connected() {
 				return true
 			}
@@ -500,7 +538,7 @@ func waitMinerHealthy(version string, needConnected bool, window time.Duration, 
 		if tick != nil {
 			tick()
 		}
-		time.Sleep(3 * time.Second)
+		time.Sleep(minerUpdateHealthPoll)
 	}
 	return false
 }
@@ -726,7 +764,7 @@ func autoUpdate(stdout io.Writer, state minerUpdateState, executable string) int
 		}
 		return 0
 	}
-	if state.HeldBack == release.version() && state.HeldUntil != nil && now.Before(*state.HeldUntil) {
+	if sameMinerVersion(state.HeldBack, release.version()) && state.HeldUntil != nil && now.Before(*state.HeldUntil) {
 		state.LastResult = release.version() + " was rolled back; skipped until " + state.HeldUntil.Format(time.RFC3339)
 		_ = writeMinerUpdateState(state)
 		fmt.Fprintf(stdout, "automatic update: %s\n", state.LastResult)

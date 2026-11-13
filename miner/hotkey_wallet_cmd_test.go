@@ -184,7 +184,7 @@ func TestHotkeyWalletChallengeThenSetWithAnOfflineColdkeySignature(t *testing.T)
 	}
 	for _, line := range []string{
 		"----- message -----\n" + message + "\n----- end -----\n",
-		"provider wallet hotkey set " + setup.coldkeySs58() + " --hotkey_seed_file='" + setup.hotkeySeedPath + "' --message='" + snEscapeMessage(message) + "'",
+		"provider wallet hotkey set " + setup.coldkeySs58() + " --hotkey_seed_file=" + snWalletShellValue(setup.hotkeySeedPath) + " --message-file=" + snWalletShellValue(filepath.Join(hotkeyWalletStore(setup.base).Directory, hotkeyWalletMessageFileName)) + " --signature=0x<128 hex chars>",
 	} {
 		if !strings.Contains(printed, line) {
 			t.Fatalf("challenge output lacks %q:\n%s", line, printed)

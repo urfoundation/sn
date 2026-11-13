@@ -16,6 +16,15 @@ lives in forge. Entry points: `NewSTSubnet()` plus
 `Pack*/TryPack*/Unpack*` wrappers, `Unpack*Event(log)` for events, and `Unpack*Error(raw)`
 for custom errors.
 
+The settlement v2 contracts, `STSettlement2`, `STSettlementVault2`,
+`STClaimBatcher` and the capture the flag carry contract `STCtfCarry`, share
+struct types and are bound in one combined pass, `stsettlement2.go`. The
+`STSettlement2` binding is the proxy's surface: it is generated from its newest
+implementation, `STSettlement2Ctf` (`CAPTURETHEFLAG.md` §3.1), which keeps every
+phase A and phase C function, event and error and adds `registerCtfPool`,
+`commitCtfCensus`, `ctfCensus`, `ctfSettlementAt` and `ctfPoolId`. Calls the
+proxy's live implementation lacks revert until its upgrade executes.
+
 Use `./generate.sh --preflight` to resolve and validate the pinned generator
 without reading artifacts or regenerating files. Release gates run this check
 before their long test phases, then use `./generate.sh --check` for freshness.

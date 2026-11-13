@@ -107,32 +107,16 @@ func buildStoragePreparationFixedOwner(ctx context.Context, staging *os.File, na
 		return miner.BuildFreshStoragePreparation(ctx, staging, name, owner, ownerLocal)
 	case "mainnet-successor-local-members", "mainnet-successor-nonce-members":
 		return buildStoragePreparationMembers(ctx, staging, name, owner, ownerLocal)
+	case chain.NativeJournalPreparationKind:
+		return chain.BuildFreshNativeJournalPreparation(ctx, staging, name, owner)
 	}
-	var files []durablevolume.PreparationFile
-	var attributes []durablevolume.PreparationAttributeSpec
-	var census any
-	if owner.Kind == chain.NativeJournalPreparationKind {
-		var scope chain.NativeJournalPreparationScope
-		if err := decodePlanJson(owner.Inputs, &scope); err != nil {
-			return durablevolume.PreparationOwnerPlan{}, err
-		}
-		var err error
-		files, err = chain.NativeJournalPreparationLayout(scope)
-		if err != nil {
-			return durablevolume.PreparationOwnerPlan{}, err
-		}
-		census = scope
-		attributes = []durablevolume.PreparationAttributeSpec{{Path: ".", Name: chain.NativeJournalCustodyAttribute}}
-	} else {
-		spec, scope, err := storagePreparationSnapshotSpec(ownerLocal, owner)
-		if err != nil {
-			return durablevolume.PreparationOwnerPlan{}, err
-		}
-		files = []durablevolume.PreparationFile{storagePreparationEmptyFile(spec.LockName)}
-		attributes = []durablevolume.PreparationAttributeSpec{{Path: spec.LockName, Name: durablehead.Attribute(spec.Kind, spec.Name)}}
-		census = scope
+	spec, scope, err := storagePreparationSnapshotSpec(ownerLocal, owner)
+	if err != nil {
+		return durablevolume.PreparationOwnerPlan{}, err
 	}
-	raw, err := json.Marshal(census)
+	files := []durablevolume.PreparationFile{storagePreparationEmptyFile(spec.LockName)}
+	attributes := []durablevolume.PreparationAttributeSpec{{Path: spec.LockName, Name: durablehead.Attribute(spec.Kind, spec.Name)}}
+	raw, err := json.Marshal(scope)
 	if err != nil {
 		return durablevolume.PreparationOwnerPlan{}, err
 	}
@@ -165,45 +149,26 @@ func inspectStoragePreparationFixedOwner(ctx context.Context, target *os.File, o
 		return miner.InspectFreshStoragePreparation(ctx, target, owner, ownerLocal)
 	case "mainnet-successor-local-members", "mainnet-successor-nonce-members":
 		return inspectStoragePreparationMembers(ctx, target, owner, ownerLocal)
+	case chain.NativeJournalPreparationKind:
+		return chain.InspectFreshNativeJournalPreparation(ctx, target, owner)
 	}
-	var files []durablevolume.PreparationFile
-	var spec durablevolume.PreparationAttributeSpec
-	var checkpoint func() ([]byte, error)
-	if owner.Owner.Kind == chain.NativeJournalPreparationKind {
-		var scope, census chain.NativeJournalPreparationScope
-		if err := errors.Join(decodePlanJson(owner.Owner.Inputs, &scope), decodePlanJson(owner.Census, &census)); err != nil {
-			return nil, err
-		}
-		if scope != census {
-			return nil, errors.New("native preparation census changed its reviewed capacity vector")
-		}
-		var err error
-		files, err = chain.NativeJournalPreparationLayout(scope)
-		if err != nil {
-			return nil, err
-		}
-		spec = durablevolume.PreparationAttributeSpec{Path: ".", Name: chain.NativeJournalCustodyAttribute}
-		checkpoint = func() ([]byte, error) { return chain.BuildFreshNativeJournalPreparationCheckpoint(ctx, target, scope) }
-	} else {
-		headSpec, scope, err := storagePreparationSnapshotSpec(ownerLocal, owner.Owner)
-		if err != nil {
-			return nil, err
-		}
-		var census storageSnapshotPreparationScope
-		if err := decodePlanJson(owner.Census, &census); err != nil {
-			return nil, err
-		}
-		if scope != census {
-			return nil, errors.New("snapshot preparation census changed its fixed fresh format")
-		}
-		files = []durablevolume.PreparationFile{storagePreparationEmptyFile(headSpec.LockName)}
-		spec = durablevolume.PreparationAttributeSpec{Path: headSpec.LockName, Name: durablehead.Attribute(headSpec.Kind, headSpec.Name)}
-		checkpoint = func() ([]byte, error) { return storagePreparationEmptySnapshotMarker(ctx, target, headSpec) }
+	headSpec, scope, err := storagePreparationSnapshotSpec(ownerLocal, owner.Owner)
+	if err != nil {
+		return nil, err
 	}
+	var census storageSnapshotPreparationScope
+	if err := decodePlanJson(owner.Census, &census); err != nil {
+		return nil, err
+	}
+	if scope != census {
+		return nil, errors.New("snapshot preparation census changed its fixed fresh format")
+	}
+	files := []durablevolume.PreparationFile{storagePreparationEmptyFile(headSpec.LockName)}
+	spec := durablevolume.PreparationAttributeSpec{Path: headSpec.LockName, Name: durablehead.Attribute(headSpec.Kind, headSpec.Name)}
 	if !reflect.DeepEqual(files, owner.Files) || len(owner.Attributes) != 1 || owner.Attributes[0] != spec {
 		return nil, errors.New("fresh owner plan changed its fixed member or checkpoint census")
 	}
-	raw, err := checkpoint()
+	raw, err := storagePreparationEmptySnapshotMarker(ctx, target, headSpec)
 	if err != nil {
 		return nil, err
 	}

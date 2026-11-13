@@ -117,7 +117,7 @@ func TestMinerStatusFileFollowsProgress(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer progress.close()
-	stop := startMinerStatusFile(t.Context(), progress)
+	stop := startMinerStatusFile(t.Context(), progress, nil, nil)
 	deadline := time.Now().Add(5 * time.Second)
 	var status *minerLocalStatus
 	for time.Now().Before(deadline) {
@@ -467,10 +467,12 @@ func TestServiceInstallWithSystemd(t *testing.T) {
 
 func TestSetupReadsTheWalletChallenge(t *testing.T) {
 	message := "URnetwork wallet mapping\nnonce: 42\ncoldkey: 5Grw"
-	text := snWalletChallengeText("5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY", &sdk.AuthWalletChallengeResult{MessageTemplate: message, ExpiresIn: 300})
-	match := setupMessagePattern.FindStringSubmatch(text)
-	if match == nil || match[1] != message {
-		t.Fatalf("%q", match)
+	for _, messageFile := range []string{"", "/synthetic/.provider.jwt.wallet-challenge.txt"} {
+		text := snWalletChallengeText("5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY", &sdk.AuthWalletChallengeResult{MessageTemplate: message, ExpiresIn: 300}, messageFile)
+		match := setupMessagePattern.FindStringSubmatch(text)
+		if match == nil || match[1] != message {
+			t.Fatalf("%q", match)
+		}
 	}
 }
 

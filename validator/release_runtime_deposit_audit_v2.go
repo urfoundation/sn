@@ -12,6 +12,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"path/filepath"
+	"reflect"
 
 	"github.com/urfoundation/sn/protocol"
 	"github.com/urfoundation/sn/stabi"
@@ -133,7 +134,7 @@ func (self *releaseRuntimeV2) buildDepositAuditPublicationV2(ctx context.Context
 // The existing exact subject, when present, is replayed at its original pins.
 // A failed native attempt cannot manufacture a second observation by changing
 // its intent lineage or today's chain head within that same immutable subject.
-func (self *releaseRuntimeV2) prepareDepositAuditPublicationV2(ctx context.Context, decision ReleaseMeasurementV2Decision, audits []DepositAudit, options ValidatorEvidencePublicationV2ReadOptions, hooks releaseMeasurementInputV2ReadHooks) (result *releaseDepositAuditPreparedV2, observedOptions ValidatorEvidencePublicationV2ReadOptions, resultErr error) {
+func (self *releaseRuntimeV2) prepareDepositAuditPublicationV2(ctx context.Context, decision ReleaseMeasurementV2Decision, audits []DepositAudit, priceEntry *ReleaseDepositPriceEntry, options ValidatorEvidencePublicationV2ReadOptions, hooks releaseMeasurementInputV2ReadHooks) (result *releaseDepositAuditPreparedV2, observedOptions ValidatorEvidencePublicationV2ReadOptions, resultErr error) {
 	path, err := ValidatorEvidenceDepositAuditV2ManifestPath(self.cfg.StateDir, options.Window.Epoch, options.Window.Subject)
 	if err != nil {
 		return nil, options, err
@@ -169,15 +170,22 @@ func (self *releaseRuntimeV2) prepareDepositAuditPublicationV2(ctx context.Conte
 		if retained.Schema != releaseDepositAuditPreparedV2Schema || retained.Manifest == nil || retained.Publication == nil || retained.Manifest.Epoch != options.Window.Epoch || retained.Manifest.Subject != options.Window.Subject || len(retained.Publication.Members) != len(options.Activations) {
 			return nil, options, errors.New("deposit audit prepared custody escaped its original coordinate slot")
 		}
-		decision, audits = retained.Manifest.Decision, nil
-		for _, member := range retained.Publication.Members {
+		// The retained audits were judged under their own signed price, which a later
+		// attempt at this subject may have moved past.
+		decision, audits, priceEntry = retained.Manifest.Decision, nil, nil
+		for index, member := range retained.Publication.Members {
 			payload, err := decodeValidatorEvidenceDepositAuditV2Payload(ctx, member.Payload, options.Bounds.MaxTransitionBytes)
 			if err != nil {
 				return nil, options, err
 			}
 			audits = append(audits, payload.Audit)
+			if index == 0 {
+				priceEntry = payload.DepositPriceEntry
+			} else if !reflect.DeepEqual(priceEntry, payload.DepositPriceEntry) {
+				return nil, options, errors.New("deposit audit prepared members disagree on their signed price")
+			}
 		}
-		payloads, window, err := self.depositAuditSourcesV2(ctx, decision, audits)
+		payloads, window, err := self.depositAuditSourcesV2(ctx, decision, audits, priceEntry)
 		if err != nil {
 			return nil, options, err
 		}
@@ -202,7 +210,7 @@ func (self *releaseRuntimeV2) prepareDepositAuditPublicationV2(ctx context.Conte
 	if count >= options.Bounds.CaptureFileLimit() || used >= options.Bounds.MaxHistoryBytes {
 		return nil, options, errors.New("deposit audit prepared history exceeds its finite census")
 	}
-	payloads, window, err := self.depositAuditSourcesV2(ctx, decision, audits)
+	payloads, window, err := self.depositAuditSourcesV2(ctx, decision, audits, priceEntry)
 	if err != nil {
 		return nil, options, err
 	}
@@ -263,7 +271,7 @@ func (self *releaseRuntimeV2) publishDepositAuditV2WithReadHooks(ctx context.Con
 	if err != nil {
 		return err
 	}
-	prepared, options, err := self.prepareDepositAuditPublicationV2(ctx, decision, artifact.DepositAudits, options, hooks)
+	prepared, options, err := self.prepareDepositAuditPublicationV2(ctx, decision, artifact.DepositAudits, artifact.DepositPriceEntry, options, hooks)
 	if err != nil {
 		return err
 	}

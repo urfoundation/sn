@@ -63,6 +63,8 @@ type depositAuditPublicationV2TestFixture struct {
 	outage               atomic.Bool
 	refuseLast           atomic.Bool
 	stopOrigins          [2]func()
+	// Answers the operator routes a usage audit reads. It returns false for the rest.
+	usageRoutes atomic.Value
 }
 
 // Extend the existing actual activation/runtime fixture with independently
@@ -73,9 +75,9 @@ func newDepositAuditPublicationV2TestFixture(t *testing.T, mode string) *deposit
 
 // Larger source observations choose their complete signed provider census and
 // independent bounds before the real runtime and HTTP owners are constructed.
-func newDepositAuditPublicationV2TestFixtureWithBounds(t *testing.T, mode string, bounds *ReleaseEvidenceV2Bounds, providerCount int) *depositAuditPublicationV2TestFixture {
+func newDepositAuditPublicationV2TestFixtureWithBounds(t *testing.T, mode string, bounds *ReleaseEvidenceV2Bounds, providerCount int, configure ...func(*ReleaseConfig)) *depositAuditPublicationV2TestFixture {
 	t.Helper()
-	self := &depositAuditPublicationV2TestFixture{base: newReleaseRuntimeV2TestFixtureWithBounds(t, bounds), chain: newReleaseDecisionV2TestFixture(t), mode: mode}
+	self := &depositAuditPublicationV2TestFixture{base: newReleaseRuntimeV2TestFixtureWithBounds(t, bounds, configure...), chain: newReleaseDecisionV2TestFixture(t), mode: mode}
 	runtime, chain := self.base.runtime, self.chain
 	cfg := runtime.cfg
 	// Startup's private explicit-artifact fixture uses genuine tiny metadata.
@@ -144,7 +146,7 @@ func newDepositAuditPublicationV2TestFixtureWithBounds(t *testing.T, mode string
 		t.Fatal(err)
 	}
 	required, _, err := protocol.RequiredDepositRao(self.payout.TotalUsageBytes, self.payout.TotalUsers, chain.bigConviction, cfg.Policy.Deposit)
-	if err != nil || required.Sign() <= 0 {
+	if err != nil || required.Sign() <= 0 && !cfg.Policy.IsZeroPrice() {
 		t.Fatalf("actual payout deposit: %v", err)
 	}
 	for index := range chain.versions {
@@ -182,6 +184,9 @@ func newDepositAuditPublicationV2TestFixtureWithBounds(t *testing.T, mode string
 		}
 		proxy := httputil.NewSingleHostReverseProxy(original)
 		endpoint := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			if routes, _ := self.usageRoutes.Load().(func(http.ResponseWriter, *http.Request) bool); routes != nil && routes(writer, request) {
+				return
+			}
 			if request.URL.Path == "/sn/artifacts" || request.URL.Path == "/sn/artifact" {
 				self.payoutReads.Add(1)
 				writer.Header().Set("Content-Type", "application/json")

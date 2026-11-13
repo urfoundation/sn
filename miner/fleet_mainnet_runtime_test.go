@@ -12,6 +12,7 @@ import (
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/docopt/docopt-go"
+	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/protocol"
@@ -83,6 +84,26 @@ func TestFleetMainnetAuthorityFileRequiresExactApprovedBytes(t *testing.T) {
 		if _, err := loadFleetMainnetRuntimeAuthority(fixture.opts, fixture.manifest); err == nil {
 			t.Errorf("%s accepted", item.name)
 		}
+	}
+}
+
+// Explorers and docs show an address checksummed, and a document holds it in
+// lowercase. The loader refuses the other form rather than normalizing it.
+func TestFleetMainnetAuthorityRefusesAChecksummedCoordinator(t *testing.T) {
+	fixture := newFleetMainnetTestFixture(t)
+	coordinator := common.HexToAddress("0xabcdefabcdefabcdefabcdefabcdefabcdefabcd")
+	fixture.manifest.Coordinator = [20]byte(coordinator)
+	authority := fixture.authority
+	authority.Coordinator = strings.ToLower(coordinator.Hex())
+	if err := authority.validate(fixture.manifest); err != nil {
+		t.Fatal("lowercase coordinator refused: ", err)
+	}
+	authority.Coordinator = coordinator.Hex()
+	if authority.Coordinator == strings.ToLower(authority.Coordinator) {
+		t.Fatal("the test needs a mixed-case address")
+	}
+	if err := authority.validate(fixture.manifest); err == nil {
+		t.Fatal("checksummed coordinator accepted")
 	}
 }
 

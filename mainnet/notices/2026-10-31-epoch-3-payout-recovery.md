@@ -57,3 +57,41 @@ own schedule (close around November 6, 18:25–22:25; claims from around Novembe
 
 Nothing. Recovered payouts are claimed the same way as regular v2 payouts once
 their epoch's claims open.
+
+## Update, November 6
+
+- **Step 1 is done.** The recovery root was committed at the end of epoch 4,
+  at block 9,449,041
+  ([transaction](https://evm.taostats.io/tx/0x1731a110aba17ae0827a502896f84ba82b0e2d9e45792e8a380dd3f4f838662a)).
+  The funds reach the v2 vault after its 48-hour challenge period, around
+  **November 8, 18:25**.
+- **The signed upgrade of the v2 settlement contract is in place.**
+- **Changes to the v2 settlement contract now wait 72 hours** behind a public
+  timelock, which has owned the contract since November 6, 17:43
+  ([transaction](https://evm.taostats.io/tx/0x832da70ea60d269ee5a8542c3d42e56378f665f045481aae818e8ea3e4ccebea)).
+  Adding the recovered funds to epoch 5's payout is one such change. It will
+  be scheduled by **November 10, 18:25**, so that it takes effect before epoch
+  5 closes.
+- **The schedule is unchanged:** the funds are paid out with epoch 5, with
+  claims from around November 15. If the addition misses epoch 5, the payout
+  moves to epoch 6 and we will update this notice.
+
+## Update, November 11
+
+- **Step 2 is done.** The recovery root finalized on November 8 at block
+  9,463,231
+  ([transaction](https://evm.taostats.io/tx/0xc9fa804023288aefdb381d0c19dd8f1ef8559530715b045f87475e695a51d6f9)),
+  and the funds reached the v2 vault at 18:30
+  ([claim](https://evm.taostats.io/tx/0x18c4e8d3f72ceaea1b6f275b54b27786967a834822e3ae1539d084bc06a7ea28),
+  [escrow](https://evm.taostats.io/tx/0xaa66b41505da170231e52a36db68c12198990241a3b1977663bce76d90ce93dc)).
+  They are epoch 1's 3,482.26 α and epoch 3's 4,132.72 α, with 499.31 α that
+  the v1 vault captured at the end of epoch 4.
+- **Adding the funds to epoch 5's payout was not scheduled** by November 10,
+  18:25. Every change to the v2 settlement contract waits 72 hours, so it can
+  no longer take effect before epoch 5 closes, and the recovered funds are not
+  paid with epoch 5. Epoch 5's regular payout is unaffected.
+- **The funds stay in the v2 vault** until they are added to a later epoch's
+  payout. We will update this notice when that is scheduled.
+- **Epoch 4's claims opened on November 8, at 19:10,** when the first v2 root
+  finalized at block 9,463,438
+  ([transaction](https://evm.taostats.io/tx/0x6001380acdf1d850e6dbfc1e4bf22bac9d1e59c9d1075d56b1697c797ef26147)).

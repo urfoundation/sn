@@ -289,18 +289,32 @@ func attemptSettlementV2Qualities(stats VerifiedReleaseStats) []AttemptSettlemen
 // The private observer belongs to one ordinary/terminal composition. It never
 // replaces either projection, policy checks, proof EOF or joined reader Close.
 func (self *attemptSettlementV2Operation) replay(ctx context.Context, visitRecord func(uint64, AttemptRecord) error, derive bool) (VerifiedAttemptSettlementV2, error) {
+	return self.replayEach(ctx, derive, func(noID uint64, transition *AttemptSettlementTransitionV2, operator AttemptSettlementV2OperatorOptions) (VerifiedAttemptCutV2Measurement, error) {
+		var visit func(AttemptRecord) error
+		if visitRecord != nil {
+			visit = func(record AttemptRecord) error { return visitRecord(noID, record) }
+		}
+		return verifyReleaseStatsAndHeadWithAttemptCutV2(ctx, transition.PreFold, transition.Cut, operator.Expected, operator.Policy, operator.Bounds, operator.Measurement, visit)
+	})
+}
+
+// The same terminal verification for a measurement's joint replay, whose only
+// observers are prior-prefix checkpoints: a process's completed replay of a cut
+// answers them, and a repeated verification reads nothing again.
+func (self *attemptSettlementV2Operation) replayOnce(ctx context.Context, checkpoints map[uint64]*releaseMeasurementV2Checkpoint) (VerifiedAttemptSettlementV2, error) {
+	return self.replayEach(ctx, false, func(noID uint64, transition *AttemptSettlementTransitionV2, operator AttemptSettlementV2OperatorOptions) (VerifiedAttemptCutV2Measurement, error) {
+		return verifyReleaseStatsAndHeadOnce(ctx, transition.PreFold, transition.Cut, operator.Expected, operator.Policy, operator.Bounds, operator.Measurement, checkpoints[noID])
+	})
+}
+
+func (self *attemptSettlementV2Operation) replayEach(ctx context.Context, derive bool, verify func(uint64, *AttemptSettlementTransitionV2, AttemptSettlementV2OperatorOptions) (VerifiedAttemptCutV2Measurement, error)) (VerifiedAttemptSettlementV2, error) {
 	result := VerifiedAttemptSettlementV2{Operators: make(map[uint64]VerifiedAttemptCutV2Measurement, len(self.closure.Transitions))}
 	for _, transition := range self.closure.Transitions {
 		if err := ctx.Err(); err != nil {
 			return VerifiedAttemptSettlementV2{}, err
 		}
 		noID := transition.Identity.NoID
-		operator := self.options.Operators[noID]
-		var visit func(AttemptRecord) error
-		if visitRecord != nil {
-			visit = func(record AttemptRecord) error { return visitRecord(noID, record) }
-		}
-		verified, err := verifyReleaseStatsAndHeadWithAttemptCutV2(ctx, transition.PreFold, transition.Cut, operator.Expected, operator.Policy, operator.Bounds, operator.Measurement, visit)
+		verified, err := verify(noID, transition, self.options.Operators[noID])
 		if err != nil {
 			return VerifiedAttemptSettlementV2{}, fmt.Errorf("compact settlement no_id %d replay: %w", noID, err)
 		}

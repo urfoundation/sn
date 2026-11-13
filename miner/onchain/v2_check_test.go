@@ -1381,3 +1381,51 @@ func TestV2CheckRecoveryRootAsDeclared(t *testing.T) {
 		t.Fatalf("overfunded recovery: %v\n%s", err, output)
 	}
 }
+
+// A watcher takes a root's extender components as declared (WHITEPAPER.md
+// §8.6.4): snclaim v2 check approves a v3 header whose census and share rows
+// hold, without the amendments file, and refuses one whose share rows are not
+// its census's even split of the capped pool bytes, with nothing sent.
+func TestV2CheckExtenderRootAsDeclared(t *testing.T) {
+	s := newV2CheckScenario(t)
+	funded := v2Funded(10, 1_000_003, 11, 1_600_000, 12, 2_500_000)
+	census := []ledger.CensusRow{
+		{ExtenderID: [16]byte{0x21}, ClientID: [16]byte{0x51}, Coldkey: [32]byte{0xd1}, Unit: [32]byte{0x31}, Family: ledger.UnitIPv4, Flags: ledger.CensusActive},
+		{ExtenderID: [16]byte{0x22}, ClientID: [16]byte{0x52}, Coldkey: [32]byte{0xd2}, Unit: [32]byte{0x31}, Family: ledger.UnitIPv4, Flags: ledger.CensusActive},
+		{ExtenderID: [16]byte{0x23}, ClientID: [16]byte{0x53}, Coldkey: [32]byte{0xd3}, Unit: [32]byte{0x32}, Family: ledger.UnitIPv6, Flags: ledger.CensusActive},
+	}
+	p, err := ledger.Build(context.Background(), ledger.BuildInput{NoID: v2TestPool, Epoch: 12, FirstEpoch: 10, FundedThrough: funded, Previous: &ledger.Previous{Root: s.f.Commit, Accounts: s.f.Accounts}, Epochs: []ledger.EpochInput{
+		{Epoch: 11, Rows: []protocol.LedgerUsageRow{v2Row(1, 1, 250), v2Row(3, 2, 250), v2Row(5, 3, 100), v2Row(8, 5, 300), v2Row(10, 0, 50)}},
+		{Epoch: 12, Rows: []protocol.LedgerUsageRow{v2Row(3, 2, 500), v2Row(11, 7, 500), v2Row(12, 5, 10), v2Row(13, 8, 7)},
+			Extenders: &ledger.ExtenderInput{Bytes: 401, Census: census}},
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(p.Header), `"schema":"`+ledger.SchemaV3+`"`) || p.Epochs[1].Extenders == nil || p.Epochs[1].Extenders.Weight != 401 {
+		t.Fatalf("not a v3 root with an extender component: %s", p.Header)
+	}
+	maps.Copy(s.c.objects, p.Objects)
+	s.c.pending = stabi.ISTSettlementVault2Pending{Seq: 2, Root: p.Commit.Root, Total: p.Commit.Total.ToBig(), LeafCount: p.Commit.LeafCount, Epoch: p.Commit.Epoch, LedgerHash: p.Commit.LedgerHash, CommittedBlock: v2TestHead - 1_000}
+	output, err := s.c.run(s.c.checkArgv("--challenge", "--demand", "--chain_id=945"))
+	if err != nil || !strings.Contains(output, "  audit:             approve\n") || len(s.c.transactions()) != 0 {
+		t.Fatalf("extender root: %v\n%s\nobserved %s", err, output, s.c.observed())
+	}
+	// Share rows that are not the census's even split, here Z raised by a byte
+	// with the rows kept, are refused, with nothing sent.
+	header, err := ledger.DecodeHeader(p.Header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	header.Epochs[1].Extenders.Bytes++
+	data, err := ledger.EncodeHeader(header)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.c.objects[ledger.RefOf(data)] = data
+	s.c.pending.LedgerHash = ledger.RefOf(data)
+	output, err = s.c.run(s.c.checkArgv("--chain_id=945"))
+	if err != nil || !strings.Contains(output, "refuse (extenders check") || len(s.c.transactions()) != 0 {
+		t.Fatalf("a wrong split: %v\n%s", err, output)
+	}
+}

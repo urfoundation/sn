@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 
 	"github.com/holiman/uint256"
@@ -55,10 +56,15 @@ var (
 	// or repeated key, an escaped string, or null in place of a number or a
 	// string.
 	ErrHeaderNotCanonical = errors.New("ledger: header is not canonical")
-	// ErrHeaderSchema is returned for a schema other than Schema.
-	ErrHeaderSchema = errors.New("ledger: header schema is not " + Schema)
-	// ErrHeaderNull is returned for "epochs" or "accounts" written as null.
+	// Returned for a schema other than the one the header's epochs call
+	// for: Schema without an extender component, SchemaV3 with one.
+	ErrHeaderSchema = errors.New("ledger: header schema is not " + Schema + ", or " + SchemaV3 + " for a header with an extender component")
+	// Returned for "epochs", "accounts" or an extender component's
+	// "census" or "rows" written as null.
 	ErrHeaderNull = errors.New("ledger: header has null outside providers")
+	// Returned for an extender component on an epoch declared
+	// unrecoverable.
+	ErrHeaderExtenders = errors.New("ledger: an unrecoverable epoch has an extender component")
 	// ErrTooManyEpochs is returned for more than 96 covered epochs.
 	ErrTooManyEpochs = errors.New("ledger: more than 96 covered epochs")
 	// ErrChunkLength is returned for a chunk that is not a whole number of
@@ -282,6 +288,29 @@ type HeaderEpoch struct {
 	// Recovery lists the epoch's recovery components ("recovery"), written
 	// only when there is one (§16 step 6).
 	Recovery []HeaderRecovery
+	// The epoch's extender component ("extenders", WHITEPAPER.md §8.6.4),
+	// written for an epoch the extender pool amendment covers and for no
+	// other. A header with one is SchemaV3.
+	Extenders *HeaderExtenders
+}
+
+// One covered epoch's extender component.
+type HeaderExtenders struct {
+	// Z, the epoch's extender pool bytes, before the cap.
+	Bytes uint64
+	// The census chunks, CensusRowBytes-byte rows.
+	Census []Ref
+	// The extender share row chunks, ProviderRowBytes-byte rows; empty when no
+	// extender is eligible or Z is 0.
+	Rows []Ref
+}
+
+// Reports the same bytes, census and share rows.
+func (self *HeaderExtenders) Equal(other *HeaderExtenders) bool {
+	if self == nil || other == nil {
+		return self == other
+	}
+	return self.Bytes == other.Bytes && slices.Equal(self.Census, other.Census) && slices.Equal(self.Rows, other.Rows)
 }
 
 // HeaderRecovery is one recovery component of a covered epoch: the funding
@@ -311,6 +340,24 @@ type headerEpochJSON struct {
 	Epoch     uint64               `json:"epoch"`
 	Providers []string             `json:"providers"`
 	Recovery  []headerRecoveryJSON `json:"recovery"`
+	Extenders *headerExtendersJson `json:"extenders"`
+}
+
+// An extender component as a header is encoded and decoded.
+type headerExtendersJson struct {
+	Bytes  uint64   `json:"bytes"`
+	Census []string `json:"census"`
+	Rows   []string `json:"rows"`
+}
+
+// The schema the header's epochs call for.
+func (h *headerJSON) schema() string {
+	for i := range h.Epochs {
+		if h.Epochs[i].Extenders != nil {
+			return SchemaV3
+		}
+	}
+	return Schema
 }
 
 type headerRecoveryJSON struct {
@@ -323,9 +370,11 @@ type headerRecoveryJSON struct {
 // JSON numbers. An epoch's "recovery" key follows its "providers" and is
 // written only when the epoch has a recovery component, so a header without
 // one has the bytes it had before recovery existed, and "recovery":[] or
-// null is not canonical. Strings are written without escaping; a header
-// whose strings need escaping fails the schema or reference rules, so the
-// bytes accepted are exactly the canonical JSON.
+// null is not canonical. Its "extenders" key comes last, written only for an
+// epoch with an extender component, so a header without one keeps the bytes
+// it had before the extender pool existed. Strings are written without
+// escaping; a header whose strings need escaping fails the schema or
+// reference rules, so the bytes accepted are exactly the canonical JSON.
 func (h *headerJSON) appendJSON(b []byte) []byte {
 	b = append(b, `{"schema":"`...)
 	b = append(b, h.Schema...)
@@ -361,6 +410,15 @@ func (h *headerJSON) appendJSON(b []byte) []byte {
 					b = append(b, '}')
 				}
 				b = append(b, ']')
+			}
+			if extenders := h.Epochs[i].Extenders; extenders != nil {
+				b = append(b, `,"extenders":{"bytes":`...)
+				b = strconv.AppendUint(b, extenders.Bytes, 10)
+				b = append(b, `,"census":`...)
+				b = appendStrings(b, extenders.Census)
+				b = append(b, `,"rows":`...)
+				b = appendStrings(b, extenders.Rows)
+				b = append(b, '}')
 			}
 			b = append(b, '}')
 		}
@@ -405,7 +463,14 @@ func EncodeHeader(h *Header) ([]byte, error) {
 			}
 			raw.Epochs[i].Recovery = append(raw.Epochs[i].Recovery, entry)
 		}
+		if extenders := h.Epochs[i].Extenders; extenders != nil {
+			if h.Epochs[i].Null {
+				return nil, fmt.Errorf("%w: epoch %d", ErrHeaderExtenders, h.Epochs[i].Epoch)
+			}
+			raw.Epochs[i].Extenders = &headerExtendersJson{Bytes: extenders.Bytes, Census: refStrings(extenders.Census), Rows: refStrings(extenders.Rows)}
+		}
 	}
+	raw.Schema = raw.schema()
 	data := raw.appendJSON(nil)
 	if len(data) > maxHeaderBytes {
 		return nil, fmt.Errorf("%w: %d bytes", ErrHeaderTooLarge, len(data))
@@ -423,9 +488,12 @@ func refStrings(refs []Ref) []string {
 
 // DecodeHeader decodes a canonical header. It decodes with unknown fields
 // refused and requires that re-encoding reproduce the bytes exactly
-// (§6.5), then checks the schema, that null appears only for providers, the
-// epoch count and every reference. Which recovery components a root must
-// list is a fact of the chain that Verify checks (CheckRecovery).
+// (§6.5), then checks the schema (SchemaV3 exactly when an epoch has an
+// extender component), that null appears only for providers, that no
+// unrecoverable epoch has an extender component, the epoch count and every
+// reference. Which recovery components a root must list is a fact of the
+// chain that Verify checks (CheckRecovery), and which epochs must carry an
+// extender component one of the signed amendment entry (CheckExtenders).
 func DecodeHeader(data []byte) (*Header, error) {
 	if len(data) > maxHeaderBytes {
 		return nil, fmt.Errorf("%w: %d bytes", ErrHeaderTooLarge, len(data))
@@ -442,7 +510,7 @@ func DecodeHeader(data []byte) (*Header, error) {
 	if !bytes.Equal(raw.appendJSON(nil), data) {
 		return nil, ErrHeaderNotCanonical
 	}
-	if raw.Schema != Schema {
+	if raw.Schema != raw.schema() {
 		return nil, ErrHeaderSchema
 	}
 	if raw.Epochs == nil || raw.Accounts == nil {
@@ -465,6 +533,22 @@ func DecodeHeader(data []byte) (*Header, error) {
 				return nil, err
 			}
 			epoch.Recovery = append(epoch.Recovery, recovery)
+		}
+		if entry := raw.Epochs[i].Extenders; entry != nil {
+			if epoch.Null {
+				return nil, fmt.Errorf("%w: epoch %d", ErrHeaderExtenders, epoch.Epoch)
+			}
+			if entry.Census == nil || entry.Rows == nil {
+				return nil, ErrHeaderNull
+			}
+			extenders := &HeaderExtenders{Bytes: entry.Bytes}
+			if extenders.Census, err = parseRefs(entry.Census); err != nil {
+				return nil, err
+			}
+			if extenders.Rows, err = parseRefs(entry.Rows); err != nil {
+				return nil, err
+			}
+			epoch.Extenders = extenders
 		}
 	}
 	if h.Accounts, err = parseRefs(raw.Accounts); err != nil {

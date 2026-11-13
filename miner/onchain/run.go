@@ -13,7 +13,9 @@
 // accepted but unpaid v1 claim credit (VERSION2-FINAL.md §10.2). `snclaim
 // v2` reads, claims and watches settlement v2 accounts in vault2: status,
 // one claim, and check, which audits a pool's pending root and can
-// challenge or demand it (v2.go).
+// challenge or demand it (v2.go). An operator's capture the flag pool,
+// vault2 pool 2^32 + n, is claimed as any pool is, and check audits it with
+// the capture the flag audit (v2_ctf.go; CAPTURETHEFLAG.md §8, §10).
 package onchain
 
 import (
@@ -37,7 +39,7 @@ Usage:
     snclaim v2 status --coldkey=<key> --vault=<vault> --rpc=<url>... [--api_url=<url>] [--chain_id=<id>]
     snclaim v2 claim --coldkey=<key> [--no_id=<n>] [--index=<i>] --vault=<vault> --rpc=<url>... --key_file=<path> [--api_url=<url>] [--chain_id=<id>] [--gas_limit=<n>] [--dry-run]
     snclaim v2 claim --all --coldkey=<key> [--batch=<batcher>] --vault=<vault> --rpc=<url>... --key_file=<path> [--api_url=<url>] [--chain_id=<id>] [--gas_limit=<n>] [--dry-run]
-    snclaim v2 check --all --vault=<vault> --no_id=<n> --rpc=<url>... [--api_url=<url>] [--challenge] [--demand] [--key_file=<path>] [--chain_id=<id>] [--gas_limit=<n>] [--dry-run]
+    snclaim v2 check --all --vault=<vault> --no_id=<n> --rpc=<url>... [--api_url=<url>] [--amendments_url=<url>] [--drand_url=<url>] [--challenge] [--demand] [--key_file=<path>] [--chain_id=<id>] [--gas_limit=<n>] [--dry-run]
     snclaim -h | --help
     snclaim --version
 
@@ -48,7 +50,9 @@ Options:
                        claim(uint256,uint256,bytes32,uint256,bytes32[])
                        (0xce479a1b).
     --epoch=<e>        Finalized epoch number.
-    --no_id=<n>        Network operator (pool) id.
+    --no_id=<n>        Network operator (pool) id. v2: a vault2 pool, the
+                       operator's pool n or its capture the flag pool
+                       2^32 + n (4294967297 for operator 1).
     --coldkey=<key>    Recipient coldkey: ss58 address (Bittensor prefix 42)
                        or 32-byte hex pubkey (0x-optional).
     --share_bps=<n>    Payout share in basis points (1..10000).
@@ -65,6 +69,15 @@ Options:
                        /sn/ledger/account below its path and
                        /sn/ledger/object on its host, as the validator
                        reads objects [default: https://api.bringyour.com].
+    --amendments_url=<url>  v2 check of a capture the flag pool: the
+                       signed settlement amendments, whose capture the flag
+                       entry in force gives E_c and the carry contract; only
+                       entries signed by the price sheet's pinned key count
+                       [default: https://ur.xyz/amendments.yml].
+    --drand_url=<url>  v2 check of a capture the flag pool: a drand relay
+                       serving quicknet's pulses, GET <url>/<chain hash>/
+                       public/<round>; each pulse must verify against
+                       quicknet's key [default: https://api.drand.sh].
     --index=<i>        v2 claim: the account index to claim, with --no_id
                        when the coldkey has accounts in several pools.
     --all              v2 claim: claim every finalized account of the
@@ -83,7 +96,10 @@ Options:
                        or do not reproduce it, demand the paths of the §9.3
                        demand set, paying demandFeeWei each.
     --rpc=<url>        EVM JSON-RPC endpoint; repeatable, tried in order
-                       until one answers (failover).
+                       until one answers (failover). v2 check of a capture
+                       the flag pool reads the head bindings its draws leave
+                       out at past blocks, as the validator does: give it an
+                       archive node.
     --key_file=<path>  File holding the hex-encoded 32-byte secp256k1 EVM
                        private key that signs the transaction.
     --chain_id=<id>    Expected chain id; errors if the RPC reports a

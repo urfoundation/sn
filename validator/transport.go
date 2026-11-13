@@ -32,7 +32,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	mathrand "math/rand"
+	mathrand "math/rand/v2"
 	"net"
 	"net/http"
 	"net/netip"
@@ -260,6 +260,19 @@ func (self *TunnelTransport) currentByClientJwt() (string, error) {
 // size stays well above the 16 KiB transport message ceiling a contract must fit.
 const tunnelContractTransferByteCount = connect.ByteCount(256 << 10)
 
+// A tunnel's TLS session with its provider establishes within seconds or not
+// at all. In the 11-03 08:30-09:30Z journal, 5,336 client-role handshakes
+// completed, the slowest in 2.48 s (p99 1.32 s), and the 2,590 that did not
+// all ran out connect's 60 s default. In 11-02 22:00Z-00:05Z, through
+// restarts and an API storm, 6 of 6,073 took over 10 s, at most 18.8 s.
+// Provider-initiated handshakes completed within 2.2 s. The session is
+// opportunistic with no establish hold, so it never holds the /verify
+// exchange for its handshake: until it seals, the exchange rides in plaintext
+// inside its own HTTPS. The timeout therefore decides no hop. It bounds how
+// long a session that will not establish keeps its handshake workers and
+// proof resends: 10 s, inside the 30 s step, instead of 30 s past its end.
+const tunnelTlsTimeout = 10 * time.Second
+
 // Returns fresh settings for every derived tunnel client. Provider clients
 // advertise opportunistic encryption and may initiate the TLS session on their
 // return sequence. An encryption-off validator can carry the plaintext proof,
@@ -274,6 +287,7 @@ func newTunnelClientSettings() *connect.ClientSettings {
 	// contract instead, which the platform refuses because public providers
 	// publish no stream key, so each such request waited out its timeout.
 	clientSettings.EncryptionSettings.EncryptionControlUseCompanion = false
+	clientSettings.EncryptionSettings.TlsTimeout = tunnelTlsTimeout
 	// Providers must be able to read the derived client's identity key before
 	// the generator admits tunnel traffic, not merely after a delivery ack.
 	clientSettings.ClientKeyRegistrationRequired = true
@@ -511,7 +525,7 @@ func NewFindProvidersSeedPicker(api *sdk.Api, selfClientId connect.Id) SeedPicke
 		if len(candidates) == 0 {
 			return connect.Id{}, fmt.Errorf("no seed providers available")
 		}
-		return candidates[mathrand.Intn(len(candidates))], nil
+		return candidates[mathrand.IntN(len(candidates))], nil
 	}
 }
 

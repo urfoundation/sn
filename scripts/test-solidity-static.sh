@@ -56,9 +56,10 @@ cd "$evm_repo"
 # sim-testnet. The coordinator root traverses immutable custody, proxy libraries,
 # and runtime-precompile interfaces. The fleet batcher, disposable precompile
 # probe, hostile governance-drill implementation, immutable validator evidence
-# journal, settlement v2 coordinator and its phase C upgrade, immutable
-# settlement v2 vault and its optional claim batcher are separate deployment
-# roots analyzed independently.
+# journal, settlement v2 coordinator, its phase C and capture the flag
+# upgrades, immutable settlement v2 vault, its optional claim batcher and the
+# immutable capture the flag carry contract are separate deployment roots
+# analyzed independently.
 # The settlement v2 ledger sum tree library is analyzed as a root of its own.
 contracts=(
   src/STCoordinator.sol
@@ -69,8 +70,10 @@ contracts=(
   src/LedgerTree.sol
   src/STSettlement2.sol
   src/STSettlement2PhaseC.sol
+  src/STSettlement2Ctf.sol
   src/STSettlementVault2.sol
   src/STClaimBatcher.sol
+  src/STCtfCarry.sol
 )
 # Every root is analyzed even after another fails, so that one root's finding
 # cannot hide the next root's; any failure still fails the gate at the end.
@@ -146,8 +149,29 @@ elif ! jq -e --slurpfile base layout/STSettlement2.json '
   failed+=(layout/STSettlement2PhaseC.json)
 fi
 
+# The capture the flag upgrade (CAPTURETHEFLAG.md §3.1) restates phase C
+# rather than inheriting it, so its pin must keep every phase C entry in place,
+# phase C's V1Sweep struct member for member, and declare its own entries only
+# past phase C's last slot.
+ctf_layout="$(FOUNDRY_OUT="$slither_foundry_out" FOUNDRY_CACHE_PATH="$slither_foundry_cache" \
+  forge inspect STSettlement2Ctf storageLayout --json | jq -S "$phase_c_filter")" || ctf_layout=""
+if ! diff -u layout/STSettlement2Ctf.json - <<<"$ctf_layout"; then
+  echo "STSettlement2Ctf storage layout differs from layout/STSettlement2Ctf.json" >&2
+  failed+=(layout/STSettlement2Ctf.json)
+elif ! jq -e --slurpfile base layout/STSettlement2PhaseC.json '
+  def entries: map({"label": .label, "slot": .slot, "offset": .offset, "type": .type});
+  ($base[0].storage | entries) as $kept
+  | (($base[0].storage[-1].slot | tonumber) + 1) as $free
+  | (.storage | entries) as $all
+  | $all[0:($kept | length)] == $kept and ([$all[($kept | length):][] | (.slot | tonumber) >= $free] | all)
+    and (.types["t_struct(V1Sweep)_storage"].members | entries) == ($base[0].types["t_struct(V1Sweep)_storage"].members | entries)' \
+  <<<"$ctf_layout" >/dev/null; then
+  echo "STSettlement2Ctf storage layout does not extend STSettlement2PhaseC's" >&2
+  failed+=(layout/STSettlement2Ctf.json)
+fi
+
 if (( ${#failed[@]} != 0 )); then
   echo "release Solidity static gate failed for: ${failed[*]}" >&2
   exit 1
 fi
-echo "release Solidity static gate passed for all ${#contracts[@]} deployable roots (Slither 0.11.6; no high/medium findings; STSettlement2 and STSettlement2PhaseC storage layouts pinned)"
+echo "release Solidity static gate passed for all ${#contracts[@]} deployable roots (Slither 0.11.6; no high/medium findings; STSettlement2, STSettlement2PhaseC and STSettlement2Ctf storage layouts pinned)"

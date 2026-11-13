@@ -182,10 +182,10 @@ func TestReleaseRateAmendmentDecisionRequiresActualChainTransition(t *testing.T)
 	if err := fixture.chain.authenticateReleaseStartupBoundaryV2WithPolicy(t.Context(), originalDomain, 1, boundary, false, false, &cfg, oldHash); err == nil {
 		t.Fatal("old journal relabeled at a new policy boundary")
 	}
-	actual.EpochDepositCapRao.Add(actual.EpochDepositCapRao, big.NewInt(1))
+	actual.EpochDepositCapRao.Sub(actual.EpochDepositCapRao, big.NewInt(1))
 	fixture.set(t, "policyAt", fixture.chain.coordinator.PackPolicyAt(new(big.Int).SetUint64(boundary.SettlementEpoch)), actual)
 	if err := fixture.chain.authenticateReleaseStartupBoundaryV2WithPolicy(t.Context(), originalDomain, 1, boundary, false, false, &cfg, newHash); err == nil {
-		t.Fatal("on-chain changed cap escaped exact document verification")
+		t.Fatal("an on-chain cap below the document's escaped verification")
 	}
 }
 

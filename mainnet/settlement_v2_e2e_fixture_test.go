@@ -37,6 +37,7 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/holiman/uint256"
 
+	"github.com/urfoundation/sn/demand/pricesheet"
 	"github.com/urfoundation/sn/ledger"
 	"github.com/urfoundation/sn/merkle"
 	"github.com/urfoundation/sn/miner/onchain"
@@ -45,13 +46,22 @@ import (
 	"github.com/urfoundation/sn/stabi"
 )
 
-// The test executable enters the real snclaim command under its name.
+// The test executable enters the real snclaim command under its name. The
+// capture the flag test signs its settlement amendments with its own key,
+// which e2eAmendmentSignerEnv names in place of the price sheet's pinned key
+// (settlement_v2_e2e_ctf_test.go).
 func init() {
 	if len(os.Args) > 0 && os.Args[0] == "snclaim" {
+		if signer := os.Getenv(e2eAmendmentSignerEnv); signer != "" {
+			pricesheet.MainnetSigner = common.HexToAddress(signer)
+		}
 		onchain.Run(os.Args[1:])
 		os.Exit(0)
 	}
 }
+
+// e2eAmendmentSignerEnv names the amendment signer of an snclaim run.
+const e2eAmendmentSignerEnv = "URNETWORK_E2E_AMENDMENT_SIGNER"
 
 const (
 	e2eNoID         = 1
@@ -110,9 +120,14 @@ func e2eCatalogArtifact(t testing.TB, name string) *e2eArtifact {
 }
 
 // e2eForgeSources are the contracts the suite reads from a Foundry build of
-// sn/evm: the phase C coordinator upgrade.
+// sn/evm: the phase C coordinator upgrade, the capture the flag upgrade built
+// on it and its carry contract, and the pinned OpenZeppelin
+// TimelockController that owns STSettlement2 on mainnet since 2026-11-06.
 var e2eForgeSources = []struct{ source, name string }{
 	{"src/STSettlement2PhaseC.sol", "STSettlement2PhaseC"},
+	{"src/STSettlement2Ctf.sol", "STSettlement2Ctf"},
+	{"src/STCtfCarry.sol", "STCtfCarry"},
+	{"lib/openzeppelin-contracts/contracts/governance/TimelockController.sol", "TimelockController"},
 }
 
 // e2eForgeBuild builds those sources once per test binary in a private
@@ -239,6 +254,8 @@ type e2eFixture struct {
 	// first built with (§6.4 fixed inputs).
 	rows   map[uint64][]protocol.LedgerUsageRow
 	chunks map[uint64][]ledger.Ref
+	// snclaimEnv is added to the environment of every snclaim run.
+	snclaimEnv []string
 }
 
 // newE2EFixture deploys v1 and v2 and registers pool 1 for v2 from
@@ -706,10 +723,14 @@ type e2ePublisher struct {
 	objects map[ledger.Ref][]byte
 	views   map[[32]byte]*e2eTreeView
 	server  *httptest.Server
+	// pools are the vault2 pools whose accounts GET /sn/ledger/account
+	// serves, in order: pool 1, and the capture the flag pool once a test
+	// adds it.
+	pools []uint64
 }
 
 func newE2EPublisher(t testing.TB, f *e2eFixture) *e2ePublisher {
-	publisher := &e2ePublisher{t: t, f: f, objects: map[ledger.Ref][]byte{}, views: map[[32]byte]*e2eTreeView{}}
+	publisher := &e2ePublisher{t: t, f: f, objects: map[ledger.Ref][]byte{}, views: map[[32]byte]*e2eTreeView{}, pools: []uint64{e2eNoID}}
 	publisher.server = httptest.NewServer(publisher)
 	t.Cleanup(publisher.server.Close)
 	return publisher
@@ -827,24 +848,30 @@ func (self *e2ePublisher) serveAccount(writer http.ResponseWriter, request *http
 		}
 		return out
 	}
-	var finalized, pending *e2eTreeView
-	var rootIndex uint64
-	if count := new(big.Int).SetBytes(read(e2eVault2Binding.PackRootCount(e2eRao(e2eNoID)))).Uint64(); count > 0 {
-		root, err := e2eVault2Binding.UnpackRoots(read(e2eVault2Binding.PackRoots(e2eRao(e2eNoID), e2eRao(count-1))))
-		if err != nil {
-			self.t.Error(err)
+	self.lock.Lock()
+	pools := slices.Clone(self.pools)
+	self.lock.Unlock()
+	for _, noID := range pools {
+		var finalized, pending *e2eTreeView
+		var rootIndex uint64
+		if count := new(big.Int).SetBytes(read(e2eVault2Binding.PackRootCount(e2eRao(noID)))).Uint64(); count > 0 {
+			root, err := e2eVault2Binding.UnpackRoots(read(e2eVault2Binding.PackRoots(e2eRao(noID), e2eRao(count-1))))
+			if err != nil {
+				self.t.Error(err)
+			}
+			rootIndex, finalized = count-1, self.view(root.Root)
 		}
-		rootIndex, finalized = count-1, self.view(root.Root)
-	}
-	if next, err := e2eVault2Binding.UnpackPending(read(e2eVault2Binding.PackPending(e2eRao(e2eNoID)))); err != nil {
-		self.t.Error(err)
-	} else if next.Seq != 0 {
-		pending = self.view(next.Root)
-	}
-	finalizedIndex, inFinalized := find(finalized)
-	pendingIndex, inPending := find(pending)
-	if inFinalized || inPending {
-		entry := e2eAccountEntry{Vault: strings.ToLower(f.vault2.Hex()), NoID: e2eNoID, Cumulative: "0"}
+		if next, err := e2eVault2Binding.UnpackPending(read(e2eVault2Binding.PackPending(e2eRao(noID)))); err != nil {
+			self.t.Error(err)
+		} else if next.Seq != 0 {
+			pending = self.view(next.Root)
+		}
+		finalizedIndex, inFinalized := find(finalized)
+		pendingIndex, inPending := find(pending)
+		if !inFinalized && !inPending {
+			continue
+		}
+		entry := e2eAccountEntry{Vault: strings.ToLower(f.vault2.Hex()), NoID: noID, Cumulative: "0"}
 		if inFinalized {
 			proof, err := finalized.tree.Proof(finalizedIndex)
 			if err != nil {
@@ -861,7 +888,7 @@ func (self *e2ePublisher) serveAccount(writer http.ResponseWriter, request *http
 			value := pending.accounts[pendingIndex].Cumulative.Dec()
 			entry.PendingCumulative = &value
 		}
-		entry.Claimed = new(big.Int).SetBytes(read(e2eVault2Binding.PackClaimed(e2eRao(e2eNoID), e2eRao(entry.Index)))).String()
+		entry.Claimed = new(big.Int).SetBytes(read(e2eVault2Binding.PackClaimed(e2eRao(noID), e2eRao(entry.Index)))).String()
 		accounts = append(accounts, entry)
 	}
 	writer.Header().Set("Content-Type", "application/json")
@@ -877,7 +904,7 @@ func (f *e2eFixture) snclaim(args ...string) (string, string, int) {
 		f.t.Fatal(err)
 	}
 	home := f.t.TempDir()
-	command := &exec.Cmd{Path: executable, Args: append([]string{"snclaim"}, args...), Env: []string{"HOME=" + home, "TMPDIR=" + home, "PATH=" + os.Getenv("PATH")}}
+	command := &exec.Cmd{Path: executable, Args: append([]string{"snclaim"}, args...), Env: append([]string{"HOME=" + home, "TMPDIR=" + home, "PATH=" + os.Getenv("PATH")}, f.snclaimEnv...)}
 	var stdout, stderr bytes.Buffer
 	command.Stdout, command.Stderr = &stdout, &stderr
 	err = command.Run()

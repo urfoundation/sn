@@ -40,7 +40,27 @@ type productionContinuationNativeTestClient struct {
 	nonceKVs          map[uint64]uint32
 	receiptNumber     uint64
 	applied           bool
-	call              func(context.Context, any, string, ...any) error
+	// When set, it selects per height whether the applied row is the intent's
+	// exact row (true) or another row the same hotkey revealed there (false).
+	appliedAt func(uint64) bool
+	// Weight-row reads by selected height, when not nil.
+	weightReads map[uint64]int
+	// A weight-row read at one of these heights fails with its error.
+	weightErrorKVs map[uint64]error
+	call           func(context.Context, any, string, ...any) error
+}
+
+// The weight fallback's reserve-shaped row: one target the intent does not
+// weight, so it differs from the intent's row in census and content.
+func productionContinuationReplacedRow(t *testing.T, prepared *crv4.PreparedSubmission) []byte {
+	t.Helper()
+	other := uint16(0)
+	for _, uid := range prepared.UIDs {
+		other = max(other, uid+1)
+	}
+	row := releaseNativeValidatorTestCompact(t, 1)
+	row = binary.LittleEndian.AppendUint16(row, other)
+	return binary.LittleEndian.AppendUint16(row, 65535)
 }
 
 func (self *productionContinuationNativeTestClient) Subscribe(ctx context.Context, namespace, subscribe, unsubscribe, notification string, target any, args ...any) (*gsrpcgeth.ClientSubscription, error) {
@@ -164,7 +184,16 @@ func installProductionContinuationNative(t *testing.T, fixture *productionContin
 				binary.LittleEndian.PutUint32(row, self.nonceKVs[selected])
 				return assign(codec.HexEncodeToString(row))
 			}
-			if args[0] == weightsKey && self.applied {
+			if args[0] == weightsKey && (self.applied || self.appliedAt != nil) {
+				if self.weightReads != nil {
+					self.weightReads[selected]++
+				}
+				if err := self.weightErrorKVs[selected]; err != nil {
+					return err
+				}
+				if self.appliedAt != nil && !self.appliedAt(selected) {
+					return assign(codec.HexEncodeToString(productionContinuationReplacedRow(t, prepared)))
+				}
 				row := releaseNativeValidatorTestCompact(t, uint64(len(prepared.UIDs)))
 				for index, uid := range prepared.UIDs {
 					row = binary.LittleEndian.AppendUint16(row, uid)

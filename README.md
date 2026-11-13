@@ -34,8 +34,10 @@ flow is [`diagrams/mechanism.png`](diagrams/mechanism.png).
 
 ![Deposits move one way into the immutable reserve sink; conviction sets the rate tier](diagrams/readme/03-deposits.svg)
 
-Each NO deposits α sized to its real usage, taken from its signed payout artifact for the
-**previous** epoch, at an **off‑chain published rate** (no on‑chain oracle). The NO stakes
+Each NO deposits α sized to its real usage for the **previous** epoch, taken from its signed
+usage statement (its signed payout artifact for epochs before settlement version 2), at the rate in
+the **signed price sheet** published at <https://ur.xyz/price.yml> (no on‑chain oracle;
+[`WHITEPAPER.md`](WHITEPAPER.md) §7.1). The NO stakes
 the α on its own deposit hotkey; its deposit signer then calls `deposit` on `STCoordinator`,
 which moves the exact amount into the immutable `STReserveSink`, staked on the fixed reserve
 hotkey. The reserve hotkey is the **owner‑validator hotkey**, set at initialize
@@ -45,14 +47,24 @@ validator's consensus weight.
 
 A NO's cumulative locked α (its **conviction**) sets its **tier**, and the tier sets its
 **rate**: zero conviction pays the baseline rate, and more conviction lowers it. The tier is
-snapshotted before each epoch. A missing or mismatched deposit sets that NO's pool weight to 0.
+snapshotted before each epoch. The deposit is audited at every steering pass: until the deposit
+so far this epoch equals the amount owed, that NO's pool weight is 0 on that pass, and overpaying
+fails too. So the NO pays as early in the epoch as it can. From the start of each priced epoch until
+the previous epoch's usage is committed on chain, its totals are published and the deposit has
+landed, the pool carries no weight.
 Deposits are the costly signal of real demand, and the NO is expected to fund them by buying α
-on the market from revenue (the buyback, §7.4). That purchase is off‑chain and not enforced.
+on the market from revenue (the buyback, §7.4). That purchase is off‑chain and not enforced: no
+contract or validator checks where the α came from, and a correct deposit may come from any source
+of α. The reference server's route for converting USDC to α is a choice of operator software, not a
+protocol rule.
 
-**Policy modes.** The signed policy chooses how usage is priced (`rao_per_gib` today; per‑user
-pricing is a schema option) and what a zero rate means. With
+**Policy modes.** Each entry of the price sheet is signed by a key pinned in the software, and sets
+the rates and the per‑epoch cap from its effective epoch without changing the signed policy or its
+hash. With no signed entry in force, the signed policy's schedule applies: it chooses how usage is
+priced (`rao_per_gib` today; per‑user pricing is a schema option) and what a zero rate means. With
 `zero_rate_action: equal_demand`, no deposits are required or audited and every pool carries
-the same implied demand, so measured quality alone steers the pool channel. The shipped
+the same implied demand, so measured quality alone steers the pool channel. That is the launch
+mode, and a signed entry of all zero rates returns to it. The shipped
 testnet policy ([`deploy/testnet/policy-v2.yml`](deploy/testnet/policy-v2.yml)) is bytes‑only
 and halts on a zero rate.
 
@@ -82,6 +94,11 @@ pools until pricing is switched on.
 θ only takes effect if a stake‑majority of validators runs the same θ, so it is a published
 governance value, not per‑validator discretion. If no head fleet exists, the θ share cedes to
 the pools (`empty_channel: cede_to_nonempty`).
+
+From epoch 8 (`E_c`), three fixed shares replace θ: the provider pools take 4/10 of the
+providers' share, the NOs' **capture the flag** pools 1/10 between them and the head 5/10, which
+goes to the pools while no head fleet is weighted. A signed amendment entry fixes them, not the
+policy ([`WHITEPAPER.md`](WHITEPAPER.md) §8.5).
 
 > **Mainnet launch.** [`mainnet/MAINNET.md`](mainnet/MAINNET.md) records the SN25 launch.
 > Provider weights fill the **momentum** share of the native miner allocation, **10%** at
@@ -145,10 +162,22 @@ the guarantee is off‑chain and audited through the public payout artifacts.
 validator consensus mature. Hard constraint: the lowest‑paid top miner must earn at least the
 highest‑paid pool provider, or graduating is a pay cut (§8.5).
 
+**Capture the flag (from epoch 8).** Beside its provider pool, each NO has a second
+vault‑owned pool UID, its **CTF pool**. The CTF pools share a tenth of the providers' share, by
+their pools' weights. Each epoch, every one of the 249 ISO 3166‑1 countries has 5 provider and 5 extender **slots** of equal value. The
+NO lists the providers and extenders that were online, passing its checks and in one country
+for at least half of the epoch, and active at its end. It commits that **census** on chain,
+and a drand round published after it draws up to five winners per country and role, with one
+ticket per /29 IPv4 or /48 IPv6 block. An unwon slot carries into its country's **pot**, and
+each winner takes its slot and a fifth of the pot. Winners are paid to the payout wallet the
+provider pool already uses, and claim beside it. See [`CAPTURETHEFLAG.md`](CAPTURETHEFLAG.md)
+and [`WHITEPAPER.md`](WHITEPAPER.md) §8.7.
+
 **UID budget.** All of this shares 256 UIDs:
 `head fleets + one pool UID per NO + validator UIDs + owner and escrow identities ≤ 256`
 (§14). The head gets what is left; for example 64 validators, 2 NOs and 2 owner/escrow UIDs
-leave 188 head slots.
+leave 188 head slots. From epoch 8 each NO also has a CTF pool UID, so the same example leaves
+186.
 
 ### Custody and trust model
 
@@ -175,7 +204,7 @@ The UR Subnet follows the Bittensor core almost everywhere and diverges only del
 Of the major design decisions, **12 are aligned** with prevailing practice, **2 are
 divergent** (reward settlement/custody and the worker‑payout trust model — both *toward*
 trustlessness), and **2 are genuinely novel bets**: coupling miner reward to real,
-revenue‑backed demand (`implied_usage × quality`, inactive while the published price is
+revenue‑backed demand (`implied_usage × quality`, inactive while the price in force is
 zero) and tiering miners into a trust‑minimized pooled tail plus a directly‑paid head.
 
 ![UR Subnet vs. the Bittensor norm — design‑decision alignment matrix](diagrams/comparison_matrix.png)
@@ -272,16 +301,25 @@ the finite UID budget and undermine the intended ~200-member head.
 
 | Term | Meaning |
 |---|---|
-| **NO** | Network Operator: runs privacy servers and `/verify`, owns one pool UID, commits payout roots. |
+| **NO** | Network Operator: runs privacy servers and `/verify`, owns one pool UID (two from epoch 8, with its CTF pool), commits payout roots. |
 | **Provider** | A machine carrying ingress or egress traffic, identified by a `client_id`. |
 | **Fleet** | One hotkey bound to many `client_id`s; the unit that competes in the head. |
 | **Pool UID** | The single vault‑owned miner UID that represents one NO's tail providers. |
-| **θ (theta)** | Share of the miner allocation steered to the head; `1−θ` goes to pools. |
+| **θ (theta)** | Share of the miner allocation steered to the head; `1−θ` goes to pools. From epoch 8 three fixed shares replace it: provider pools 4/10, CTF pools 1/10, head 5/10. |
 | **Q_n** | Pool quality: exposure‑weighted liveness and latency of a NO's tail providers. |
 | **implied_usage** | A NO's audited usage priced at the baseline rate; 1 for every pool at zero price. |
 | **Conviction** | A NO's cumulative locked deposits; sets its rate tier. |
+| **Price sheet** | The file at <https://ur.xyz/price.yml>. Only its signed entries set rates and the per‑epoch cap. |
+| **Usage statement** | A NO's signed statement of one epoch's bytes and users, which sizes and audits the next epoch's deposit. |
 | **Routable‑IP breadth** | Split‑adjusted count of distinct /29 or /48 egress‑prefix hashes a fleet routed. |
 | **Payout root** | Merkle root of `(coldkey, share bps)` leaves splitting one NO's pool for one epoch. |
+| **Capture the flag (CTF)** | From epoch 8, a per‑country coverage auction beside the provider pool: each epoch, every one of the 249 ISO 3166‑1 countries has 5 provider and 5 extender slots, drawn among the NO's eligible miners there ([`CAPTURETHEFLAG.md`](CAPTURETHEFLAG.md)). |
+| **CTF pool** | A NO's second vault‑owned pool, vault2 pool `2^32 + n` (UR's is 4294967297), with its own UID. The CTF pools share 1/10 of the providers' share, by their pools' weights. Each settles and is claimed like the provider pool, and pays winners to the payout wallet the provider pool already uses. |
+| **Slot** | One CTF prize: a country, a role (provider or extender) and a rank 1–5, 2,490 in all. Each is worth the CTF pool's fresh funding for the epoch ÷ 2,490. |
+| **Pot** | What a country's unwon slots of one role carry forward. Each winner takes its own slot and a fifth of the pot, and the rest keeps carrying. |
+| **Census** | A NO's per‑epoch list of its CTF candidates, one row per candidate (role, country, keyed /29 or /48 unit, client id), committed on chain by hash before the drand round that draws the winners. The extender pool's census lists its extenders ([`WHITEPAPER.md`](WHITEPAPER.md) §8.6.2). |
+| **Carry contract** | `STCtfCarry`, immutable and ownerless, one per CTF pool. Each root pays the pots and pending awards to its account, and anyone can call `recycle` to return them to the CTF pool for the next epoch. |
+| **E_c** | Capture the flag's first epoch: epoch 8, fixed by a signed amendment entry in [`amendments.yml`](amendments.yml), beside the price sheet. |
 | **Epoch** | The 7‑day settlement period (50,400 blocks on mainnet). |
 | **Tempo** | Bittensor's 360‑block weight and emission cycle, ~72 min. |
 | **vtrust** | How closely a validator's weights match the stake‑weighted consensus; scales its dividends. |
@@ -320,3 +358,11 @@ records the earlier pinned revisions and the original module-resolution
 regression tests.
 The [incremental composition record](mainnet/evidence/incremental-source-composition-20260929.md)
 retains the completed SDK/MG06 checks and explicitly pending broad SDK race run.
+
+---
+
+## Security contributions
+
+Report vulnerabilities privately, as described at [ur.xyz/vdp](https://ur.xyz/vdp). With their consent, we credit reporters here.
+
+- Settlement vault restatement issue (F2) reported by James (τ68) & Mochi — fixed on 2026‑11‑06: the settlement v2 contract is now owned by a 72‑hour timelock, and every dispute and governance event pages the team.

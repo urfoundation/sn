@@ -104,6 +104,17 @@ func (self *releaseStartupVerified) add(unit [32]byte) {
 	}
 }
 
+// Like has, for a lookup that may not use what it finds: it counts nothing.
+func (self *releaseStartupVerified) knows(unit [32]byte) bool {
+	if self == nil {
+		return false
+	}
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	_, found := self.units[unit]
+	return found
+}
+
 // Runs verify unless an identical unit already passed. Only a complete
 // success is remembered; verify reports whether its success may be.
 func (self *releaseStartupVerified) onceIf(kind string, inputs any, verify func() (bool, error)) error {

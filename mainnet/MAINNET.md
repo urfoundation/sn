@@ -40,6 +40,20 @@ steps that the launch replaced.
   `e2de5acf…`, 30 gwei fee cap) and the launch readiness digest `10541276…1924`. `config/main/sn.yml` activation is
   `reviewed`. The operator's enablement and the reserved validator-upload block follow the validator's epoch-1 start.
 
+## STSettlement2 behind a 72 h timelock — November 6
+
+The governance Safe no longer owns the settlement v2 coordinator directly.
+- **Timelock.** OpenZeppelin 5.6.1 `TimelockController` `0x5529dfe070f73A96C14b5aFCf4fb3DdeA6122fAc`, created by the
+  Ledger deployer at block 9,448,589. Its minimum delay is 72 h. The Safe alone proposes and cancels, the zero address
+  executes, so anyone runs a ready call, and only the timelock administers itself.
+- **Transfer.** The Safe's `execTransaction` of `transferOwnership(timelock)` on STSettlement2
+  `0xB5e3e23CD1A733410d769b0C95e1c4CA25e821b0` landed at block 9,448,608 (Safe nonce 6).
+- **Owner calls.** `setAuditors`, upgrades, `assignSurplus`, `recordV1Sweep` and `registerOperatorPool` now take the
+  Safe's `schedule`, then, at least 72 h later, an `execute`. `upgrade-settlement2 review` and
+  `owner-call-settlement2 review` build both with `--timelock`
+  ([BOOTSTRAP-CONTRACTS.md](BOOTSTRAP-CONTRACTS.md#stsettlement2s-timelock)). The Safe still owns the v1 coordinator
+  directly.
+
 ## Fleet commitments get their own format — October 15
 
 The validator exclusion below was a heuristic: the permit is read at the head and can lapse (the owner UID 1 steers

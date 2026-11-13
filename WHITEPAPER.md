@@ -93,7 +93,10 @@ Merkle claim. A fleet is matched to its UID by a **signed `client_id`s → hotke
 with deregistration churn running that tournament. Both tiers share **one** mechanism's 256-UID metagraph
 (§14); a governance split **θ** sets how much of the providers' share of the 41% miner emission flows to
 the head vs. the pools (§8.4–8.5). On SN25 that share, the **momentum** `μ`, is 1/10 at launch, and the
-native treasury multisig `ur‑reserve` receives the rest (§8.5).
+native treasury multisig `ur‑reserve` receives the rest (§8.5). From epoch 8 (`E_c`) three fixed shares
+replace θ: the pools take 4/10, the head 5/10 (the pools' while no fleet is weighted), and 1/10 funds the NOs'
+**capture the flag** pools, split by their pools' weights: a per‑country auction that pays miners for being
+present in every country (§8.5, §8.7).
 
 The subnet **launches centralized‑but‑bounded** — an upgradeable policy coordinator owned by a dedicated
 testnet key and, on mainnet, a Safe multisig (1-of-1 at the SN25 launch; a Safe transaction can add owners and
@@ -217,7 +220,9 @@ Money flows in three coupled channels, all in α:
    distinct routable egress-IP count**, as their own native UIDs), and `1−θ` to the NO pools above. On SN25
    that share, the **momentum** `μ`, is 1/10 at launch: the signed treasury policy has validators weight
    the other 9/10 to two recipient UIDs of `ur‑reserve`, a native treasury multisig separate from the
-   buyback reserve (§8.5). Validator emission (41%) flows **natively** to the independent validators
+   buyback reserve (§8.5). From `E_c` (epoch 8) a tenth of the providers' share instead funds the NOs'
+   **capture the flag** pools, each NO's second vault‑owned UID, split by their pools' weights, and the pools
+   and the head share the rest 4 : 5 (§8.5, §8.7). Validator emission (41%) flows **natively** to the independent validators
    ∝ stake × vtrust.
 
 3. **Settlement (contract).** Over a 7‑day epoch the contract accrues the **captured miner emission**,
@@ -663,8 +668,8 @@ version 2 lifecycle (`VERSION2-FINAL.md` §5), in blocks after the epoch's end b
                      vault2 refuses any commit within 14,400 blocks of the pool's previous commit.
 ```
 
-Deposits, emission weighting, and dividend capture happen continuously across the epoch at tempo
-cadence; only **settlement** waits for the epoch boundary + windows.
+Emission weighting, dividend capture and the deposit audit happen continuously across the epoch at tempo
+cadence (§7.1); only **settlement** waits for the epoch boundary + windows.
 
 ---
 
@@ -921,6 +926,9 @@ upgradeable proxy. The reserve is publicly auditable every finalized block:
   finalizes a root only after an auditor quorum (at launch the validator alone) approves it, and the
   coordinator's pause also stops v2 closes, commits and finalization, never claims, approvals, challenges
   or demands.
+- **Prices.** On SN25 the key pinned to sign the price sheet (§7.1) is the sole owner of the launch Safe. A
+  signed entry can set any price up to the coordinator's on‑chain cap, for all operators; it moves no funds
+  and does not change the policy.
 - **Treasury:** the 18% owner cut accrues to SN25's owner coldkey, the `ur‑owner` native multisig, not to
   the Safe (a governance treasury later, §6.4.3). The native treasury `ur‑reserve`, a separate 2‑of‑3
   multisig, receives the miner allocation beyond the providers' momentum share (9/10 at launch) through its
@@ -974,17 +982,79 @@ is *the α actually deposited*. A NO stages α on its isolated deposit hotkey an
 The **"global fixed rate"** survives as an **off‑chain published reference** — now a **schedule of
 deposit rates per conviction tier** (§7.3): `rate(tier)` has **two components**, `rate_gib` (α per GiB of
 real usage) and `rate_user` (α per distinct user), over one shared denominator, and a NO's required
-deposit for an epoch is `floor(bytes × rate_gib / GiB + users × rate_user)`, capped per epoch. `bytes` and
-`users` are the totals of the NO's **signed payout artifact** for the previous epoch (`total_usage_bytes`
-and `total_users` — the latter the same distinct‑users figure its public stats feed publishes per block),
-so the reported usage is signed and audited against the deposit (§8.1), but it still enters no on‑chain
+deposit for an epoch is `floor(bytes × rate_gib / GiB + users × rate_user)`, capped per epoch. The rates
+and the cap are those in force for that epoch, and they price the previous epoch's usage. `bytes` and
+`users` are the totals of the NO's **signed usage** for the previous epoch (`total_usage_bytes`
+and `total_users` — the latter the same distinct‑users figure its public stats feed publishes per block).
+An "active user" means `total_users`: a distinct top‑level client with contract usage in the epoch window.
+The reported usage is signed and audited against the deposit (§8.1), but it still enters no on‑chain
 computation. In release 1.0 (D25) this schedule is read by **the validators** (who set the weights, §8.1)
 as well as by NOs (to size their deposits); it is **never a value the contract consumes**. This keeps a
 whole subsystem (`setRates`, on‑chain rate storage, the TAO/USD feed) and a trusted input out of the
 contract.
 
-**Zero price — the launch mode.** The published schedule may be **entirely zero** (every component of
-every tier), but only when the signed policy says so explicitly: `zero_rate_action: equal_demand`. The
+**The signed price sheet.** Rates come from the signed price sheet published at
+`https://ur.xyz/price.yml`; the owner's steps for turning prices on are in `mainnet/DEPOSIT-PRICES.md`. Each
+entry in its `signed_schedule` is signed (EIP‑191 `personal_sign`) by a key
+pinned in the software, over one line of plain text that names its chain, subnet, effective epoch, cap and
+every tier's rates, so a person signing on a hardware wallet reads exactly what they approve:
+
+```
+UR price sheet v1: chain <chain>, sn <netuid>, from epoch <epoch>, cap <cap> alpha per epoch, tier <threshold> alpha <rate_gib> per GiB <rate_user> per user
+```
+
+The line has one `tier` clause per tier, and every amount in it is an exact decimal of α. On SN25 the pinned
+key is the sole owner of the Safe that owns the coordinator, the same authority that schedules its
+policy (§6.4.1). An entry applies from its effective epoch until a later one takes effect. The owner's signing
+tool refuses an effective epoch earlier than the next one; readers do not check this. A signed entry is
+permanent, so only a later entry can correct it. NOs and validators read the sheet the same way. An
+unverified file is never used: a reader keeps the last good sheet, and it refuses a file that drops or
+changes a signed entry or adds one before an entry it holds. A reader that has never verified a sheet and
+cannot fetch one has no price from it: an NO pays nothing until it can verify one, and a validator steers
+that pass under the signed policy's schedule and logs the problem, so an outage cannot stop steering. The top‑level `tiered_per_block_demand_deposits` is an unsigned mirror
+for people and has no authority.
+
+**With no signed entry in force, the signed policy's schedule stays in force.** At launch that is the
+explicit zero‑price mode below. A deployment with no pinned key, such as the testnet, has no published price
+and stays on its signed policy's schedule. The signed policy document and its hash do not change when prices
+change, so consents signed under the client‑key history domain stay valid (`VERSION2-FINAL.md` §2.2). An entry
+replaces the schedule and the cap; the policy's usage lag, tier snapshot and mismatch action still apply.
+
+**Caps.** An entry names the per‑epoch cap the formula uses. The coordinator's own on‑chain cap
+(`epochDepositCapRao`), set through `schedulePolicy` under the same policy hash, must be at least the cap in
+force: the entry's, or the signed policy's while no entry is in force. Its lifetime `campaignDepositCapRao`,
+which the same call sets, must be at least the larger of the signed policy's campaign cap and that on‑chain
+epoch cap. Otherwise validators stop on the mismatch, as they stop on other policy mismatches.
+`schedulePolicy` takes effect only from a later epoch, so a higher on‑chain cap must be scheduled to take
+effect no later than the entry. A deposit reverts once the campaign cap is used up.
+
+**Usage.** Epochs before `E_s` keep the signed payout artifact. Settlement v2 has no payout artifact, so for
+each epoch from `E_s` the NO publishes a signed **usage statement** (schema `urnetwork-epoch-usage-v1`,
+`docs/spec/epoch-usage-v1.schema.json`): its
+artifact key signs it, and its public `/sn/evidence` routes serve it as kind `epoch-usage-v1`, run
+`<noId>-<epoch>`. The NO publishes it after the epoch's root commit, built from the provider chunks the
+committed header lists, with the user count taken at the epoch boundary. Validators take the latest root
+committed for the epoch in its root window (§11.1); a later replacement of that root does not change the audit.
+They use the statement that names that root's chunks for the epoch. Its rows, eligible or not, must match its
+`provider_rows` and sum to its `total_usage_bytes`, so the bytes can be checked against the ledger; the rows
+themselves stay operator‑attested (§8.2). Two statements that verify for the same chunks with different totals
+leave the pool without weight. `total_users` remains an operator attestation, as in a payout artifact: priced by
+the deposit but not independently verified. A statement adds to the ledger and changes none of its bytes, so
+a dispute over users cannot hold up settlement. Only a signed entry in force switches the audit to the statement;
+a deployment priced by its signed policy alone keeps the payout artifact.
+
+**Timing.** A deposit for epoch `e` prices epoch `e−1`'s usage and must land before `e`'s end block, because a
+deposit counts toward the epoch it lands in. It is audited at every steering pass, not only at the end: until
+the deposit so far this epoch equals the amount owed, the pool has no weight on that pass, and overpaying
+fails too. So the NO pays as early in `e` as it can, once `e−1`'s root is committed and its statement
+published, and retries until the deposit lands; the end of the epoch is only the backstop. From the start of each priced epoch until the
+source epoch's usage is committed on chain, its totals are published and the deposit has landed, the pool
+carries no weight, and its share goes as §8.5 says for an empty tier. A commit late in the 1,200‑block root
+window (≈4 h, §5.2) lengthens that gap.
+
+**Zero price — the launch mode.** The schedule in force may be **entirely zero** (every component of
+every tier), but only when that is explicit: the signed policy says `zero_rate_action: equal_demand`, or a
+signed entry of all zero rates returns to this mode. The policy
 default (`halt`) rejects an all‑zero schedule, and a schedule with zero rates in *some* tiers only is
 always invalid, so a zero price can never happen by accident. While the price is zero, NOs make **no
 demand deposits**: none are required and none are audited. Every registered pool is given the **same
@@ -992,14 +1062,14 @@ implied demand** (exactly 1, §8.1), so the validators' measured quality alone s
 voluntary deposit or conviction lock neither helps nor hurts a pool. The head channel, θ, the quality
 clamp and the cede rule are unchanged. This is a deliberate launch mode used while bugs are flushed out
 of the network. Version 2 settles each pool's epochs from E_s through the v2 ledger rather than a payout
-artifact, and the signed policy's `deposit.usage_artifact` field is inert for those epochs. The deposit
-audit stays dormant at zero price, and a priced policy needs its own v2 deposit design
-(`VERSION2-FINAL.md` §9.4).
+artifact, and the signed policy's `deposit.usage_artifact` field is inert for those epochs, whose usage comes
+from the usage statement. The deposit audit stays dormant at zero price and starts with the first signed
+entry that has nonzero rates, which takes no policy change (`VERSION2-FINAL.md` §9.4).
 
 ### 7.2 A deposit is conviction stake (D25)
 
 The deposit anchors the claim: `D_n` (α) is the NO's costly, on‑chain input, and validators audit it
-against the usage the NO's signed payout artifact reports and weight that usage, priced at the
+against the usage the NO signed for the previous epoch (§7.1) and weight that usage, priced at the
 conviction‑zero rate (§8.1). The protocol
 never verifies GB — infeasible and a non‑goal. The deposit is a **costly signal** funded by the NO's
 **real customer revenue**, and it is **conviction stake**: staked into the locked reserve (§7.4) and
@@ -1023,7 +1093,9 @@ onboarding + long‑term‑alignment lever (change #4, D25). Governance publishe
   up‑front α to signal the same usage. A brand‑new NO can either start small at the baseline rate, or
   **pre‑stake conviction** to jump to a better tier from day one.
 - Each component's rate is **non‑increasing with conviction**, and a component is priced in **every tier
-  or in none**. The schedule is governance‑set and published off‑chain (§7.1), read by validators. A
+  or in none**. The schedule is governance‑set and published off‑chain in the signed price sheet (§7.1),
+  read by validators and NOs. A signed entry holds one to eight tiers, begins at conviction zero and has
+  strictly increasing thresholds, and a file with an entry that breaks these rules or has no cap is refused. A
   schedule that is **zero in every tier** is the explicit **zero‑price launch mode** (§7.1): no deposit is
   required or audited and every pool carries the same implied demand. Because validators price the
   *audited usage* rather than dividing the deposit by the rate, a zero rate no longer implies unbounded
@@ -1040,9 +1112,13 @@ buy‑and‑**lock**, `COMPARISON.md`): usage revenue is converted to α and per
 supply, rather than recycled to participants who would re‑sell it.
 
 - **The flow.** The NO funds deposits by **buying α on‑market** from customer revenue — the buy leg is
-  the actual demand pressure, and a sourcing commitment is to be published alongside the §7.1 rate schedule
-  once deposits are priced (the zero‑price `price.yml` carries none; on‑chain code cannot see where α came
-  from, and the commitment makes the buyback claim falsifiable).
+  the actual demand pressure. No contract or validator enforces that purchase: on‑chain code cannot see where
+  α came from, and a correct deposit may come from any source of α. A sourcing commitment, which makes the
+  buyback claim falsifiable, is to be published alongside the §7.1 price sheet once deposits are priced; the
+  sheet's signed entries name only prices and carry none. The reference server's demand deposit task pays from
+  its alpha wallet, which is the coordinator's deposit signer. When that wallet cannot pay in full, the task
+  can convert USDC from a Solana wallet to SN25 α over an on‑chain route (Jupiter, a LayerZero OFT, wTAO, the
+  staking precompile). That route is a choice of operator software, not a protocol rule.
   `deposit(noId, amount)` stages the **full amount** plus a two‑rao rounding allowance, `moveStake`s it to the
   **reserve hotkey** — the owner's validator hotkey (§6.3) — and transfers it into the immutable sink
   coldkey. The two destination share-pool views may each floor one rao; finalized sink credit must still
@@ -1074,8 +1150,9 @@ supply, rather than recycled to participants who would re‑sell it.
 `seed/INCENTIVES.md`: "NO publishes list of their deposits and signs with wallet." No extra commitment is
 needed: each deposit is already an **on‑chain event** (`Deposit(noId,e,funder,amount,policyHash,nonce)`)
 authorized by the scoped deposit signer, so a NO's per‑epoch deposits and cumulative conviction are publicly and authoritatively
-**summable straight from the event log** — that *is* the signed, published deposit list. Validators read
-the coordinator's counters that these events increment, at a hash‑pinned finalized block (§8.1): this
+**summable straight from the event log** — that *is* the signed, published deposit list. At every steering
+pass validators read the coordinator's counters that these events increment, at a hash‑pinned finalized
+block (§8.1): this
 epoch's deposit total for the deposit audit, and cumulative conviction less this epoch's deposits and added
 conviction for the tier (the policy's `conviction_before_epoch` snapshot). The coordinator stores only
 nonces and cap/audit totals, not a weighting oracle (D25); the finalized logs reproduce those totals for
@@ -1090,17 +1167,18 @@ independent replayers.
 **The contract does no weighting.** Independent validators (§9–§10) compute each NO miner‑pool UID's
 score **themselves**, from **published data**, and submit it as Yuma weights; Yuma medians/clips the
 scores and emits to the pool UIDs — so the miners' reward *is* the validators' evaluation. Each validator
-reads, per NO `n`, straight off chain state and its own trails:
+reads, per NO `n`, straight off chain state, signed published data and its own trails:
 
-- **`epoch_deposit_n`** — this epoch's deposit, read from the coordinator (§7.5), together with the NO's
-  signed payout artifact for the previous epoch and its audited **`bytes_n`** and **`users_n`**: the
+- **`epoch_deposit_n`** — this epoch's deposit so far, read from the coordinator (§7.5), together with the
+  NO's signed usage for the previous epoch (§7.1: its payout artifact before `E_s`, its usage statement from
+  `E_s`) and its audited **`bytes_n`** and **`users_n`**: the
   deposit must equal `floor(bytes_n × rate_gib(tier_n) / GiB + users_n × rate_user(tier_n))`, capped, or
-  the pool is zero‑weighted (the deposit audit). This is the release 1.0 audit, dormant at zero price;
-  epochs from `E_s` have no signed payout artifact, so a priced policy needs its own v2 deposit design
-  (`VERSION2-FINAL.md` §9.4);
+  the pool is zero‑weighted on that steering pass (the deposit audit, §7.1). The audit is dormant at zero
+  price (`VERSION2-FINAL.md` §9.4);
 - **`tier_n`** — the NO's conviction tier, from its cumulative locked α before the epoch (§7.2, §7.5), and the
   published
-  two‑component **`rate(tier_n)`** (§7.3);
+  two‑component **`rate(tier_n)`** (§7.3), at the rates in force for this epoch (§7.1), which price the
+  previous epoch's usage;
 - **`Q_n`** — the pool's aggregate provider quality, from the validator's own `VALIDATOR.md` trails.
 
 and sets
@@ -1110,7 +1188,7 @@ weight_n  ∝  implied_demand_n × clamp(Q_n)                                  #
                                                                             # bounds, [0.75, 1] at launch (§12.3)
 implied_demand_n = (bytes_n × rate_gib(0) / GiB + users_n × rate_user(0))   # audited usage priced at the conviction-zero tier
                    × min(1, cap / owed_n)                                   # truncated exactly as the capped deposit was
-implied_demand_n = 1                                                        # while the published price is zero (§7.1)
+implied_demand_n = 1                                                        # while the price in force is zero (§7.1)
 ```
 
 **Implied demand, not raw deposit** (decision A, D25): the audited usage is priced at the **baseline
@@ -1138,7 +1216,9 @@ the **momentum**, is the providers' share of the native miner allocation: on SN2
 pinned by the signed treasury policy, which has validators weight `ur‑reserve`'s recipient UIDs for the
 other `1 − μ` (§8.5); without a treasury policy (testnet) `μ = 1`. With no head fleet weighted, θ cedes and
 the pools share `μ` whole. At about 1 α per block, one pool, a weighted head and θ = 3/10, that is
-0.41 × 50,400 × 1/10 × 7/10 ≈ 1,446 α per epoch. Demand (implied
+0.41 × 50,400 × 1/10 × 7/10 ≈ 1,446 α per epoch. From the capture the flag start epoch `E_c` (epoch 8)
+the factor `(1−θ)` is the pool share of §8.5's three‑way split, 4/10, or 9/10 while no head fleet is
+weighted, and NO `n`'s CTF pool UID accrues `0.41 · E_epoch · μ · 1/10 · ŵ_n` beside it (§8.7). Demand (implied
 usage) anchors `ŵ_n` to revenue‑backed usage (§7); the consensus‑measured `Q_n` modulates it — a NO with
 poor providers earn less even at high demand (swing capped at bootstrap, §12.3). The immutable vault
 captures the realized stake on each pool hotkey at the epoch boundary; it never estimates settlement
@@ -1222,9 +1302,9 @@ the pool's, so only an existing account can be demanded, each at most once per r
 withholding the newest root's ledger cannot shield an older root's accounts. A withheld or garbage node can
 never be opened, so a demanded account is protected even when the tree is not published. A root still
 unfinalized at the end of the next epoch can be replaced, and its epochs' funding stays for the replacement.
-A refused or deleted root does not change the pool's weight while there is one operator: zeroing the pool
+A refused or deleted root does not by itself change the pool's weight while there is one operator: zeroing the pool
 would hand the pool channel to the head (§8.5), or with no head fleet on SN25 the whole row to `ur‑reserve`,
-punishing providers for the operator's fault.
+punishing providers for the operator's fault. The deposit audit is a separate rule (§10).
 
 **Claims are cumulative and permissionless**, and the contract derives the α from **on‑chain state**:
 
@@ -1369,6 +1449,43 @@ faces the deregistration tournament of §8.4. Changing `μ` takes a newly signed
 without a treasury policy (testnet) `μ = 1`. At θ = 3/10, one pool and one head fleet, the row (pool, head,
 the two recipients) is [7/100, 3/100, 9/20, 9/20], u16 [10194, 4369, 65535, 65535].
 
+**From `E_c`: three shares replace θ (capture the flag, §8.7).** From the CTF start epoch `E_c` (epoch 8, the
+owner's decision of 2026‑11‑11) the providers' share splits three ways. Of `μ`, the provider pools take
+**4/10**, the CTF pools **1/10** and the top‑level miners **5/10**:
+
+```
+pool[]      =  { implied_usage_n × Q_n }  normalized so Σ pool = s_pool·μ,  s_pool = 4/10   # the provider pools (§8.1)
+ctf[]       =  { implied_usage_n × Q_n }  normalized so Σ ctf  = s_ctf·μ,   s_ctf  = 1/10   # each NO's CTF pool UID, at its pool's weight (§8.7)
+head[]      =  { EMA(score(u)) }          normalized so Σ head = s_head·μ,  s_head = 5/10   # top-level miners (§8.4)
+treasury[]  =  { (1 − μ)/k each }         # unchanged
+```
+
+A NO's CTF pool takes the same fraction of the CTF channel that its provider pool takes of the pool channel,
+`ctf[n] = s_ctf · μ · ŵ_n` with the validator's own pool weights (§8.1, §10). No CTF‑specific measurement is
+needed: a validator's self‑mask covers both of a NO's UIDs, and a pool that the deposit audit zero‑weights
+zeroes its CTF pool too. The cede rules apply in this order:
+
+1. **CTF is fixed.** When the CTF channel is non‑empty, it gets exactly `s_ctf · μ`.
+2. **Pool and head share the rest in the ratio 4 : 5.** The rest is `(1 − s_ctf) · μ`, or all of `μ` when the
+   CTF channel is empty. When either channel is empty it cedes to the other (`cede_to_nonempty`), so with no
+   head fleet the pools take `9/10 · μ`: the head cedes to the pools only, and CTF stays at 1/10.
+3. **The CTF channel is empty** when the validator does not support CTF (its `ctf` setting is `off`), when no
+   NO has a CTF pool registered for the epoch, or when no NO's pool has weight. Its share then joins rule 2.
+4. **With no provider weight at all** the row is reserve‑only, as before.
+
+On SN25 with no head fleet, the row (pool, CTF, the two recipients) is [9/100, 1/100, 9/20, 9/20], about u16
+[13107, 1456, 65535, 65535]. Once fleets are weighted it is pool 4/100, CTF 1/100, head 5/100 and the
+recipients 9/20 each. The pool, CTF and head entries stay far under the 32768 cap, the recipients stay at 9/20
+each as before, and the treasury policy (μ = 1/10, cap 32768) is unchanged. In epoch 4 the providers' share funded the pool with 1,195.84 α, all of `μ`. At that
+scale the CTF pools get about 119.58 α an epoch and the pool about 1,076.26 α. Once fleets are weighted, the
+pool gets about 478.34 α and the head about 597.92 α.
+
+The three shares are fixed by the signed amendment entry v2 (§8.7.5), not by a successor policy, whose new hash
+would leave every payout consent outside the new epochs' domain. Changing them takes a later signed entry. The
+nominal head share rises from θ = 3/10 (policy v1) to 5/10, and the nominal pool share falls from 7/10 to 4/10.
+That changes nothing until a fleet is weighted, and it makes the hard constraint below easier to meet. Each
+validator chooses whether to support CTF, and Yuma makes that a stake‑majority choice (§8.7.4).
+
 Every share goes to **real recipients** (top miners; vault-owned pool UIDs; on SN25, `ur‑reserve`'s
 ordinary recipient UIDs, outside the owner's hotkeys), so the **June-2026
 `(1 − miner_burned)` penalty does *not* apply** — that penalty only bites emission *withheld to an
@@ -1392,6 +1509,1073 @@ top-miner set and the independent-validator quality consensus mature** (the same
 mechanism" posture as the bootstrap quality-swing cap, §12.3 / D14). Hard constraint: size θ so the
 **lowest-paid top miner ≥ the highest-paid pool provider**, or graduation is a pay cut and the head thrashes
 against the tail.
+
+### 8.6 Intra‑platform traffic credited to extenders — amendment (approved 2026‑11‑10)
+
+> **Amendment approved by the owner on 2026‑11‑10.** It takes effect from epoch 8 (`E_x = 8`) once the
+> signed amendment entry is published (§8.6.7). The billing change in §8.6.7 has been live since 2026‑11‑11.
+> It amends settlement v2 only (epochs from `E_s`). From `E_x` it also amends §8.2's provider usage for
+> same‑network traffic (§8.6.2). Release 1.0 epochs and their `share_bps` leaves are untouched. The base rule
+> is the owner's request of 2026‑11‑10: contracts that settle with zero participants, because the data was
+> between the network operator and a client, spread their traffic weight evenly across all extenders, since
+> extenders make the api and platform surface reachable from anywhere. The owner's decisions of the same day
+> are folded in (§8.6.8), and so is the owner's answer of 2026‑11‑11 to the last open question, Q7: on every
+> contract an extender counts as one of the contract's `n_c` hops (§8.6.2, decision 16). Everything marked
+> *option* below is an alternative with trade‑offs, not a replacement.
+
+**Extenders, as built** (`connect/EXTENDER.md`). An extender is a relay that a provider runs on TCP and UDP
+443 and a DNS carrier. It forwards only to its operator's own api and connect hosts, behind camouflage meant
+to resist address and SNI blocking, and the client's inner TLS to the platform stays end to end. A client
+that cannot reach the platform directly reaches it through an extender. An extender registers itself
+(`POST /network/extender-activate` with its client JWT). The role is on by default for desktop providers,
+and the miner runs it on one slot per run. The operator probes an extender back before storing it
+(`EXTENDER.md` C2a: today a public TCP challenge and a verified request through it), signs its record with
+the operator's root key, and challenges it every five minutes after that (C3: six failures in a row
+deactivate an address). The record names the network that first stored its key and the provider client of
+that network that activated it last. Extenders the operator runs on its own account networks form the
+*gated* tier (`directory.durable_network_ids`); every other extender is a volunteer in the *open* tier.
+
+Today an extender earns pool weight only as a **contract party** (`EXTENDER.md` J1–J3). When a contract is
+created, every active extender on either endpoint's connected connections joins the contract's
+participants and takes one equal hop share, like an intermediary or the egress.
+
+#### 8.6.1 The problem
+
+A contract's completed bytes are credited to its **participants**: the service endpoint (the egress), the
+intermediaries of its stream and its extender parties, never the paying origin. They are split evenly into
+the contract's immutable usage snapshot, which the epoch's provider rows sum (§8.2). Traffic between a
+client and the operator's own platform has no such participant: the service side is the operator, which is
+not a miner in its own pool, and a directly connected client has no extender party.
+
+Such traffic is either not contracted at all (api calls, control messages, platform storage), or, if it is
+contracted, the current rules mishandle it in one of two ways:
+
+- **Misattributed.** A platform client on the service end, such as a sidecar edge (§8.6.6), is listed as
+  the contract's egress participant, so the operator's own network is credited as a provider in its own
+  pool.
+- **Unsettled.** If the platform end is not counted and no participant is left, the contract cannot settle.
+  The usage snapshot refuses positive bytes with no provider, ordinary settlement fails, and the deadline
+  close retires the contract as `expired_unconfirmed` with zero credited bytes and no charge.
+
+Uncontracted or unsettled, the weight is **dropped**: no miner is credited, and the pool's funding follows
+the providers' eligible usage as if the traffic had not happened.
+
+**Same‑network traffic** is the other case that no third party serves. A contract between two clients of
+one network counts today as provider usage: its receiving client is the egress participant and earns pool
+weight like any provider (§8.2), though no one outside the network served it. Until 2026‑11‑11 it was
+also free: the server created it without escrow, so it charged no balance and drew on no data allowance,
+yet it still settled with a usage snapshot that credits its receiving client. Since the billing change of
+that day (§8.6.7) it escrows from the sender's data balance like other traffic.
+
+That under‑credits what extenders do. They keep the platform reachable everywhere, for every client,
+whether or not a given client went through one. And as products such as **sidecar** (§8.6.6) move work
+onto the platform itself, the share of real usage with no provider participant grows.
+
+#### 8.6.2 The rule
+
+For NO `n` and every covered epoch `k ≥ E_x`:
+
+```
+P_c       =  c's participants, each distinct client once, less the origin: its service endpoint (the egress), its
+               stream's intermediaries and its extender parties, platform endpoints and same-network ones included
+s_{c,i}   =  floor(b_c / n_c) + (1 if i < b_c mod n_c, else 0)    for the i-th of P_c by client_id, n_c = |P_c|
+                                                                  (Σ_i s_{c,i} = b_c; an extender is one of n_c, Q7)
+z_c       =  the part of contract c's completed bytes b_c that no provider earns: the shares s_{c,i} held by
+               n's platform endpoints                                                       (intra-platform)
+               and by c's participants on the origin's network                              (intra-network)
+             every other share, an extender party's included, is provider usage (§8.2)
+Z_{n,k}   =  Σ z_c over n's funded contracts c that closed in k's earning window, free and paid alike (pool bytes)
+Z'        =  min(Z, ζ · W_k),   ζ = 1        W_k = the epoch's eligible provider usage, after the rule below  (cap, M3)
+U_{n,k}   =  the units holding at least one of n's eligible extenders for k, by unit hash ascending;  M = |U_{n,k}|
+z_j       =  floor(Z' / M) + (1 if j < Z' mod M, else 0)      for the j-th unit, j = 0 … M−1         (Σ z_j = Z')
+s_{j,i}   =  floor(z_j / m_j) + (1 if i < z_j mod m_j, else 0)
+                                  for the i-th of unit j's m_j eligible extenders, by provider client_id  (Σ_i s_{j,i} = z_j)
+row_{j,i} =  (client_id, coldkey, usage_bytes = s_{j,i}, head_excluded = 0)    (extender share row; none where s = 0)
+```
+
+The epoch then allocates its amount `A` (§8.2) with `coldkey_usage_largest_remainder_rao_v1`, unchanged,
+over its provider rows **and** its extender share rows. Each unit carries `Z'/M` bytes of usage weight
+beside the providers' settled bytes, split evenly among the eligible extenders in it. `ΣW` grows by `Z'`,
+and an extender's coldkey gets `δ ≈ A · s_{j,i} / ΣW`, summed with any provider usage the same coldkey has.
+Where every unit holds one extender, this is exactly the even split the owner asked for. Extenders that
+share a block share its unit. Because `Z' ≤ W_k`, extenders take at most half a pool: every miner can be
+both a provider and an extender (owner decision). Bytes above the cap enter no weight.
+
+**Unit.** A unit is a keyed /29 IPv4 or /48 IPv6 prefix hash: the scoring unit of routable‑IP breadth
+(§8.4), computed with the same key, domain and granularity. The signed policy sets that granularity once
+for both (§15.2), so the two cannot drift. Each eligible extender belongs to exactly one unit: its IPv4
+address's /29 when that address is active, else its IPv6 address's /48. This mirrors a provider's head
+score, which pins its IPv4 hash first and is never doubled by a second family (`VALIDATOR.md` §8.1).
+"Active" here is the test of E1.
+
+**Intra‑platform contract.** A contract of NO `n` is intra‑platform when its service endpoint is one of
+`n`'s registered **platform endpoints**: a client identity the operator itself runs to serve a platform
+feature. The operator registers it, and it is recorded on the contract when the contract is created, never
+inferred from a missing participant.
+- **The test is "on an operator network"** (owner, 2026‑11‑12). The registry admits only an active client on
+  one of `n`'s own networks: its gated, durable fleet or a network it declares it controls, as in E5. It
+  never admits one on a declared measurement network.
+- **The kinds are fixed by the signed entry.** At `E_x` they are sidecar's edge platform clients, its TLS,
+  SMTP and MX edges: tlsedge, smtpedge and mxedge (§8.6.6). The registry refuses any other kind. A new kind
+  is a new rule, so it needs a new signed amendment entry (§8.6.7).
+
+A platform endpoint is one of the contract's `n_c` hops, but it earns no share of any contract: its share is
+intra‑platform bytes in `z_c`, even when the origin is on its network. When it is the contract's only hop,
+that share is all of `b_c`.
+
+**Extenders count as one of `n_c` (Q7).** The owner decided on 2026‑11‑11: "extenders count for one of n in
+payout weighting for contracts". From `E_x`, on every contract, each extender party is one of the contract's
+`n_c` hops and keeps its share `s_{c,i}` as provider usage, exactly as it does today (J3), unless it is on the
+origin's network (below).
+
+- **How `n_c` is counted.** `P_c` is the usual gathering: the service endpoint, the stream's intermediaries
+  and the extender parties of both endpoints, less the origin. Each distinct client counts once. An extender
+  counts as its provider client, so an extender whose provider client is already a hop, or a second extender
+  record of the same provider client, adds no hop (J3). Platform endpoints and participants on the origin's
+  network count like any other hop; only their shares go to `z_c`.
+- **Extender‑carried platform contracts.** A platform contract whose client is connected through an extender
+  has that extender as a party (J2). The extender keeps its one share of `n_c`, and the platform endpoint's
+  share joins `Z`. Such a contract neither stays whole with its extender nor moves whole into the even split:
+  with one extender and one platform endpoint, each holds half of `b_c` (the remainder byte going to the lower
+  client id), and the platform endpoint's half is intra‑platform.
+- **No byte is counted twice.** The amendment never re‑splits a contract. It takes the even shares that
+  the contract's usage snapshot already holds and sends each share to exactly one place: a provider row, or
+  `z_c`. Per contract, the provider shares and `z_c` sum to `b_c`. So no byte is in both the provider rows and
+  `Z`, and `total_usage_bytes`, their sum (§8.6.4), counts each credited byte at most once: a `z_c` that `Z`
+  leaves out, unfunded or measurement, enters neither. An extender can hold a hop share of a contract, in its
+  provider row, and a share row of `Z'` in the same epoch. Those are different bytes: its own hop shares never
+  enter `Z`, and `Z` holds only shares that no provider holds.
+- **From `E_x`, with the rest of the amendment.** Before `E_x` nothing changes: §8.2 counts every hop share as
+  provider usage, as today. Which shares are an extender's, a platform endpoint's or on the origin's network
+  is operator‑attested, like the rest of the classification (§8.6.4).
+
+**Intra‑network shares: an amendment to §8.2 from `E_x`.** No client is a paid provider for the clients of
+its own network. On every contract, in any product, the even shares that the split gives to participants on
+the origin's network are **not provider usage** from `E_x`. Those participants are the receiving client of a
+same‑network contract, and any same‑network intermediary or extender on any contract. Their shares leave
+the provider rows and become intra‑network bytes in `z_c`. The other participants' shares do not change: the
+split still counts every hop, and no same‑network share passes to another participant. (The server's billing
+split, `allocateContractParticipantPayouts`, also leaves these shares out, but it is customer‑billing
+bookkeeping, which the SN ledger ignores.) Until `E_x`, §8.2 counts these participants as providers, their
+bytes being settled payout bytes like any other; from `E_x` it does not.
+
+**What counts toward `Z`.** A contract counts when it closed in the earning window with a credited outcome
+(`settled`, `dispute_resolved_to_source` or `dispute_resolved_to_destination`). Its `b_c` is the completed
+usage that every contract's credit already uses: the lower of the two completed reports, capped by the
+contract's capacity, or the report a dispute resolved to. Then:
+
+- **Funded by the payer's data balance, free or paid alike** (owner decisions).
+  - Every intra‑network and intra‑platform contract escrows from the payer network's data balance, the free
+    plan's included, exactly like other traffic.
+  - Same‑network contracts therefore stopped being free when the billing change went live on 2026‑11‑11,
+    before `E_x` (§8.6.7).
+  - A free‑plan byte counts toward `Z` exactly as it counts toward provider usage (§8.2).
+  - A contract that no balance funded, such as one made by the degradation valve's zero‑escrow fallback for an
+    exhausted payer, adds nothing to `Z`.
+  - So in each epoch a network adds to `Z` at most what its balance funded.
+- **Never the operator's own measurement or test traffic.** A contract whose payer network the operator
+  declares for measurement or testing never counts toward `Z`: validators' trail clients, the qualityprobe,
+  the operator's probes, the proxy‑test account. The exclusion is from the extender pool only. Providers
+  that carry this traffic keep earning from it as provider usage under §8.2.
+- **Contracts only.** Uncontracted api, push and storage traffic stays out at launch. Storage is the first
+  candidate to add, once its usage records are published each epoch.
+
+Each contract's usage snapshot records the split: its providers (the participants that are neither platform
+endpoints nor on the origin's network, extender parties included, with their shares), its intra‑platform and
+intra‑network bytes `z_c`, the origin's network, whether a balance funded it, and whether its payer is a
+declared measurement network. This is a new snapshot version: today a snapshot cannot carry bytes without a
+provider.
+
+**Eligible extender.** An extender `x` of NO `n` is eligible for epoch `k` when all of these hold:
+
+- **(E1) In the active pool at `end(k)`** (owner decision: "if the extender is in the active pool it is
+  counted").
+  - At the epoch's end boundary (the timestamp of its end block, which the ledger already pins), the
+    extender's record, signed by `n`'s root key, is active and unrevoked: `network_extender.active` with no
+    `revoke_time`.
+  - At least one of its addresses is active, that is, not deactivated by the five‑minute challenge (C3: six
+    failures in a row).
+  - The census captures this once, at the boundary, as the users count already is. There is no minimum
+    age and no uptime threshold.
+  - *Why the end boundary:* one snapshot at an instant the ledger already pins is reproducible and needs no
+    history. "Active at any point in `k`" would count a single drive‑by activation, and would have to be
+    rebuilt from activation and revocation records.
+  - *The trade‑off:* an extender that is up only around `end(k)` counts for the whole epoch. Activation is
+    self‑service and the boundary is predictable, so this is cheap to game. The gain is limited by the
+    units (a block counts once, however many hosts appear in it) and by the cap.
+- (E2, the first draft's hourly forwarding record, is removed by the same decision.)
+- **(E3) Distinct.** One record per provider client and per address: active records that share a provider
+  client, an IPv4 address or an IPv6 /64, directly or through other records, count once, for the record
+  with the lowest (client id, extender id) pair. The others are flagged duplicate. Each eligible extender
+  then belongs to one unit (above).
+- **(E4) Payable.** Its provider client (`network_extender.client_id` at `end(k)`) has a payout coldkey under
+  the wallet selection that provider rows use (§8.2: the client's own consent, else its network's, else a
+  hotkey delegation). It has no active fleet binding at either boundary, because a head client earns in one
+  tier only (§8.4). The share accrues to that coldkey's v2 account in `n`'s pool. An extender without a
+  wallet is not counted in `N`, so no share is stranded on it.
+- **(E5) Independent** (confirmed by the owner). Its network is not one of `n`'s own: not in `n`'s gated,
+  durable fleet (`durable_network_ids`), not a canary, and not any other network `n` declares it controls.
+  This is the extender analogue of J3's rule that nothing on the payer's network earns: the NO does not pay
+  itself.
+
+**Per pool.** Each NO's pool spreads its own `Z` over the extenders in that NO's active pool. Nothing moves
+between pools, and there is no global root (§11.1). An extender forwards only to its own operator's
+hosts and holds a separate record with each operator, so a host that serves two NOs counts as two
+extenders, one in each pool, paid through two accounts.
+
+**Rounding and the empty set.** Bytes split twice, first over units and then within each unit, by the same
+rule at each level: the floor, with the remainder going to the lowest keys (unit hashes, then client ids).
+This is the rule a contract already uses to split its bytes across its participants
+(`evenContractPayoutShare`). α splits by the unchanged largest‑remainder rule, so `Σ δ = A` exactly. With
+`N = 0` (no eligible extender, and so no unit), `Z` is dropped: it enters no weight, and the epoch allocates
+exactly as it does today. If the epoch also has no eligible provider usage, §8.3's carry applies.
+
+**How it fits the ledger.** Leaves do not change. Accounts stay `(coldkey, cumulative)` and are appended
+and credited as §8.3 says, so an extender whose coldkey already holds an account (because it also runs
+providers) adds to that account. What changes is one per‑epoch component of the ledger header and of the
+usage statement (§8.6.4):
+
+```
+header (urnetwork-payout-ledger-v3 for a root whose header lists an extender component; any other root keeps
+        urnetwork-payout-ledger-v2, byte for byte):
+  {"epoch":K,"providers":[…],"extenders":{"bytes":Z,"census":["sha256:…",…],"rows":["sha256:…",…]}}
+  "extenders" comes last, in the entry of each covered epoch k ≥ E_x that is not declared unrecoverable,
+  and in no other. "census" and "rows" are chunk lists like "providers" (ChunkRows = 131,072 rows in every
+  chunk but a non-empty last one; an empty list has no chunks), never null.
+extender share rows: 57-byte rows exactly as provider rows (client_id ‖ coldkey ‖ usage_bytes ‖ head_excluded),
+                     sorted by client_id, one per eligible extender with s_{j,i} > 0, usage_bytes = s_{j,i},
+                     head_excluded = 0; "rows": [] when N = 0 or Z = 0
+census chunks:       98-byte rows, one per extender of n known in epoch k, eligible or not,
+                     sorted by (client_id, extender_id):
+                     extender_id (16) ‖ provider client_id (16) ‖ coldkey (32; zero without a wallet, E4) ‖
+                     unit (32; the keyed /29 or /48 prefix hash, zero without an active address) ‖
+                     unit family (1; 0 none, 4 IPv4, 6 IPv6) ‖
+                     flags (1; active at end(k) 0x01, gated 0x02, canary 0x04, declared own 0x08,
+                            revoked 0x10, duplicate 0x20, head-bound 0x40);
+                     a row is eligible when its flags are exactly "active" and it has a coldkey;
+                     captured at the end boundary, operator-attested, never with an address
+```
+
+Release 1.0's `share_bps` leaves are not involved, because `E_x ≥ E_s`.
+
+#### 8.6.3 Incentives and attacks
+
+**Sybil: an even split pays per unit.** Whoever holds `k` of the `M` units takes about `k/M` of `Z'`.
+Because a unit is a /29 or /48 block, packing extenders into one block gains nothing: they share its unit.
+What still pays is spreading extenders across blocks, and a cloud fleet does that cheaply, since a hosting
+provider's address space spans many /29s. An extender costs a host with a public address on port 443 that
+passes the probe, which a small cloud VM provides. So as `Z` grows, the cheapest way to earn is to add
+hosts in new blocks rather than to serve clients. Activation budgets limit activations per hour, not hosts,
+and the decided rule adds no minimum age or uptime threshold (E1). The options:
+
+- (S1, eligibility costs such as a minimum age or an uptime record, is removed: E1 is the active pool.)
+- **(S2) Coarser units** (*option*). A unit per origin ASN would collapse a cloud fleet spread across
+  blocks, but needs an ASN table that validators can reproduce. A coarser prefix would penalize honest
+  neighbours, and would part from §8.4's unit.
+- **(S3) Per‑operator limits** are **out**, by owner decision. A cap or a square‑root weight per payout
+  coldkey or network is evaded by splitting, because wallets and networks are free to create.
+- **(S4) Weighting in place of a pure even split.**
+  - (a) *By use:* `Z` in proportion to each extender's J3‑credited bytes in the epoch. Fake extenders
+    attract no clients, but this concentrates on the few extenders clients happen to pick and pays nothing
+    for standby reach.
+  - (b) *By measured capacity or quality*, such as forwarding success or latency. A Sybil that is a real
+    host still passes.
+  - (c) *By need:* weight units that serve regions where direct reach fails. This favors censorship‑heavy
+    regions, but needs location data that validators cannot check.
+  - A hybrid, half even per unit and half by use, keeps paying for standby reach and blunts Sybils.
+  - Both use and capacity would be operator‑measured, like the census.
+- (S5, validator sampling of extenders, is removed: validators do not check extenders, §8.6.4.)
+
+*As decided:* E1 and E3–E5 over /29 and /48 units, with the cap M3 (`ζ = 1`). S3 stays out. ASN units (S2)
+and the weightings of S4 are later options, by signed entry (§8.6.7), if one operator's share of units keeps
+growing.
+
+**Manufactured traffic.** Every intra‑network and intra‑platform contract now draws on the payer network's
+data balance (owner decision), so manufacturing `Z` takes funded balance. Free and paid balance count alike,
+so free networks can still raise `Z`, each by at most what its plan funds. At today's allowances that is:
+
+- **Free:** 30 GiB a day, at most 210 GiB an epoch.
+- **Pro:** 10 TiB a month, granted at the start of the month. That is about 2.6 TB an epoch on average,
+  though one network can spend its whole month's grant in a single epoch.
+
+The cheapest route is same‑network traffic between a network's own devices, spending its allowance.
+Sidecar's edges, the platform endpoints at `E_x`, are a second route, drawing on the same balance.
+
+**How much this bounds the attack:**
+
+- **Who gains.** `Z` is spread over every unit, so a manufacturer who holds `k` of the `M` units gains only
+  about `k/M` of the weight it adds. The rest goes to everyone else's extenders. So manufacturing pays in
+  proportion to the share of units already held: the Sybil and manufacturing attacks compound.
+- **What reaching the cap takes.** At epoch 4's scale, `Z'` reaches the cap at its 19.01 TB of eligible
+  provider usage.
+  - About 85 free networks, each spending its whole daily 30 GiB on same‑network or platform traffic every
+    day of the epoch, reach it.
+  - So do about 8 Pro networks sustained epoch after epoch, roughly $40 a month.
+  - One Pro network's whole month, spent in one epoch, reaches 57.8% of it.
+  - Without the balance rule, one well‑connected pair of hosts would have been enough, because same‑network
+    contracts were free.
+- **Compared with the rules before 2026‑11‑11, for a same‑network self‑dealer, it narrows.** Then its own
+  provider earned full credit for those bytes, and no balance was spent (§8.2, §8.6.1). Since the billing
+  change the bytes cost allowance. From `E_x` the provider also earns nothing for them, and the self‑dealer
+  gets back only `k/M` through `Z`.
+- **The unmetered route to provider credit is closed.** Until 2026‑11‑11, contracts to a provider in
+  friends‑and‑family mode were created without escrow, like same‑network contracts, so no balance limited
+  them. Since the billing change they reserve escrow from the sender's (dialing network's) transfer balance,
+  as public contracts do (owner decision). That is the only change. Their bytes count as provider usage like
+  all other traffic, paid or free (§8.2), and the sender's payment status changes no provider's credit.
+  Routing bytes through one's own provider on a second network still earns provider credit for all of them,
+  but the sender's balance now pays for them, as on any cross‑network contract.
+
+**Accepted risk (owner decision).** All of a network's traffic shares its one transfer balance, and there is
+no separate per‑network limit on `Z`. So tens of funded networks, or a few Pro subscriptions, can move up to
+half of a pool from every provider to the extenders. Against that risk, the cap (M3) stops the extenders at
+half of every pool, and publication (M4) shows the jump and which payer networks drive it. The units, E5, and
+the deposit once a price is in force (M1) limit who collects it and what it costs the operator. None of this
+is a better route for any one attacker than the funded cross‑network route that already exists.
+
+**What bounds it:**
+
+- **(M1) The deposit.** `Z` counts in `total_usage_bytes` (owner decision), so at a nonzero price the NO
+  deposits for every byte of it, free bytes included, as for any usage (§7.1). Manufactured `Z` then costs the
+  NO as well. At zero price, the launch mode, M1 does nothing.
+- **(M2) Funded bytes only** (owner decision; this replaces the withdrawn paid‑only rule). A network adds to
+  `Z` only what its own data balance funded, free plan or paid, and unfunded contracts add nothing.
+- **(M3) A cap on `Z`'s weight** (owner decision). `Z` enters the allocation as at most the epoch's eligible
+  provider usage (`ζ = 1`), so extenders take at most half a pool, however much is manufactured.
+- **The units.** Only spreading across /29 and /48 blocks raises a manufacturer's share.
+- **E5** keeps the NO's declared fleet from collecting it.
+- **(M4) Audit.** The statement publishes `Z` split into its intra‑platform and intra‑network parts, with the
+  number of contracts and of payer networks behind it. A jump, or one network driving most of `Z`, is visible
+  to validators and watchers.
+
+With one operator at zero price the pool's weight cannot rise (implied demand is 1, §7.1). Manufactured `Z`
+therefore only moves funding from providers to extenders within the pool, and M3 stops that at half.
+
+**Collusion between an NO and extenders.** The NO attests everything the extender pool rests on:
+
+- `Z`, and with it which contracts are intra‑platform, intra‑network, funded or measurement;
+- the active pool at `end(k)`;
+- the extenders' wallets;
+- its own declared networks.
+
+No validator can check any of it. The extender directory is built so that no one learns every extender's
+address at once, and so the census cannot be sampled (§8.6.4). An NO could therefore inflate `Z`, count
+unfunded or measurement traffic, list extenders that are down, omit independent ones, or run its own
+extenders under networks it does not declare. Each of these moves pool funding to extenders it chooses.
+
+What remains to bound it:
+
+- **E5** keeps the NO's *declared* fleet out. Undeclared networks are not caught.
+- **The cap** (M3, `ζ = 1`) keeps extenders, honest or not, to at most half of each epoch's pool funding.
+- **M2** ties `Z` to balances the NO's own billing debited. That is visible to the NO's customers, but it is
+  still attested to everyone else.
+- **M1** makes inflated `Z` cost a deposit, once the price is nonzero.
+- **Publication** puts the census and `Z`, with its parts, contract counts and payer counts, in the epoch's
+  evidence. The census uses keyed prefix hashes, never addresses. Anyone can see the totals,
+  how concentrated the units and coldkeys are, and jumps between epochs, but not whether any one entry is
+  true.
+
+This is the same class of trust as §12.3's usage fraud on new funding: the NO already attests the provider
+population and its usage, so it could already misallocate all of a root's new funding. The extender pool
+adds an input that is less visible still, since no validator observes extenders at all. While one
+organisation is owner, operator and validator, publication guards against bugs and compromised keys, not
+against the owner. The extender pool should be reviewed before other operators are admitted, as §12.3
+already requires for the deposit audit.
+
+**Other effects.**
+
+- **Same‑network earners lose that credit.** From `E_x`, a provider earns nothing for the bytes it serves to
+  clients of its own network. Those bytes go to the extenders through `Z` instead, free or paid. Its
+  cross‑network work earns as before.
+- J2 is fuzzy by design. Every active extender on an endpoint's connections is a party, so the extender a
+  client is attached to earns one hop share of each of that client's contracts, platform contracts
+  included, whether or not their bytes crossed it.
+- **Boundary gaming.** An extender that is up only around `end(k)` counts for the whole epoch (E1). It only
+  has to pass an activation probe shortly before the boundary. An address stays active until six challenges
+  in a row fail, about half an hour, so a host that activated within that half hour counts even if it is
+  already down at `end(k)`.
+- Revocation loops inflate nothing: the census is one snapshot, so an extender counts once however often it
+  re‑activates.
+- The census carries keyed prefix hashes, never addresses. Gated (operator) extenders are excluded (E5), so
+  no hidden address needs to be published.
+
+#### 8.6.4 Verification and evidence
+
+**The ledger audit** gains one check. Once per root, before the fixed inputs (check 3), it requires an
+extender component on exactly the covered epochs from `E_x` that are not declared unrecoverable, `E_x` being
+the first epoch of the extender pool's amendment entry in force, or of its configured line where no signed
+entry is in force (§8.6.7). A component once found valid is a fixed input like the epoch's provider rows, and
+an epoch whose rows were fixed without one cannot gain one (check 3). The rest runs after head exclusion
+(check 6) and before allocation (check 7) in each covered epoch `k ≥ E_x`:
+
+1. The census is well formed. Its chunk hashes match and its chunks have a chunk list's shape (check 4). Its
+   rows have known flags and unit families and nonzero ids, are sorted by (client id, extender id) with no
+   extender twice, carry a unit exactly when they are active, never give one unit two families, are never
+   both active and revoked nor a duplicate without being active, and count each provider client at most
+   once, under one coldkey. Its head flags agree with `bindingAt` at both boundaries, as in check 6.
+2. The share rows sum to `Z' = min(Z, W_k)`, with `Z` the header's `extenders.bytes` and `W_k` taken from
+   the epoch's own eligible provider rows, or to 0 when `N = 0`. The usage statement must carry the same `Z`,
+   which the deposit audit checks (below).
+3. The eligible set and its units are exactly the census rows that pass E1 and E3–E5 by the census's own
+   flags, grouped by their unit hashes. The share rows are the two‑level even split of `Z'` over them, and
+   each row carries the coldkey its census row names.
+4. The share rows then enter check 7's allocation like provider rows.
+
+**What validators cannot check** (owner decision). Validators do not verify extenders. The directory is
+built so that no one learns every extender's address at once: tiers, partitioned directories and rationed
+releases (`connect/EXTENDER.md` R). So a validator cannot sample the pool, and a census of addresses would
+undo that design.
+
+The census is therefore published as keyed prefix hashes, never addresses. Several inputs stay
+operator‑attested:
+
+- membership of the active pool;
+- the classification of contracts as intra‑platform, intra‑network, funded or measurement, and of their hop
+  shares as an extender's, a platform endpoint's or on the origin's network;
+- the wallets;
+- the declared networks.
+
+Validators recompute the arithmetic only, plus the head flags they can read from chain. As with provider
+rows, a component whose arithmetic fails is refused, and is rebuilt only on the operator's explicit command
+naming the epoch.
+
+**Evidence in the usage statement.** An epoch whose committed header carries an extender component has a
+statement of schema `urnetwork-epoch-usage-v2`, published as kind `epoch-usage-v2` under the same run,
+`<no_id>-<epoch>`. Every other epoch keeps its `urnetwork-epoch-usage-v1` statement, byte for byte. A v2
+statement holds every v1 field and then, between `total_users` and `signer`, in this order
+(`docs/spec/epoch-usage-v2.schema.json`):
+
+- `intra_platform_bytes` and `intra_network_bytes`, and their sum `extender_pool_bytes` (`Z`, before the
+  cap);
+- `extender_pool_weight_bytes` (`Z'`, after the cap: the share rows' sum);
+- `extender_pool_contracts` and `extender_pool_payers`, the number of contracts and of payer networks behind
+  `Z` (M4), positive exactly when `Z` is;
+- `extender_census`, the census chunk references in the header's order (`[]` for a census with no rows),
+  `extender_units` (`M`) and `eligible_extenders` (`N`);
+- `extender_chunks`, the share-row chunk references in the header's order (`[]` exactly when `Z' = 0`, that
+  is when `N = 0` or `Z = 0`).
+
+`total_usage_bytes` becomes the sum of the provider rows plus all of `Z`, not only `Z'` (owner decision). The
+deposit prices the extender pool's usage, and at a nonzero price it raises implied usage. Validators check
+both sums: `total_usage_bytes` against the provider rows and the header's `Z`, and `extender_pool_bytes`
+against its two parts. The deposit audit holds the rest of the statement to the committed header:
+`extender_pool_bytes` is the header's `extenders.bytes`, `extender_census` and `extender_chunks` are its two
+chunk lists, `N` and `M` are counted from the census rows, and `Z'` is the share rows' sum, which is
+`min(Z, W_k)` when `N > 0` and 0 when `N = 0`. The parts of `Z` and the contract and payer counts are the
+operator's attestation. Two statements for the same chunks with different totals or a different extender
+pool are equivocation, as today.
+
+**Fixed inputs.** An epoch's extender component is built once, at the first root that covers it, like its
+provider rows (§8.3). A rebuild needs the same explicit operator command, which the validator accepts only
+for an epoch whose component it refused.
+
+#### 8.6.5 Worked example
+
+One epoch of one pool with `A = 1,000 α = 10^12 rao`:
+
+- **Provider usage by coldkey:**
+  - `a` 6.0 TB and `b` 2.5 TB, all of it cross‑network;
+  - `c` 0.5 TB cross‑network, plus 0.4 TB served to clients of its own network, on free or paid contracts;
+  - a provider without a wallet has 1.0 TB; its row is kept but is not eligible.
+- **Extender pool bytes:** from `E_x`, `c`'s 0.4 TB is intra‑network. With 600,000,000,001 bytes of
+  intra‑platform traffic, `Z = 1,000,000,000,001`. That is below the cap of `W_k = 9.0 TB`, so
+  `Z' = Z`.
+- **The census:**
+  - `x1` and `x2` are in the active pool at `end(k)` in one /29 block, unit `u1`. `x3`, also active, is
+    alone in another block, unit `u2`, whose hash sorts after `u1`'s.
+  - `x2` is paid to coldkey `b`, which also runs providers.
+  - `x4` has no wallet (E4), so it is not counted.
+  - So there are `M = 2` units and `N = 3` eligible extenders.
+
+The split runs at two levels:
+
+- **Over units:** `z_1 = 500,000,000,001`, since `u1`, with the lower hash, takes the remainder byte; and
+  `z_2 = 500,000,000,000`.
+- **Within `u1`:** `x1` gets 250,000,000,001, taking the remainder byte as the lower client id, and `x2`
+  gets 250,000,000,000.
+- **Within `u2`:** `x3` gets 500,000,000,000.
+
+The weights total `ΣW = 9,000,000,000,000 + 1,000,000,000,001 = 10,000,000,000,001`.
+
+| Coldkey | `W_c` (bytes) | `δ_c` (rao) | `δ_c` (α) | Today (α) |
+|---|---:|---:|---:|---:|
+| `a` | 6,000,000,000,000 | 600,000,000,000 | 600.000000000 | 638.297872340 |
+| `b` (provider and `x2`) | 2,750,000,000,000 | 275,000,000,000 | 275.000000000 | 265.957446809 |
+| `c` | 500,000,000,000 | 50,000,000,000 | 50.000000000 | 95.744680851 |
+| `d` (`x1`) | 250,000,000,001 | 25,000,000,000 | 25.000000000 | — |
+| `e` (`x3`) | 500,000,000,000 | 50,000,000,000 | 50.000000000 | — |
+| **Σ** | 10,000,000,000,001 | 1,000,000,000,000 | 1,000 | 1,000 |
+
+"Today" counts `c`'s same‑network 0.4 TB as provider usage, for a `ΣW` of 9.4 TB, and drops the
+intra‑platform bytes. Alone in its block, `x3` gets twice what `x1` and `x2` each get.
+
+The leaves: `a`, `b` and `c` keep their positions and add their `δ`, and `d` and `e` become new accounts,
+appended in ascending coldkey order. Say the previous cumulatives were `a` 12.345678901 α, `b` 2 α and `c`
+0.5 α. The root's leaves are then `(a, 612.345678901)`, `(b, 277)`, `(c, 50.5)`, `(d, 25)` and `(e, 50)` α.
+Their total, 1,014.845678901 α, must equal `fundedThrough[k]` (§8.3).
+
+**At scale, from the public epoch 4 ledger.**
+
+- *The epoch:* `f_4 = 1,195.838935717 α`. Its 1,048,456 provider rows carry 31.38 TB; the 416,607
+  eligible rows, across 90 coldkeys, carry 19,010,949,105,496 bytes.
+- *A small `Z`:* had `Z` been 5% of the eligible usage, extenders would have shared 56.94 α, 4.76% of the
+  pool: 0.57 α per unit at `M = 100`, or 0.28 α per unit at `M = 200`.
+- *A large `Z`:* had `Z` equalled the eligible usage, they would have shared 597.92 α, half the pool. That
+  is the most the cap (`ζ = 1`) allows; any larger `Z` is cut back to it.
+- *What it depends on:* the extenders' share is `Z' / (W_eligible + Z')`. It grows with the ratio of the
+  extender pool's bytes to eligible provider usage. Units and `N` only divide it, which is why M3 bounds the
+  ratio.
+
+**Hop shares (Q7).** Three contracts close in an epoch `k ≥ E_x`. Their hops are listed in client id order.
+`x` is an extender party on a third network, `t` is a tlsedge platform endpoint, and `r` is a client on the
+origin's network.
+
+| Contract | `b_c` (bytes) | Hops (`n_c`) | Provider usage (bytes) | `z_c` (bytes) |
+|---|---:|---|---|---:|
+| `c1`, ordinary | 3,000,000,002 | egress `p`, intermediary `q`, extender `x` (3) | `p` 1,000,000,001; `q` 1,000,000,001; `x` 1,000,000,000 | 0 |
+| `c2`, platform | 3,000,000,001 | `t`, extender `x` (2) | `x` 1,500,000,000 | 1,500,000,001, intra‑platform |
+| `c3`, same‑network | 1,000,000,001 | receiving client `r`, extender `x` (2) | `x` 500,000,000 | 500,000,001, intra‑network |
+| **Σ** | 7,000,000,004 | | 5,000,000,002 | 2,000,000,002 |
+
+- `c1` is `k = 2` providers plus an extender, split into `k + 1 = 3` equal shares, with the two remainder
+  bytes going to the lowest client ids. `E_x` changes nothing here.
+- In `c2`, `x` keeps one share of two, and `t`'s share joins `Z`. The two alternatives that Q7 weighed would
+  have given `x` all 3,000,000,001 bytes (the contract staying whole with its extender) or none of them (the
+  contract moving whole into the even split).
+- In every row, the provider usage and `z_c` sum to `b_c`. `x`'s provider row gets its three hop shares,
+  3,000,000,000 bytes. If `x` is also an eligible extender, its share row adds its unit's part of `Z'`, and
+  `Z` holds the shares of `t` and `r`, never `x`'s own.
+- Before `E_x`, every share is provider usage, `t`'s and `r`'s included: 7,000,000,004 bytes of provider rows,
+  and no `Z`.
+
+#### 8.6.6 Sidecar
+
+Sidecar, the end‑to‑end encrypted substrate under recURd and burner email, is in development on the
+`sidecar` branches and has not shipped (`sidecar/DESIGN.md`). Nearly all of its traffic runs between a
+customer's devices and the operator's own services:
+
+- **No contract (today's design):** control traffic, storage, keys, sockets, DNS and certificates go over
+  HTTPS to platform hosts, and pushes travel as control frames or a long‑poll.
+- **Service‑mode contracts** connect a customer sidecar to the operator's edges (TLS, SMTP and MX). One end
+  of each is a platform client in the operator's edge network. The design has them carry no IP and escrow
+  nothing.
+- **Relayed contracts** carry peer data between a customer's own sidecars, relay‑only through the
+  platform's connect relays and never peer to peer. Both ends are on one network, so from `E_x` their bytes
+  are intra‑network (§8.6.2).
+
+**The transfer client is the base of every sidecar feature** (owner decision). So sidecar's traffic is
+ordinary contracts, which escrow from the payer network's data balance and settle exactly as other contracts
+do. That holds for edge and relayed contracts alike, and it replaces the design's separate no‑escrow service
+debits. What sidecar moves onto contracts with the platform's endpoints is intra‑platform. What still goes
+over plain HTTPS stays out of `Z` until it is contracted or its usage records are published (§8.6.2).
+- **No egress by default:** a sidecar declares no egress, is refused public provider contracts, and agents
+  leave only through exits the customer runs. Its required hosts are the operator's own api, auth, storage,
+  key, connect, sockets and DNS hosts.
+
+Sidecar therefore produces almost no provider participants. Unless a customer opts into an exit, an
+extender is the only third party that can appear on a sidecar contract. Without §8.6, sidecar's volume
+reaches the miner pool not at all (storage over HTTPS) or only as misattribution: an edge's platform client
+would be listed as the egress participant (§8.6.1), or a customer's own receiving device would count as a
+same‑network provider. Under §8.6, Service‑mode edge contracts are intra‑platform by their platform
+endpoint, and relayed sidecar‑to‑sidecar contracts are intra‑network (§8.6.2). Both reach the extenders
+through `Z`, free or paid, except the hop share that an extender party of the contract keeps (Q7).
+
+**Extenders in sidecar** (owner decision). Sidecar uses connect's client strategy as it is, with its
+existing extender fallback. Extenders are allowed by default, and a per‑customer switch turns them off. A
+platform contract that an extender carried keeps crediting that extender one of its `n_c` hop shares (J3,
+Q7), and the edge's share joins `Z`. A customer that turns extenders off reaches the platform directly, so
+the whole of its platform contracts joins `Z`.
+
+**Why extender availability matters globally.** All of sidecar's services sit at one site behind shared
+load‑balancer addresses, and its design accepts that a block of those addresses also blocks api and connect
+ingress. Its whole surface is therefore one set of addresses that a national firewall, an enterprise filter
+or a blocklist can cut, and extenders are the path around such a cut:
+
+- Each extender is another address, usually on another network, that forwards to exactly that surface.
+- The platform transport and the api client run through extenders (`EXTENDER.md` §2), with the inner TLS end
+  to end. Sidecar's data is end‑to‑end encrypted besides, so an extender sees only ciphertext addressed to
+  platform hosts.
+- The more networks, prefixes and countries the open tier spans, the harder it is for a censor to block all
+  of it. Prefix units reward that spread, not the number of extenders packed into one block.
+
+The expected traffic shape is a phone or agent host holding long‑lived connections (keepalives every 60 s,
+contracts of up to an hour) with small frames, and storage segments of up to 8 MiB. Clients in
+censorship‑heavy regions are expected to attach through extenders and pay them a hop share directly under
+J3, the edge's share joining `Z`. Everyone else reaches the platform directly and, under §8.6, pays all
+extenders evenly for keeping that path open.
+
+#### 8.6.7 Changes needed elsewhere, effort and rollout
+
+| Component | Change | Effort | Needed for |
+|---|---|---|---|
+| server: billing of network and friends‑and‑family contracts (owner decisions) | Network (same‑network) and friends‑and‑family contracts leave the no‑escrow path. Until 2026‑11‑11 the connect controller sent both provide modes to `createContractNoEscrowInTx`, with no `transfer_escrow` row, no `payer_network_id` and no balance change, settling through the no‑escrow close. Since the change both reserve escrow from the sender's (dialing network's) transfer balance, as public contracts do, and platform contracts escrow the same way. All of a network's traffic shares its one transfer balance, with no separate limit. The degradation valve's zero‑escrow fallback for exhausted balances stays as it is. | 2–4 days | live since 2026‑11‑11, before `E_x` (step 0) |
+| server: same‑network rule (amends §8.2 from `E_x`) | The epoch reader classifies each contract from its live row (origin network, payer, escrow). It moves same‑network shares out of the provider rows, adds those of funded contracts to `Z`, free and paid alike, and skips unfunded contracts and declared measurement and test networks. It never re‑splits a contract: each share of the usage snapshot goes to one place, and an extender party's share on another network stays in the provider rows (Q7). The 35‑day contract horizon keeps every contract of an epoch live through its build, so settlement does not change. | 2–3 days | epoch 8 |
+| server: extender census | Captured once at the end boundary, with the users count: the active pool (E1); units from the policy's egress‑prefix setting and key; E3 deduplication; E5 flags; the payout identity through the provider‑row wallet selection; and head flags. | 3–4 days | epoch 8 |
+| server: epoch builder | `Z` and `Z'` per epoch, eligibility, the two‑level split, share rows, the census chunks, header v3 and statement v2. Metrics and alerts for `Z` and its parts, `M`, `N` and the extenders' share of the pool. | 4–5 days | epoch 8 |
+| server: contracts | A registry of platform endpoints (sidecar's edges), the intra‑platform class set at contract creation, and usage snapshot v2 (providers, `z_c`, the origin's network, the funded and measurement flags). A platform endpoint stays one of the contract's `n_c` hops, and its share is `z_c` (Q7). Settlement and the deadline close accept the new snapshot. | 5–7 days | sidecar |
+| sn: `ledger`, `protocol` | Header v3, the census and share‑row codecs, the two‑level split and the cap, the new Build and Verify check with fixed inputs, and GL‑style mutation tests, including million‑row fixtures. The server's builder uses this package, so it lands first. | 5–7 days | epoch 8 |
+| sn: `demand/usage` | Statement v2, its JSON schema, and the deposit audit reading `Z` (dormant at zero price). | 1–2 days | epoch 8 |
+| sn: the amendment entry | The signed line format, its file beside the price sheet, and the readers in the server, the validator and `snclaim`, as the price sheet's readers work (§7.1). | 1–2 days | epoch 8 |
+| sn: validator and `snclaim` | Header v3 decoding, the arithmetic recompute (census form, head flags, units, split, cap), reading `E_x` from the amendment entry, and the approval path. `snclaim v2 check` gets the same audit through `ledger.Verify`. UR's watcher demands on any root it cannot rebuild, so it ships with the validator. | 3–5 days | epoch 8 |
+| docs | This section made normative, with cross‑references in §7.1, §8.2, §11.1, §11.3, §12.3 and §15.2. §8.2 and `VERSION2-FINAL.md` §6.2 say that from `E_x` same‑network participants are not providers. §15.2 says one granularity sets both the head unit and the extender unit. The same‑network rule of `mainnet/PRELAUNCH-FIXES.md` is marked superseded for SN credit from `E_x`. Also the ledger check in `VALIDATOR.md`, an addendum to `VERSION2-FINAL.md`, the README glossary, `docs/spec/epoch-usage-v2.schema.json`, and `EXTENDER.md` J and §6. For the billing change: the server's comments on network and friends‑and‑family contracts as no‑escrow; the "no customer charge" note on same‑network contracts in `mainnet/PRELAUNCH-FIXES.md`; sidecar's no‑escrow service debits and Service mode in `sidecar/DESIGN.md`; and the apps' and support articles' description of what uses the data allowance. | 3–5 days | with each release |
+
+The whole set is about 5.5–7.5 engineer‑weeks. The part needed for epoch 8 is about 4.5–5.5 engineer‑weeks:
+11–16 days of server work and 10–16 of sn. The critical path runs through the sn `ledger` codec and then the server
+builder, about 9–12 working days. Sidecar's per‑customer extender switch belongs to sidecar's own plan and
+is not counted here. vault2 and `STSettlement2` do not change: they commit only `(root, total, leafCount,
+ledgerHash)`.
+
+**Rollout to `E_x = 8`.** The owner moved the start from epoch 6 to epoch 8, while a new validator release
+goes out to partners.
+
+*The dates.* The blocks fix each boundary. The clock times are estimates, the same ones the mainnet timeline
+and the notices use: about 18:25Z for each epoch's end and about 22:25Z for its root commit.
+
+| Epoch | Blocks | Ends about | Root committed by |
+|---|---|---|---|
+| 6 | 9,499,228–9,549,627 | 2026‑11‑20 18:25Z | block 9,550,828, about 22:25Z |
+| 7 | 9,549,628–9,600,027 | 2026‑11‑27 18:25Z | block 9,601,228, about 22:25Z |
+| 8 | 9,600,028–9,650,427 | 2026‑12‑04 18:25Z | block 9,651,628, about 22:25Z |
+| 9 | 9,650,428–9,700,827 | 2026‑12‑11 18:25Z | block 9,702,028, about 22:25Z |
+
+- Epoch 8's earning window opens at about 2026‑11‑27 18:25Z.
+- Its statement follows its root commit on 12‑04.
+- Its root must be approved before `end(9)`, about 2026‑12‑11 18:25Z.
+
+*What epoch 8 carries.* Unless sidecar is live by then, epoch 8's `Z` comes from same‑network contracts
+alone. By then the billing change funds them from their networks' balances, free or paid, so their shares
+move from the provider rows into `Z`. They are rare, so `Z` will be small. The activation mainly moves
+same‑network shares from providers to extenders, and publishes the first census.
+
+*What has to ship, and by when* (the rows marked "epoch 8" above):
+
+0. **The billing change: live since 2026‑11‑11** (owner decision). Server `586673c74` reached the network
+   operator's api at 05:43Z and every service by 11:39Z.
+   - Since the deploy, network and friends‑and‑family contracts reserve escrow from the sender's transfer
+     balance, so every traffic kind draws on that one balance.
+   - Contracts opened before the deploy close unfunded through the no‑escrow path.
+   - Until `E_x`, nothing else changes in settlement credit. Same‑network bytes stay provider usage under
+     §8.2, now paid for from the sender's balance. Friends‑and‑family bytes stay provider usage, before and
+     after `E_x`, paid or free alike.
+   - The user notice goes out with the change: device‑to‑device traffic between a network's own clients and
+     providers, and traffic to friends‑and‑family providers, now use the sender's data allowance. Support
+     answers say so from 2026‑11‑11, and the mainnet timeline and ur.io's FAQ with their next releases.
+   - The extender pool still starts at epoch 8. By then every contract created since the deploy is funded,
+     and the shadow runs of epochs 6 and 7 see real funded flags.
+1. **By about 11‑16:** the sn `ledger` and `protocol` changes, which the server's builder imports.
+2. **Before `end(6)`, about 11‑20 18:25Z:** the server's same‑network rule, census capture and builder, running
+   in shadow so that epoch 6 is the first live shadow run (below).
+3. **Before epoch 8 starts, about 11‑27 18:25Z:**
+   - The amendment entry, signed and published. The owner signs it during epoch 7 at the latest, because the
+     signing tool refuses an entry for an epoch that has started.
+   - The notice on the mainnet timeline. The same‑network change applies to every contract that closes in
+     epoch 8's window, and what some providers earn changes with it.
+4. **By about 12‑01:** the validator and `snclaim` release with header v3, the recompute and the entry reader,
+   deployed when the validator is idle. It follows the partner validator release that is going out now,
+   rather than being folded into it.
+5. **Before `end(8)`, about 12‑04 18:25Z:** the server's production build, with the census capture running
+   at the boundary. Epoch 8's root, with header v3, is committed by about 22:25Z.
+
+*The shadow runs.*
+
+- **Epochs 6 and 7 run live in shadow.** After each boundary, the server builds the epoch's extender
+  component from the real census capture, without committing it, and publishes it in an unsigned report. The
+  validator's recompute runs on it.
+- **An offline replay of epoch 4.** Its contracts are still live inside the 35‑day horizon. The replay checks
+  that its rows under the new rule differ from the committed ones by exactly the same‑network shares.
+- If the server misses `end(6)`, epoch 7 alone is the live shadow.
+
+*What would move the start to epoch 9:*
+
+- The entry is not signed before about 11‑27 18:25Z. The signing tool would then require epoch 9.
+- The sn release is not deployed before epoch 8's root commit.
+- The census capture is not running at `end(8)`.
+- A shadow mismatch is not resolved.
+- The notice is not out before epoch 8 starts.
+
+Epoch 9's window runs from 12‑04 18:25Z to 12‑11 18:25Z.
+
+*How `E_x` is fixed: by the signed amendment entry.*
+
+- **Why.** Epoch 8 leaves about two weeks: enough to build the line format and its readers (one to two days
+  of work) and for the owner to sign during epoch 7. The entry gives watchers a record they can check,
+  which configuration alone does not. The same mechanism carries every later change, such as ASN units or
+  storage usage.
+- **Where.** It is published in its own file beside the price sheet, `amendments.yml`
+  (`https://ur.xyz/amendments.yml`), signed with the price sheet's pinned key in the same plain‑text style
+  (§7.1), so the deposit's price readers are untouched. The `amendment` package reads it in the server, the
+  validator and `snclaim`, and `cli/amendment` signs it (`mainnet/SETTLEMENT-AMENDMENTS.md`). For example:
+
+  ```
+  UR settlement amendment v1: chain 964, sn 25, no 1, from epoch 8, intra-platform and intra-network extenders, units egress prefix, free and paid, zeta 1
+  ```
+
+- **The fallback.** Configuration is used only if the signing cannot happen before epoch 8 starts: the same
+  unsigned line in the server's st.yml `amendments:` block and in every validator's `--amendments-fallback`
+  file (`VALIDATOR.md`). A configured line stands in only for epochs where no signed entry of its kind is in
+  force, and it is removed once a signed entry covers its epochs.
+
+*Every epoch from `E_x`:* the server emits header v3 and statement v2, and builds the provider rows without
+same‑network shares. A root that covers epochs on both sides of `E_x` applies each epoch's own rule.
+
+*Past epochs are not disputed.* Their rows are fixed inputs (check 3) and carry no extender component, so
+nothing before `E_x` is rebuilt, reopened or open to challenge. Same‑network usage before `E_x` keeps the
+credit it earned.
+
+#### 8.6.8 Owner decisions and open questions
+
+**Decided (owner, 2026‑11‑10, with follow‑ups at about 23:00Z, 23:10Z and 23:25Z, and Q7 on 2026‑11‑11).** The question
+numbers are those of the first draft.
+
+1. **The unit (Q3).**
+   - /29 IPv4 and /48 IPv6 prefix units are the base rule from `E_x`, under the granularity setting of
+     §8.4.
+   - Each unit counts once, and its share is split evenly among the eligible extenders in it.
+   - Per‑coldkey caps (S3) stay out.
+2. **Free bytes count (Q2).** Free and paid bytes count toward `Z` exactly as they count toward provider
+   usage, symmetrically everywhere. This reverses the earlier paid‑only decision. M2 now means funded bytes
+   (decision 12).
+3. **E5 (Q4).** The NO's own extenders are excluded: the gated fleet (`durable_network_ids`), canaries and
+   declared networks.
+4. **An empty set (Q6).** With `N = 0`, `Z` is dropped: it enters no weight, and the epoch allocates as it
+   does today.
+5. **Sidecar and extenders (Q11, first half).**
+   - Sidecar uses connect's client strategy as it is, with its existing extender fallback.
+   - Extenders are allowed by default, with a per‑customer switch to turn them off.
+   - Platform contracts that an extender carried keep crediting that extender one of their `n_c` hop shares
+     (J3, decision 16).
+   - Connect's transfer client is the base of every sidecar feature, so sidecar's traffic is ordinary
+     contracts that escrow and settle as all others do (decision 12).
+6. **Which traffic counts (Q10, and Q11's second half).**
+   - Platform endpoints are sidecar's edge platform clients (tlsedge, smtpedge and mxedge), registered by
+     the operator. Being on one of the operator's own networks is the test (owner, 2026‑11‑12). These three
+     kinds are the signed set: the registry refuses any other, and a new kind needs a new signed amendment
+     entry.
+   - No two clients on one network count as paid providers. Every same‑network contract, in any product, is
+     intra‑network, and its bytes count toward `Z`. This amends §8.2 from `E_x`.
+   - Uncontracted api, push and storage traffic stays out at launch. Storage is the first candidate to add,
+     once its usage records are published each epoch.
+   - The operator's own measurement and test traffic is excluded from the extender pool: probes, the
+     qualityprobe and the proxy‑test account. Providers keep earning from it under §8.2.
+7. **Pricing `Z` (Q1).** `Z` counts in `total_usage_bytes`, so the deposit prices it and, at a nonzero
+   price, it raises implied usage. The owner expects extenders to be an important part of the operator's
+   reachability.
+8. **Liveness (Q5).** An extender in the active pool is counted, with no uptime threshold and no minimum
+   age. The test is E1's: active at `end(k)`.
+9. **The cap (Q8).** `ζ = 1`: `Z` enters as at most the epoch's eligible provider usage, so extenders take
+   at most half a pool. The owner: "all miners can be both providers and extenders".
+10. **Verification (Q9).** Validators do not check extenders: not every extender address can be revealed
+    at once, by design. There is no REACH message and no sampling. The census is operator‑attested and
+    published as keyed prefix hashes; validators recompute the arithmetic only.
+11. **The start (Q12).** Epoch 8, while a new validator release goes out to partners. This replaces the
+    earlier "epoch 6, ideally". The owner did not choose the mechanism separately. The draft's signed amendment
+    entry, which epoch 8 leaves time for, fixes `E_x` (§8.6.7).
+12. **The manufactured‑traffic bound (23:10Z).** Option A: a network's intra traffic counts only up to what
+    its plan's data allowance funds.
+    - All intra‑network and intra‑platform traffic counts against the network's data balance, free plan or
+      paid, through ordinary escrow.
+    - This ends the free no‑escrow treatment of same‑network contracts.
+13. **One balance, no separate limit (23:25Z).** "All traffic shares the same network transfer balance." The
+    only bound on a network's contribution to `Z` is its one transfer balance. The rest is the accepted risk
+    of §8.6.3.
+14. **Friends‑and‑family contracts escrow (23:25Z).** They reserve escrow from the sender's (dialing
+    network's) transfer balance, as public contracts do, which closes the unmetered route to provider credit.
+    Nothing else changes for them. As the owner confirmed on 2026‑11‑10, "all traffic counts as paid
+    traffic": their bytes count as provider usage like any other, paid or free, and only the sender's
+    balance now pays for the data.
+15. **Billing as soon as possible (23:25Z).** The billing change goes live as soon as it deploys, before
+    `E_x`. Contracts opened before the deploy close unfunded, and the extender pool still starts at epoch 8
+    (§8.6.7). It went live on 2026‑11‑11 (§8.6.7, step 0).
+16. **Extenders count as one of `n_c` (Q7, 2026‑11‑11).** The owner: "extenders count for one of n in payout
+    weighting for contracts". Q7 asked whether extender‑carried platform contracts should stay with their
+    extender (J3) or move into the even split. They do neither whole (§8.6.2):
+    - On every contract, each extender party is one of the contract's `n_c` hops and keeps its even share as
+      provider usage (J3), unless it is on the origin's network.
+    - `n_c` counts every hop once, less the origin, platform endpoints and same‑network participants
+      included. Their shares, and only theirs, are `z_c`, so a platform endpoint's share joins `Z` and no
+      share passes to another hop.
+    - No byte is credited twice: each share of a contract goes to a provider row or to `z_c`, never both.
+    - It takes effect with the amendment, from `E_x = 8`. Before `E_x` nothing changes.
+
+**Still open.** Nothing: Q7, the last open question, is decision 16.
+
+### 8.7 Capture the flag — a per‑country coverage auction beside the provider pool (decided 2026‑11‑11)
+
+> **Amendment decided by the owner on 2026‑11‑11.** Capture the flag (CTF) takes effect from epoch 8
+> (`E_c = 8`), the extender pool's first epoch too, once the signed amendment entry v2 is published (§8.7.5).
+> From `E_c` it amends §8.5's split and adds a second settlement v2 pool per network operator, with its own UID
+> (§14). vault2, the provider pool's ledger and the extender pool do not change. This section summarizes the
+> design, and `CAPTURETHEFLAG.md` gives it in full, with its formats, amounts, attacks, evidence and deployment
+> plan. The contracts are in `VERSION2-FINAL.md` §19, and the public routes in `api/operator.yml`. The owner's
+> decisions are listed in §8.7.6.
+
+**Why.** The provider pool pays for usage (§8.2), the head for routable breadth (§8.4), and from epoch 8 the
+extender pool spreads platform traffic evenly over prefix units (§8.6). None of them pays for being present in
+a country. Usage concentrates where users are, and breadth and units reward many address blocks wherever they
+sit. Censorship resistance, though, is decided country by country: a national firewall can cut the platform's
+whole surface, and providers and extenders inside that country are the way around it (§8.6.6). On 2026‑11‑10
+the network had providers in 109 countries, 74 of them with at least five. CTF pays a fixed bounty per country
+and role, so the first miner to reach a thin country earns far more than one more miner in a dense one.
+
+#### 8.7.1 The pool
+
+- **Its id and UID.** NO `n`'s CTF pool is the vault2 pool `2^32 + n`, so UR's is **4,294,967,297**. The id
+  sits above every v1 operator id and below 2^53, so JavaScript clients keep it exact, and vault2 itself does
+  not change. `STSettlement2Ctf`, an upgrade of `STSettlement2`, registers it (`registerCtfPool`) under a hotkey
+  derived at execution, and the registration burns one UID (§14).
+- **Its funding.** It takes `s_ctf · μ · ŵ_n` (§8.5): a tenth of the providers' share, divided across NOs by
+  each validator's own pool weights. No validator measures anything for it.
+- **Its settlement.** It settles exactly like the provider pool (§8.3): a close within 1,200 blocks of the
+  epoch's end, a root committed by NO `n`'s root signer, auditor approval before the next epoch ends, the
+  14,400‑block window with its challenges and demands, and cumulative, permissionless claims that never expire.
+  Its ledger keeps v2's accounts, sum tree and claim proofs, and lists each covered epoch's census, awards, pots
+  and pending awards where the provider pool lists provider rows (`CAPTURETHEFLAG.md` §5).
+- **The same registration.** A winner is paid to the coldkey that the provider rows' wallet selection gives its
+  client: its own consent, else its network's, else a hotkey delegation (§8.2). Payout consents name the NO, not
+  a vault2 pool, so one consent covers both of NO `n`'s pools and no miner signs anything new. The same coldkey
+  then holds one account in each pool.
+
+#### 8.7.2 Slots, eligibility and the draw
+
+- **Ten slots per country.** Each of the 249 ISO 3166‑1 alpha‑2 codes of `server/model/iso_country_names.go`
+  has 5 provider slots and 5 extender slots, so `S = 2,490`. Kosovo (XK) is not an ISO 3166‑1 code and has
+  none. The seven territories without a permanent population (AQ, BV, GS, HM, IO, TF, UM) have slots like
+  every other code. Each slot is worth the same amount: the CTF pool's fresh funding for the epoch divided by
+  2,490, rounded down to the rao, with the remainder going one rao each to the first slots in slot order
+  (country code, then provider before extender, then rank).
+- **The operator nominates.** The NO lists, from its own data, the providers and extenders that were online,
+  passing its checks and in one country for at least half of the epoch, and active at its end. The server
+  samples every provider and extender each quarter hour, 672 times an epoch. A candidate needs half of the
+  samples that the operator does not excuse for a platform‑wide outage it declares, so 336 when none is
+  excused. Like the provider population and the extender census, the nomination is operator‑attested (§8.6.4).
+  - **A provider** (P1–P6) is, at `end(k)`, an active, top‑level, connected provider with a Public provide key
+    and a valid location that passes the operator's provider eligibility, and its published country is the
+    country. At least half of the samples found it so. It is one candidate per IPv4 address or IPv6 /64 (E3),
+    has a payout coldkey and no active fleet binding at either boundary (E4), and is not on one of the NO's own
+    networks (E5).
+  - **An extender** (X1–X6) meets §8.6.2's E1 at `end(k)`, and the country is its record's country then. Its
+    activations in the epoch were all in one country, and, for a record without a derived location, in that
+    country. At least half of the samples found it active there, with an address whose
+    challenge passed, and it meets E3–E5.
+- **One ticket per unit.** Candidates are grouped by the keyed /29 IPv4 or /48 IPv6 unit of §8.4 and §8.6.2.
+  A unit holds one ticket per role, whatever its size, and all its members are equivalent. It enters one
+  country's draw per role, the country of the lowest client id among its candidates left in the draw, once
+  fleet‑bound ones are dropped. A miner may be a candidate in both roles and win both: every miner can be both
+  a provider and an extender (§8.6.8, decision 9).
+- **The census and its commitment.** Right after the end boundary, the server builds epoch `k`'s **census**:
+  one row per candidate (role, its own country, unit, unit family, client id), sorted, with per‑country
+  counts of the miners each rule excluded. It holds no coldkeys and no addresses. Within 600 blocks of
+  `end(k)`, NO `n`'s root signer commits `censusHash = sha256(census header)` with
+  `commitCtfCensus(k, n, censusHash)`, once per epoch, so the candidates are fixed on chain before any
+  randomness for the draw exists. No census can be committed while the v1 coordinator is paused, so a pause
+  across that window means no draw for the epoch.
+- **The draw.** A drand round published after the commitment seeds it:
+
+  ```
+  ρ_k      = the first drand quicknet round whose time is ≥ ts(B_k) + 60 s        B_k = the commitment's block
+  σ_k      = keccak256("urnetwork/ctf-draw/v1" ‖ chain_id ‖ netuid ‖ pool_id ‖ k ‖ censusHash ‖ rand_k)
+  winners  = in each country and role, the min(5, units) units with the smallest keccak256(σ_k ‖ role ‖ country ‖ unit)
+  member   = in each winning unit, the candidate with the smallest keccak256(σ_k ‖ role ‖ unit ‖ client_id)
+  ```
+
+  `rand_k` is the round's randomness, verified against quicknet's public key. Candidates with an active fleet
+  binding at either boundary are left out first. Taking the smallest tickets draws a uniformly random set of
+  up to five units. Block producers cannot bias drand, and a second commitment is refused. An operator that
+  withholds its commitment gets no draw, and so does a committed census that is not canonical: everything then
+  carries.
+
+#### 8.7.3 Pots and the carry contract
+
+- **Unfilled slots carry.** A slot with no winner adds its amount to its country's **pot** for that role.
+- **A fifth of the pot per winner.** Each winner takes its own slot and a fifth of the pot carried into its
+  country and role. The rest keeps carrying, with the epoch's unfilled slots added, and five winners empty the
+  pot.
+  - A lone miner in an unclaimed country takes a fifth of what is left each epoch: about 67% of the pot in five
+    epochs and 89% in ten. If it stays alone, the pot settles at twenty slot amounts, and it takes five slot
+    amounts each epoch.
+  - Every newcomer who becomes eligible there takes its own fifth, so a pot never goes all at once to whoever
+    arrives first.
+- **Fresh amounts only.** Slot amounts come from the epoch's fresh funding. Returned carry pays only the pots
+  and pending awards it is owed, never new slots. All amounts are exact integers in rao (`CAPTURETHEFLAG.md`
+  §4.5, implemented by the package `ctf`).
+- **The carry contract.** vault2 requires each root's total to equal the pool's funding through its epoch, so
+  every captured rao sits in some account at every root, and a pot cannot wait inside the pool. Each root pays
+  the pots and pending awards to the account of the **carry contract**, `STCtfCarry`: immutable, ownerless, one
+  per CTF pool. Once the root finalizes, the operator's CTF driver calls `recycle`, signed by the root key that
+  sends the pool's commits; the call is open to anyone. It claims that account and moves the α straight back
+  onto the CTF pool hotkey, where the next close captures it with the epoch's emission. It records each
+  return under the epoch whose close captures it (`recycledFor`), so the ledger tells returned carry from
+  fresh funding. Beyond a small residual of its own, it holds stake on the escrow and pool hotkeys
+  only until the next recycle.
+- **Pending awards.** If the carry has not come back before an epoch's close (a late root, the driver down,
+  vault2's own staking‑hotkey list held full, or the residual cleared until `seed()`), the epoch is not
+  matured. Its winners take their slot amounts at once and their pot shares as pending awards, paid in the
+  first matured epoch, so a delay does not cost a winner its pot share.
+- **Why the carry keeps a residual.** vault2's claim pays the carry by a transfer from another coldkey, which
+  the runtime refuses once third parties have filled the receiving coldkey's staking‑hotkey list to 128
+  entries, unless the hotkey is already on it. So the carry keeps a residual of its own on vault2's escrow
+  hotkey, which keeps that hotkey on its list, pins the CTF pool hotkey there as its auto‑stake destination,
+  so its own moves land on a listed hotkey too, and opts out of third‑party list growth, which keeps the list
+  short. Its list's length then never refuses it. It stakes the residual from the TAO it is created with, by its own
+  `addStake`, and anyone can restore it with `seed()` if root's sweep of small nominations ever clears it.
+  The residual never returns to the pool, so the ledger is unchanged (`CAPTURETHEFLAG.md` §4.6;
+  `VERSION2-FINAL.md` §19.4).
+- **Hotkey accounts against swaps and reservations.** A coldkey swap could merge into the carry's coldkey or
+  vault2's, and a swap's announcement reserves its destination, which refuses every transfer into it. The
+  runtime does neither to a coldkey that is a hotkey account, so a guardian coldkey makes both of them hotkey
+  accounts. What can still delay the carry, taking nothing, is vault2's own list held full while the CTF UID
+  earns nothing (`CAPTURETHEFLAG.md` §4.6, §12.4).
+
+At epoch 4's scale, with no head fleet, the CTF pool's fresh amount is 119,583,893,572 rao (119.58 α). A slot
+is then worth 48,025,660 rao, about 0.048 α, and a country with no miners grows its two pots by about 0.48 α an
+epoch, roughly 25 α a year. A first provider in a country whose provider pot holds 50 epochs of empty slots
+takes 2.45 α in its first epoch (`CAPTURETHEFLAG.md` §6).
+
+#### 8.7.4 Validators, audit and claims
+
+- **No probing.** No validator measures, samples or probes a CTF miner. CTF has no quality term and no REACH
+  message.
+- **One decision.** Each validator decides whether to weight the CTF pools. The release has a setting
+  (`ctf: support | off`), and its sample configuration sets `support`. A validator set to `off` treats the CTF
+  channel as empty (§8.5, rule 3).
+- **Yuma decides what is paid.** Each CTF UID's incentive is the κ‑stake‑weighted median of the validators'
+  weights for it, so a CTF pool is paid only while validators holding more than half of the active stake
+  support it. Validators that support CTF while consensus does not have their CTF weight clipped, and those
+  that do not while consensus does are clipped where they overweight the pool or head. Either way the gap is
+  about 1/100 of the row, so the vtrust cost is small. Partner
+  validators need nothing for epoch 8: until a release of theirs supports CTF, Yuma clips their weights by
+  about 1/100 of the row. `weights_version_key` is not bumped, since support is each validator's choice.
+- **Resolving the UID.** A validator finds NO `n`'s CTF pool with `STSettlement2.ctfSettlementAt(n, epoch)` and
+  checks the hotkey against vault2's own `pools(2^32 + n)` record, as it does for the provider pool (§10). An
+  unregistered or pruned CTF pool leaves the channel empty for that NO.
+- **The audit is arithmetic.** A CTF root finalizes only with auditor approval, which `STSettlement2` requires
+  (§8.3), and at launch the auditor key is the validator's. Before approving, the validator recomputes from
+  public objects and chain state: the
+  census against its commitment, the seed from the drand pulse, the draw, the amounts and the accounts. It is
+  the same kind of check it runs on the extender census, not a measurement. Presence, the checks behind P1 and
+  X1, the countries, units and address dedupe, the wallets and the declared networks are attested and not
+  checkable (`CAPTURETHEFLAG.md` §8). `snclaim v2 check --no_id 4294967297` runs the same audit, `ctf.Verify`,
+  with the fleet bindings the validator reads, so a fleet‑bound client that a census lists is left out of the
+  draw for both.
+- **Claims.** Apps claim a CTF account beside the pool account, in the same claim flow. Each entry of
+  `GET /sn/ledger/account` gains `kind` (`pool` or `ctf`) and `label`. Old apps show a CTF account as
+  "Pool 4294967297" and claim it like any pool.
+- **Inspection.** The census, the draw, the awards and the pots are public objects. `api/operator.yml`
+  documents the routes under `/sn/ctf` that the ur.xyz `/ctf` page reads, and a miner can see its own status and
+  the reason with `GET /sn/ctf/client`.
+
+#### 8.7.5 How it is fixed, and the rollout
+
+**By a signed amendment entry, not a successor policy.** The server resolves each epoch's payout consents in a
+domain that includes the epoch's policy hash, so a successor policy would leave every existing consent outside
+the new epochs' domain. `E_c`, the shares and the CTF parameters are therefore fixed by the amendment entry v2,
+the mechanism that fixes `E_x` (§8.6.7): one line, signed with the price sheet's pinned key and published in
+`amendments.yml` beside the price sheet.
+
+```
+UR settlement amendment v2: chain 964, sn 25, no 1, from epoch 8, capture the flag, ctf pool 4294967297, carry 0x<carry contract>, shares pool 4/10 ctf 1/10 head 5/10, head cedes to pool, slots 5 providers 5 extenders, countries iso 3166-1 249, presence half epoch, units egress prefix, draw drand quicknet 60s after census
+```
+
+Only the chain, sn, operator, first epoch and carry contract vary. The `amendment` package reads the entry in
+the server, the validator and `snclaim`. `cli/amendment` signs it and refuses an entry whose first epoch has
+started, so the owner signs it during epoch 7 (`mainnet/SETTLEMENT-AMENDMENTS.md`).
+
+**Rollout to `E_c = 8`** (`CAPTURETHEFLAG.md` §11.2):
+
+- **One timelock operation** upgrades `STSettlement2` to `STSettlement2Ctf` and registers UR's CTF pool:
+  `upgradeToAndCall` with `registerCtfPool(1, maxBurn, 8)` as its call. It has to execute before epoch 8
+  starts at block 9,600,028. Anyone can take the derived hotkey inside the executing block, since it is known
+  once the parent block is sealed, so the Safe schedules the operation days early, by about 2026‑11‑22. The
+  execute is retried with a bounded gas limit, and a fallback operation with first epoch 9, under another
+  salt, is scheduled beside it.
+- **The carry contract** is created after the operation, at the CREATE2 address of its exact build and a fresh
+  salt kept private until the creation, so its artifact is pinned and the entry names the address once it
+  exists. It is created with a 1 TAO seed,
+  once R-9 has passed on the runtime mainnet runs, the guardian holds its coldkey and vault2's as hotkey
+  accounts, and the deterministic deployment proxy's account is funded, within the CTF UID's immunity window,
+  and `sn-mainnet ctf-carry review` checks it before and after (`CAPTURETHEFLAG.md` §11.2).
+- **The server** samples presence from before `end(6)`, so that epoch 7 runs in shadow. Epoch 8's census is
+  committed by block 9,651,028, and its root with the provider root by block 9,651,628.
+- **UR's validator** weights the CTF UID from epoch 8's first tempo. It holds the stake majority, so it alone
+  makes CTF paid. Its release, with the CTF audit and approval, is deployed before epoch 8 starts, about
+  2026‑11‑27, with the CTF watcher units on an archive RPC.
+- **The first CTF claims** open about 2026‑12‑07, once the root is approved and its 14,400‑block window has
+  passed. The notice is `mainnet/notices/2026-11-11-capture-the-flag.md`.
+- **What would not move the start.** A late driver or a shadow mismatch: the operator then commits no census for
+  epoch 8, every slot carries, and the first winners are drawn in epoch 9. A late validator release only
+  shrinks epoch 8's funding, as long as it lands before the CTF UID's immunity ends.
+
+No key changes: the census commitment and the CTF roots use NO 1's root signer, and the auditor set stays as it
+is. One new key holds hotkey accounts only: the **guardian** coldkey, which makes vault2's coldkey, and the
+carry's, hotkey accounts and never swaps them. It is a substrate coldkey of its own, apart from the v1
+coordinator's pause guardian, and it holds nothing else.
+
+#### 8.7.6 Owner decisions (2026‑11‑11 and 2026‑11‑12)
+
+These are `CAPTURETHEFLAG.md` §12.1, numbered as there.
+
+*2026‑11‑11, the design:*
+
+1. **A new pool per network operator, with its own UID**, beside the current mechanism.
+2. **The shares.** Of the providers' share: provider pool 0.4, CTF pool 0.1, top‑level miners 0.5.
+3. **Head cede.** While no top‑level miner is weighted, the head's share goes to the provider pool only, and CTF
+   stays at 0.1.
+4. **Slots.** A uniform amount to up to 5 providers and up to 5 extenders per country.
+5. **Nomination.** The operator nominates candidates from its own reliability data and picks winners at random
+   per country: an auction among eligible miners.
+6. **Eligibility.** Online, passing the operator's checks and in the same country for at least half of the
+   epoch, and active at its end.
+7. **Carry.** Slots that cannot be awarded carry forward to the next epoch, so a country can build a large pot.
+8. **Carry custody.** The carry is held by an immutable carry contract.
+9. **Countries.** All 249 ISO 3166‑1 codes have slots.
+10. **Units.** The IPv4 and IPv6 subnet uniqueness rules of the head and extender pools apply: all miners in one
+    subnet are equivalent.
+11. **Validators** do not probe the CTF pool. Each chooses whether to allocate to it.
+12. **Registration.** Miners use the provider pool's registration.
+13. **Claims.** The apps claim CTF rewards in the same claim flow as pool rewards.
+14. **Inspection.** The pool is externally inspectable, through an API at `sn/api/operator.yml` and a flag grid
+    on ur.xyz.
+15. **The `/ctf` page.** Flags held are countries whose ten slots were all won. A role is "not fully captured"
+    where at least one of its slots went unclaimed, so a newcomer wins by default. The chance to win shows only
+    where all five of a role's slots were won: the draw's exact odds, 5/entries, or 100% at five entries or
+    fewer.
+16. **A fifth of the pot.** Each winner takes its own slot and a fifth of the pot carried into its country and
+    role, and the rest keeps carrying. A lone miner in an unclaimed country takes a fifth per epoch, so it has
+    to stay about five epochs to capture most of the reward.
+17. **Start.** `E_c = 8`, the extender pool's first epoch too, with epoch 7 in shadow.
+
+*2026‑11‑12, after the owner reviewed the build:*
+
+18. **The carry's residual.** The carry contract keeps a residual of its own on vault2's escrow hotkey, pins the
+    CTF pool hotkey as its auto‑stake destination and opts out of third‑party staking‑hotkey growth, and a
+    guardian coldkey makes vault2's coldkey and the carry's hotkey accounts (§8.7.3). It replaces the first
+    carry, which third parties could block for good.
+19. **The guardian, now.** The guardian makes vault2's coldkey its hotkey account at once, through the MEV
+    shield, and checks that it holds it, before anyone can reserve that coldkey or swap into it
+    (`CAPTURETHEFLAG.md` §11.2, step 0).
+20. **The build's departures are accepted.** `CAPTURETHEFLAG.md` describes the implementation as built, and each
+    departure from the first draft stands, with its reason in its §12.2 (rows 9, 17, 19 to 23, and 25 to 34).
+21. **Country pages that differ only by name.** A `/ctf` country page whose text differs from another's only by
+    the country's name is `noindex` until it has data of its own or a local note. It replaces the decision of
+    2026‑11‑11 to index all 249 from launch.
+22. **Old apps during a CTF pool fault.** A client that does not send `partial=true` gets the provider pool as
+    before, without the CTF pool it cannot read, rather than an error.
+23. **Counsel's review.** The launch does not wait for counsel's review of the questions `design/ctf/SEO.md` §3
+    raises.
+24. **The won‑slot line shows every unclaimed win,** not only the latest draw's.
+25. **One auth for every app.** `GET /sn/ctf/client` accepts a client token or a network token, and every app,
+    ur.io included, shows the won‑slot line.
+26. **External wallets.** A wallet that cannot pay for the batch claims the largest account alone.
+27. **The claim minimum everywhere.** "Below the claim minimum" shows on any pool account under the minimum,
+    alone or beside others, in every app.
+28. **An auction.** Capture the flag is called an auction. Its technical terms stay as they are: the census, the
+    draw, the drand seed and the chance to win.
+
+Every other question the design raised is resolved in `CAPTURETHEFLAG.md` §12.2, each with its reason. The one
+left open, third parties blocking the carry contract, the owner settled on 2026‑11‑12 with decisions 18 and 19
+(`CAPTURETHEFLAG.md` §12.4). Its §12.3 lists later options, each of which would need its own signed entry: ASN
+units, a cap on pots or a release of territories' pots, per‑country slot counts, a derived‑location requirement
+for large pots, a wind‑down rule, and CTF pools for other operators.
 
 ---
 
@@ -1550,8 +2734,8 @@ mechanism). The contract computes nothing (D25):
 for validator v:
     # TAIL — NO pools: implied-usage × quality (D25)
     for each NO pool p (miner-pool UID of NO n):
-        implied_usage_n = usage_n × rate(0) × min(1, cap / owed_n)   // usage from the signed payout artifact; the deposit must pay owed_n = usage_n × rate(tier_n) (§7.5, §8.1)
-                                                                     // = 1 while the published price is zero (§7.1)
+        implied_usage_n = usage_n × rate(0) × min(1, cap / owed_n)   // usage the NO signed for the previous epoch (§7.1); the deposit must pay owed_n = usage_n × rate(tier_n) (§7.5, §8.1)
+                                                                     // = 1 while the price in force is zero (§7.1)
         pool[p] = implied_usage_n · clamp(quality_v(p))    // §9.4 aggregate, clamped to the policy's [0.75, 1], 0 at 0;
                                                            // = 0 if v declares it controls NO n (self-mask)
     # HEAD — top-level miners: split-adjusted routable-IP breadth (§8.4, D27)
@@ -1560,6 +2744,8 @@ for validator v:
         head[u] = EMA(score_v(u)) for the top maximum_head_fleets (200) by it, else 0   // = 0 for v's own UID
     # split the providers' share μ by governance share θ, into ONE vector (§8.5)
     normalize head so Σ head = θ·μ ;   normalize pool so Σ pool = (1 − θ)·μ   // an empty tier cedes to the other
+    #   from E_c (§8.5, §8.7): Σ pool = 4/10·μ, Σ ctf = 1/10·μ (each NO's CTF pool UID at its pool's weight;
+    #   empty if v's ctf setting is off), Σ head = 5/10·μ; CTF is fixed, and pool and head cede to each other
     SN25: add ur-reserve's k recipient UIDs at (1 − μ)/k each (the whole row when no provider has weight)
     w_v = apply signed policy max_weight_limit_u16 to the row
     w_v = half-up u16(w_v); deterministically repair rounding under the same cap
@@ -1575,10 +2761,18 @@ UR's pool), a validator resolves it with `STSettlement2.settlementAt(n, epoch)`,
 registered in vault2 (`STSettlementVault2`). The validator checks that hotkey against vault2's own
 `pools(n)` record and refuses a mismatch, so an upgrade cannot redirect emission. For earlier epochs it uses the v1 coordinator's `operatorAt`, so
 replay never calls a contract that did not yet exist. Live steering and replay share this one resolver, and from
-E_s the v1 pool hotkey is no longer consulted. A refused or deleted v2 payout root (§11.3) does not change the
+E_s the v1 pool hotkey is no longer consulted. A refused or deleted v2 payout root (§11.3) does not by itself change the
 pool's weight while there is one operator: zeroing the pool would hand the pool channel to the head fleets,
 or with no head fleet on SN25 the whole row to `ur‑reserve` (§8.5), punishing providers for the operator's
-fault.
+fault. The deposit audit is a separate rule: at a nonzero price it checks the usage statement against the
+latest root committed in the source epoch's root window, and a later replacement of that root does not change it
+(§7.1).
+
+From `E_c` (capture the flag, §8.7) a validator whose `ctf` setting is `support` also weights each NO's CTF pool
+UID, at its pool's weight within the CTF channel's 1/10 (§8.5). It resolves the UID with
+`STSettlement2.ctfSettlementAt(n, epoch)` and checks the hotkey against vault2's own `pools(2^32 + n)` record, as
+for the provider pool. It measures nothing for it, and an unregistered or pruned CTF pool leaves the channel empty
+for that NO.
 
 Yuma combines the validators' vectors with their stake:
 
@@ -1628,6 +2822,8 @@ therefore mandatory release gates.
 | auditor set, quorum and per-root approvals | `STSettlement2` (owner-upgradeable) | admission: a pending root finalizes only with a quorum of approvals of its exact commit (§11.3) |
 | validator activation anchors and write-once validator/operator evidence hashes | coordinator's pool namespace | domain-bound consent and immutable closed-epoch census/audit commitments, independent of payout-root publication |
 | v1 payout artifacts, v2 ledger objects (header, provider and account chunks) and completed-trail/statistics artifacts | **server API + content-addressed `server/blob` MinIO** | canonical bulk inputs; publicly retrievable by SHA-256 and independently reproducible; the validator also retains each v2 ledger it audits |
+| signed price sheet | **`https://ur.xyz/price.yml`**; readers keep the last good copy | deposit rates and cap by epoch; only entries signed by the pinned key count, so the file itself is not trusted (§7.1) |
+| signed usage statements (epochs from E_s) | **the NO's public `/sn/evidence` routes** | the bytes and users a deposit prices; bytes are checked against the committed ledger, users are attested (§7.1) |
 | fleet manifest hash | **commitments pallet + finalized coordinator mirror** | hotkey-authorized native anchor used by every binding member |
 
 This directly answers `seed/INCENTIVES.md`'s open question: **yes**, each NO commits a **Merkle root** of its
@@ -1771,6 +2967,10 @@ to dispute), pool amounts are read from chain state, and effort claims do not ex
 - **Bad payout artifact/share (epochs before E_s).** The operator API and validators reject any artifact that
   does not reproduce its content hash/root or exactly allocate 10,000 bps. Independently, every claim proves
   `(coldkey,share)` against the immutable entitlement and the vault cannot pay more than its total.
+- **Bad usage statement (epochs from E_s).** Validators use only a statement that names the committed chunks
+  and verifies; with none, or with two that disagree, the pool has no weight on that steering pass (§7.1).
+  `total_users` stays attested, and a statement changes no ledger bytes, so a dispute over users cannot hold
+  up settlement.
 - **Bad `client_id ⇄ hotkey` binding.** Invalid consent never enters state: the coordinator checks the
   complete replay-bound payload, Ed25519 and sr25519 signatures, matching finalized commitment, validity
   interval and live UID before recording a future-effective version (§11.4). Client-signed revocation
@@ -1936,6 +3136,11 @@ designs, §9.3/§13.6) is an open post‑launch question, not a committed roadma
   at 1M providers (`VERSION2-FINAL.md` §3). A third party can also raise that cost: by filling vault2's own
   staking-hotkey list (up to 128 entries, each costing it a transfer above the floor) it makes every claim
   use about 1.26M gas instead of 0.15M, about 1 α at the same prices.
+- **Not secured by the deposit audit:** it uses the latest root committed in the source epoch's root window, and a later
+  replacement does not change it, so an operator could commit a deflated root it expects to be refused, pay the smaller
+  deposit, and replace the root while it is still unfinalized at the end of the next epoch (§7.1). Both commits are
+  visible on chain; this is accepted while the subnet owner runs the only operator and is to be revisited before other
+  operators are admitted.
 - **Outside any contract** (chain-level powers that the release 1.0 vault faces too): the SN25 owner key
   or root can **freeze every claim** by disabling stake transfers (§6.4), though it cannot take or
   redirect a balance; and SN25 can be **dissolved**. A new subnet registration at the subnet limit
@@ -2063,7 +3268,7 @@ from day one — we ramp its *strength*, we do not defer the mechanism.
 **v2 settlement confines quality to this cross-operator weight** (§13.1). From `E_s` the within-pool split
 is by usage alone, with no per-provider reliability factor (cf. §8.2), so the validator's measurement no
 longer gates which providers inside a pool are paid. Root approval is an objective ledger check, not a
-quality lever: while there is one operator, a refused or deleted root leaves the pool weight unchanged,
+quality lever: while there is one operator, a refused or deleted root by itself leaves the pool weight unchanged,
 because zeroing the pool would hand the pool channel to the head fleets, or with no head fleet on SN25 the
 whole row to `ur‑reserve` (§8.5), and punish providers for the operator's fault (owner decisions,
 October 11).
@@ -2074,8 +3279,9 @@ Because per‑GB / per‑user usage is self‑reported and unverifiable on‑cha
 enforcement power. The objective on-chain input is *α deposited*; validators check it against the
 signed usage priced at the governance-published conviction-tier rate, and weight that usage at the
 baseline rate (§7.1, §8.1). v1 therefore has **no
-oracle**: the rate schedule is a signed, content-addressed off-chain policy that NOs use to size deposits
-and validators independently use to reproduce weights.
+oracle**: the rate schedule is the signed price sheet, or the signed, content-addressed off-chain policy while
+no signed entry is in force (§7.1), and NOs use it to size deposits and validators independently use it to
+reproduce weights.
 (If a future version ever needs an on‑chain α/USD value — e.g. to denominate the deposit fee in USD —
 the `0x808` α price is already trustless and only TAO/USD would need a committed validator‑median feed.)
 
@@ -2135,20 +3341,24 @@ space to ~127**, too few for ~200 top miners (so release 1.0 fixes `mechanism_co
 and **reserving the split by burning to an owner/immune UID** — post-Spec-421 the `(1 − miner_burned)` term
 would shrink the subnet's whole cross-subnet allocation (§8.5). θ trades demand-coupling (in the tail)
 against the merit apex (the head); it is a governed dial, started tail-weighted and ramped (§8.5, §12.3).
+From `E_c` the signed amendment entry v2 fixes the shares instead, and the same vector carries a third channel,
+each NO's capture the flag pool (§8.5, §8.7).
 
 ---
 
 ## 14. One mechanism and its UID budget
 
 Release 1.0 uses exactly **one** mechanism. The pool on-ramp and direct head are two scoring channels in
-one CRv4 vector, divided by θ (§8.5), not Subtensor sub-mechanisms. A second mechanism would divide the
+one CRv4 vector, divided by θ (§8.5), not Subtensor sub-mechanisms; from `E_c` the CTF pools are a third
+channel in the same vector, and three fixed shares divide it (§8.5, §8.7). A second mechanism would divide the
 global ~256-UID capacity and make the target head impossible; the release preflight therefore requires
 `mechanism_count = 1` and refuses to register roles unless all missing identities fit the intended
 `max_allowed_uids` snapshot.
 
 The budget is `max_allowed_uids ≥ head fleets + one vault-owned pool UID per NO + validator UIDs + the
 owner/escrow identities that require registration + the treasury recipient
-UIDs` (two on SN25, §8.5). Validators are not a separate fixed partition: they
+UIDs` (two on SN25, §8.5); from `E_c` each NO holds two vault-owned pool UIDs, its provider pool and its CTF
+pool (below). Validators are not a separate fixed partition: they
 are live UIDs holding permits according to native stake. New product lines remain an off-chain/operator
 classification unless a future whitepaper revision supplies a new economic model and explicit UID
 budget; they are not a latent release-1.0 mechanism switch.
@@ -2165,6 +3375,19 @@ stake moves need only the hotkey's `Owner` entry. The escrow hotkey earns no emi
 first UIDs pruned once its immunity ends, and vault2 keeps working with it pruned. Anyone can re-register a
 pruned v2 pool hotkey through `registerPoolUid`, paying the burn.
 
+Capture the flag (§8.7) registers one more vault-owned identity per NO, one burn each: its CTF pool hotkey,
+registered by `STSettlement2Ctf.registerCtfPool` one to two days before `E_c`, as the v2 pool was, so that it
+earns weight before its registration immunity ends. The hotkey is derived when the timelock operation
+executes, from the proxy, the pool id `2^32 + n`, the block number and the previous block's hash. A hotkey
+named in the scheduled call would be public for the timelock's 72 hours, and whoever registered it on SN25
+first would make vault2's registration fail. The derived hotkey is still known once the parent block is
+sealed, and anyone can take it inside the executing block, so the operation is made ready days early, with a
+fallback for the next epoch (`CAPTURETHEFLAG.md` §3.1, §11.2). The registration takes one of the 256 UIDs,
+and with no owner trim a full metagraph loses its lowest-ranked UID that is not immune; the live
+`immunity_period` has to outlast the time from the registration to the first revealed CTF weight, a little over
+two days. A pruned CTF pool earns nothing, and leaves the CTF channel empty for its NO, until anyone
+re-registers its hotkey through `registerPoolUid`, paying the burn.
+
 ---
 
 ## 15. Concrete parameters
@@ -2174,7 +3397,7 @@ pruned v2 pool hotkey through `registerPoolUid`, paying the burn.
 | Hyperparameter | Value | Rationale |
 |---|---|---|
 | `tempo` | **360** | native ~72‑min weight/emission cadence (§5.1) |
-| `max_allowed_uids` | **256** (hard ceiling — owners may lower, never raise) | one metagraph shared by **~200 top-level miner UIDs + 1 pool UID per NO + validator UIDs** (+ the treasury recipient UIDs on SN25, §14); tail providers are NOT UIDs (§3) |
+| `max_allowed_uids` | **256** (hard ceiling — owners may lower, never raise) | one metagraph shared by **~200 top-level miner UIDs + 1 pool UID per NO + validator UIDs** (+ the treasury recipient UIDs on SN25, and from `E_c` a CTF pool UID per NO, §14); tail providers are NOT UIDs (§3) |
 | `max_allowed_validators` | root-controlled/runtime-dependent; target **≤ 56** so ~200 miner slots fit | observe and compatibility-gate the live value; permit count (top-k by stake, §9.7) is *not* a fixed slot partition |
 | `mechanism_count` | **1** | a 2nd mechanism halves the 256-UID space below 200 (§13.8, §14) |
 | native `max_weight_limit` / signed policy cap | v454 native **65535** (no cap), unchanged through runtime 478; release policy **32768**, the two-NO testnet's bootstrap cap and SN25's, which its treasury policy requires; a later policy lowers it as breadth grows | v454 retains v452's getter behavior which ignores the retained storage item; validators must apply the signed cap and analysis must reject finalized violations. A low-single-digit cap requires enough positive recipients and should become native when the runtime supports it (§8.4). |
@@ -2202,15 +3425,18 @@ pruned v2 pool hotkey through `registerPoolUid`, paying the burn.
 | Challenge window (v2) | `CHALLENGE_BLOCKS` | **14,400 blocks** (≈ 48 h) from the commit, a constant of vault2 | no v2 root finalizes earlier or with a path demand open; needs `T_epoch` ≥ commit window + 14,400 (mainnet's 50,400 holds; testnet's 360-block cadence does not), checked at pool registration; every later v1 policy must keep it, which no contract checks (§5). v1 instead finalizes 14,400 blocks after the epoch end |
 | Demand fee (v2) | `demandFeeWei` | 750,000 rao (7.5·10^14 wei): one answer's gas at the planning fee, 149,074 gas at 5 gwei, rounded up; a nonzero multiple of 10^9 wei | immutable in vault2 and kept by it, never paid to the answerer; the runtime moves only whole rao of a call's value. The rehearsal measured an answer at depth 29 at 149,074 gas and a demand at 98,268. Each account of each finalized root can be demanded once per pending root, so the possible demands grow with the number of roots, each paying the fee |
 | Root approval (v2) | — | owner-admitted auditor addresses (≤ 16); **quorum 1 at launch** (the validator); approve before the end of epoch `e+1` | a root still unfinalized at the end of epoch `e+1` can be replaced by the next commit, and its epochs' funding stays for that root (§13.1) |
-| Claim expiry | — | v1: `claim_ttl_epochs` 8 + `claim_grace_epochs` 1; **v2: never** | policy v1 stays in force: `claim_ttl_epochs`, `claim_grace_epochs`, `expired_claim_action`, `shares_total_bps`, `rounding` and `deposit.usage_artifact` keep their meaning for v1 epochs and the v1 carry sweep and are **inert for v2 epochs**, which allocate in rao by `coldkey_usage_largest_remainder_rao_v1` |
+| Claim expiry | — | v1: `claim_ttl_epochs` 8 + `claim_grace_epochs` 1; **v2: never** | policy v1 stays in force: `claim_ttl_epochs`, `claim_grace_epochs`, `expired_claim_action`, `shares_total_bps`, `rounding` and `deposit.usage_artifact` keep their meaning for v1 epochs and the v1 carry sweep and are **inert for v2 epochs**, which allocate in rao by `coldkey_usage_largest_remainder_rao_v1` and take deposit usage from the signed usage statement (§7.1) |
 | Ledger bounds (v2) | — | ≤ 96 covered epochs per root; header ≤ 256 KiB (about 3,500 chunk references); 131,072 rows per chunk (48-byte account rows, 6 MiB; 57-byte provider rows, ≈ 7.1 MiB); ≤ 2^29 accounts per pool in vault2's tree | design target and activation gate: ≥ 1,000,000 providers per pool; the validator fetches at most `--ledger_max_bytes` of new objects per root (default 2 GiB, a runtime flag) |
 | Reserve hotkey | — | the owner‑validator hotkey, fixed when the reserve sink is created (an immutable of `STReserveSink`) | the buyback reserve's staking target (§7.4); run its delegate **take = 0** so reserve yield compounds whole |
 | `φ` / `ω` / effort‑claim deadline / dispute window | — | — | **out of scope** — parked bounty design (§9.3/§13.6, D29) |
-| **Head share** | `θ` | governance; start ~0.3, ramp | fraction of the providers' share `μ` of the 41% miner emission to top-level miners; `1−θ` to pools — **the load-bearing new dial** (§8.5) |
+| **Head share** | `θ` | governance; start ~0.3, ramp | fraction of the providers' share `μ` of the 41% miner emission to top-level miners; `1−θ` to pools — **the load-bearing new dial** (§8.5); from `E_c` the three shares below replace it |
+| **Capture the flag shares** (from `E_c`) | `s_pool` / `s_ctf` / `s_head` | **4/10 / 1/10 / 5/10** of `μ` | fixed by the signed amendment entry v2, not by the policy; CTF gets exactly 1/10 when its channel is non‑empty, and while no head fleet is weighted the head's share goes to the pools only (§8.5, §8.7) |
+| **CTF slots** (from `E_c`) | `S` | 5 provider and 5 extender slots in each of the 249 ISO 3166‑1 countries: **2,490** | each worth the epoch's fresh CTF funding ÷ 2,490; candidates present for at least half of the epoch; one ticket per /29 or /48 unit; drawn on the first drand quicknet round at least 60 s after the census commitment; unwon slots carry, and each winner takes its slot and a fifth of its pot (§8.7) |
 | **Momentum** (provider share) | `μ` | 1/10 on SN25 at launch, pinned by the signed treasury policy | the providers' share of the native miner allocation; `1 − μ` goes in equal parts to `ur‑reserve`'s recipient UIDs 170 and 250, and the whole row when no provider has weight; changing it takes a newly signed treasury policy (§8.5) |
 | Coverage weighting | — | (parked bounty design only) | up‑weights under‑sampled / weak providers (§9.3) — not in v1 (D29) |
 | Validator min stake | — | governance | permit qualifier + Sybil ante (§9.7) |
-| **Deposit‑rate schedule per conviction tier** | `rate(tier)` | governance, **off‑chain published**; zero tier = baseline; each component priced in every tier or in none; all zero only under `zero_rate_action: equal_demand`, the launch mode (§7.1) | α‑per‑usage by conviction; validators read it to weight (§7.3, §8.1). Staking lowers the rate — the onboarding/alignment lever (D25). |
+| **Deposit‑rate schedule per conviction tier** | `rate(tier)` | governance, **off‑chain published** in the signed price sheet, with the signed policy's schedule in force until a signed entry takes effect; zero tier = baseline; each component priced in every tier or in none; all zero only under `zero_rate_action: equal_demand`, the launch mode, or a signed entry of all zero rates (§7.1) | α‑per‑usage by conviction; validators read it to weight (§7.3, §8.1). Staking lowers the rate — the onboarding/alignment lever (D25). |
+| **Per‑epoch deposit cap** | `cap` | named by the signed entry in force, else the signed policy's `epoch_cap_rao_per_operator` | caps the formula per operator; the coordinator's `epochDepositCapRao`, set through `schedulePolicy`, must be at least this, or validators stop (§7.1) |
 | **Egress‑IP‑hash granularity** (head IP‑score) | — | **configurable subnet param**; default /29 IPv4, /48 IPv6 | the "distinct routable IP" unit for the head score (§8.4, D27); trails hash egress IPs at this prefix (`VALIDATOR.md` §8) |
 | **Validator measurement rate** | — | **validator‑configurable; guardrails off by default** (D26) | each validator drives its own trail cadence; only a loose hard per‑IP DoS backstop remains (`VALIDATOR.md` §5.3/§9) |
 | Upgrade / param timelock | — | ≥ 1 epoch (target 2 ≈ 14 d) | Phase 1, §6.4.2 |
@@ -2225,7 +3451,8 @@ governance‑settable, the 41/41 is hard‑coded); it steers the *distribution w
 validator **dividends flow natively**, and the slice earned by the buyback reserve's stake auto‑compounds
 into the reserve (§7.4, §12.4). The providers' share `μ` of the 41% miner share (1/10 on SN25 at launch) is
 split **head/tail by θ** (§8.5) — steered by validator weights to top-level-miner UIDs (native) and NO pools
-(Merkle); on SN25 the rest goes to `ur‑reserve`'s two ordinary recipient UIDs. None is withheld to an owner
+(Merkle), and from `E_c` three ways, with 1/10 to the NOs' CTF pools (§8.5, §8.7); on SN25 the rest goes to
+`ur‑reserve`'s two ordinary recipient UIDs. None is withheld to an owner
 key (which would trigger the post-Spec-421 `miner_burned` penalty).
 
 ---
@@ -2248,7 +3475,7 @@ key (which would trigger the post-Spec-421 `miner_burned` penalty).
    October 7). The release remains one mechanism. **Top-level miners self-`register_limit`** their own
    (provider-owned, not contract-owned) UIDs with a locally approved ceiling and publish the §11.4 binding.
 3. **Validator software (independent).** Stake α; run `VALIDATOR.md` trails; each tempo score **both tiers** (pools `implied_usage × quality` —
-   implied usage = audited usage at the baseline rate, the deposit audited off the published deposit events;
+   implied usage = audited usage at the baseline rate, the deposit audited from the coordinator's finalized counters at each pass;
    head on its **routable‑IP breadth score**), read the `client_id ⇄ hotkey` binding (§11.4), split the
    providers' share by θ (on SN25 the signed treasury policy gives providers 1/10 of the row and `ur‑reserve`'s
    recipient UIDs 9/10, §8.5), and submit
@@ -2257,11 +3484,14 @@ key (which would trigger the post-Spec-421 `miner_burned` penalty).
    the +48h window. (No trail‑proof submission — the effort bounty is out of scope, §9.3/D29.)
 4. **Network‑Operator software.** Runs the privacy servers + the `VALIDATOR.md` `/verify` server
    (SEED/EXTEND/FINAL, poisoning, idempotency, the four Ed25519 signatures, the egress‑IP index);
-   while the published price is nonzero, stages and `deposit`s each epoch through its isolated hotkey/signer
+   while the price in force is nonzero, stages and `deposit`s through its isolated hotkey/signer as early in each
+   epoch as it can, retrying until the deposit lands
    (conviction stake; no contract weighting, D25; none at the zero‑price launch, §7.1); for release 1.0 epochs
    (before E_s), computes provider reliability + payout list, publishes a
    content-addressed artifact, commits the **`payoutRoot`** (fractional shares) and serves leaves; from E_s it builds
-   and publishes the v2 ledger instead (item 8). (No validator pool — it co‑signs trails as the `/verify` server.)
+   and publishes the v2 ledger instead (item 8), and after each epoch's root commit a signed usage statement built
+   from the committed header's provider chunks, with the user count taken at the epoch boundary; it sizes the next
+   deposit from that statement (§7.1). (No validator pool — it co‑signs trails as the `/verify` server.)
 5. **Provider software.** Carries ingress/egress; registers a `client_id`; for release 1.0 epochs, verifies its
    payout leaf against `payoutRoot` and calls the immutable vault's `claim` (from E_s its coldkey's account is
    claimed from vault2, item 8). **If it reaches the top ~200:**
@@ -2432,8 +3662,8 @@ the Go harness in `rehearsal/`), not testnet: testnet's 360-block cadence cannot
 - **Later version 2 phases** (`VERSION2-FINAL.md` §16). Roster and evidence (signed work requests; the
   validator verifies consent chains); phase B, measurement (sampling frame, VRF cohort, stratified
   estimator, head budget, validator state bounds); phase C, the v1 carry sweep into vault2 at or after
-  `E_s + 8`, once the last v1 expiry has passed, plus a second operator, a fractional approval quorum,
-  operator bonds and a priced deposit policy.
+  `E_s + 8`, once the last v1 expiry has passed, plus a second operator, a fractional approval quorum and
+  operator bonds.
 
 ### 16.4 Pre‑launch verification checklist (load‑bearing live values)
 
@@ -2495,7 +3725,7 @@ starts at least two days after the last one passes.
 |---|---|
 | **How is oracle data stored/charged on Subtensor? Can the NO payout table be a Merkle tree so each miner validates its payout without storing it on chain?** | **Yes.** Release 1.0 commits a 32-byte Merkle root plus artifact hash per NO/epoch in the coordinator; immutable entitlement state gates claims; canonical bulk bytes live in `server/blob` MinIO and are served by the public server API. Each provider verifies an `O(log N)` proof (§11). From E_s, version 2 instead commits the root of a Merkle **sum tree** over the pool's cumulative accounts, with its total, leaf count and ledger-header hash, into vault2 through `STSettlement2`; the ledger objects are served at `/sn/ledger/object`, and each account verifies an `O(log n)` proof of `(hash, sum)` siblings. The commitments pallet anchors fleet manifests, not payout bulk data. |
 | **Are smart contracts standard EVM?** | **Yes** — Frontier EVM, Cancun, Solidity 0.8.24: chain 945 testnet and 964 mainnet. Subtensor precompiles let the contracts stake/transfer α and verify binding identities; validators submit CRv4 through native Substrate extrinsics (§2.5). |
-| **How to adapt to standard BT payout formulas?** | Independent validators set standard Yuma weights `= implied_usage × quality` (implied usage = audited usage priced at the baseline rate, the deposit audited from finalized events + signed policy — contracts weigh nothing, D25) on per-NO miner-pool UIDs; the chain delivers emission to vault-owned pools (re-split by Merkle claim) and native dividends to validators. A second head tier holds provider-owned UIDs and receives native emission by split-adjusted routable-prefix breadth under θ (§8.4–8.5). |
+| **How to adapt to standard BT payout formulas?** | Independent validators set standard Yuma weights `= implied_usage × quality` (implied usage = audited usage priced at the baseline rate, the deposit audited from the coordinator's finalized counters + the signed price sheet — contracts weigh nothing, D25) on per-NO miner-pool UIDs; the chain delivers emission to vault-owned pools (re-split by Merkle claim) and native dividends to validators. A second head tier holds provider-owned UIDs and receives native emission by split-adjusted routable-prefix breadth under θ (§8.4–8.5). |
 
 ---
 
@@ -2522,7 +3752,8 @@ starts at least two days after the last one passes.
   top-level miner publishes (commitments pallet + contract anchor) binding its fleet's `client_id`s to its
   UID, so validators count its routable IPs (§11.4).
 - **θ (head share)** — the governed fraction of the providers' share `μ` of the 41% miner emission steered
-  to top-level miners; `1−θ` goes to the pools (§8.5).
+  to top-level miners; `1−θ` goes to the pools (§8.5). From `E_c` the three shares of §8.5 replace it: pools
+  4/10, CTF pools 1/10, head 5/10.
 - **μ (momentum) / `ur‑reserve`** — the providers' share of the native miner allocation, 1/10 on SN25 at
   launch, pinned by the signed treasury policy; validators weight the other `1 − μ` in equal parts to the
   recipient UIDs of `ur‑reserve` (SN25 UIDs 170 and 250), a 2‑of‑3 native treasury multisig separate from
@@ -2540,6 +3771,12 @@ starts at least two days after the last one passes.
   lowers the deposit and, below the cap, leaves the weight tracking real usage rather than raw α; at the
   cap the demand is `cap × baseline_n / owed_n` (with one priced component, `cap × rate(0) / rate(tier_n)`),
   so a lower rate raises it.
+- **Price sheet / signed entry / price in force** — the file at `https://ur.xyz/price.yml`. Only the entries of
+  its `signed_schedule`, each signed by the pinned key, set rates and the cap; the **price in force** for an
+  epoch is the latest entry effective by then, or the signed policy's schedule when there is none (§7.1).
+- **Usage statement** — a NO's signed statement of one epoch's provider chunks, `total_usage_bytes` and
+  `total_users` (kind `epoch-usage-v1`): the usage that sizes and audits the next epoch's deposit, for epochs
+  from E_s (§7.1).
 - **Effort bounty** — a fee‑funded reward that *would* pay ∝ verified, coverage‑weighted, server‑assigned
   completed trails; **out of v1 scope** and **not a committed phase** — a parked future‑iteration candidate
   (§9.3, §13.6, D29).
@@ -2602,6 +3839,92 @@ starts at least two days after the last one passes.
   `share_bps × total / 10,000` of that epoch's entitlement, and the unclaimed remainder expires after the
   snapshotted TTL+grace into carry (§8.2–8.3, §11.2). Version 2 replaces them with accounts that never
   expire.
+
+*Terms of §8.6 (amendment approved 2026‑11‑10, Q7 decided 2026‑11‑11; in effect from `E_x = 8`):*
+
+- **Extender** — a relay a provider runs on TCP and UDP 443 and a DNS carrier. It forwards only to its NO's
+  own api and connect hosts, so a client that cannot reach the platform directly can reach it through one
+  (`connect/EXTENDER.md`). Its record names the network that first stored its key and the provider client
+  that activated it last. It earns as a contract party (J2–J3) and, under §8.6, its unit's share of
+  its NO's extender pool bytes `Z`.
+- **Extender party** — an active extender on either endpoint's connected connections when a contract is
+  created. It joins the contract's participants with one equal hop share (`EXTENDER.md` J2–J3); on the
+  payer's own network it earns nothing. It is one of the contract's `n_c` hops on every contract, platform
+  contracts included (Q7).
+- **Hop count `n_c`** (§8.6.2, Q7) — the number of a contract's participants: its service endpoint, its
+  stream's intermediaries and its extender parties, each distinct client once, less the origin, platform
+  endpoints and same‑network participants included. Each hop holds an even share of the contract's bytes,
+  the remainder bytes going to the lowest client ids. An extender is one hop.
+- **Intra‑platform contract** (§8.6.2) — a contract whose service endpoint is one of the NO's
+  registered platform endpoints. The NO is not a miner in its own pool, so the platform endpoint's hop
+  share is not provider usage: it counts toward `Z`, free or paid, and is all of the contract's bytes when
+  the contract has no other hop. Every other hop, an extender party included, keeps its share (Q7). The
+  contract escrows from the payer's data balance like any contract.
+- **Intra‑network share** (§8.6.2) — the even share of a contract's bytes held by a participant on the
+  origin's own network: the receiving client of a same‑network contract, or a same‑network intermediary or
+  extender. From `E_x` it is not provider usage, which amends §8.2. Same‑network contracts escrow from the
+  payer's data balance, and their shares count toward `Z`, free or paid.
+- **Extender pool bytes `Z`** (§8.6.2) — an epoch's funded intra‑platform and intra‑network bytes, free and
+  paid alike, leaving out the operator's own measurement and test traffic. A network adds at most what its
+  data balance funded. `Z` counts in `total_usage_bytes`.
+  - For weight it is capped at the epoch's eligible provider usage (`Z'`, `ζ = 1`), so extenders take at
+    most half a pool.
+  - `Z'` is split evenly over the extender units, then evenly over the eligible extenders in each unit.
+  - With no eligible extender, `Z` is dropped.
+- **Platform endpoint** (§8.6.2) — a client identity the NO itself runs, on one of its own networks, to
+  serve a platform feature. At `E_x` these are sidecar's edge platform clients: tlsedge, smtpedge and mxedge,
+  the kinds the signed entry covers; a new kind needs a new signed amendment entry. The operator registers
+  them, and they are recorded on a contract when the contract is created. A platform endpoint counts among a
+  contract's `n_c` hops but never earns its share, which goes to `Z` (Q7).
+- **Extender unit** (§8.6.2) — the keyed /29 IPv4 or /48 IPv6 prefix hash of an eligible extender's
+  active IPv4 address, or of its IPv6 address if it has no active IPv4 address. It is §8.4's scoring unit,
+  under the same granularity setting. Each unit holding an eligible extender takes an even share of `Z'`.
+- **Active pool** (§8.6.2, E1) — the NO's extenders whose records are active and unrevoked, with at
+  least one address the five‑minute challenge has not deactivated. The census takes it once, at the
+  epoch's end boundary.
+- **Eligible extender** (§8.6.2) — for one epoch, an extender that meets these:
+  - E1, in the active pool at `end(k)`;
+  - E3, one record per provider client and per address, in one unit;
+  - E4, its provider client has a payout coldkey and no head binding;
+  - E5, not on the NO's own networks.
+
+  (E2, an uptime record, was removed by owner decision.)
+- **Extender census / extender share row** (§8.6.2) — the census is the NO's per‑epoch,
+  content‑addressed list of its extenders, each with its unit and its eligibility flags. It is
+  operator‑attested and published as keyed prefix hashes, never addresses. A share row is the 57‑byte row
+  that gives one eligible extender its bytes in the epoch's allocation: its unit's `Z'/M`, split among the
+  unit's extenders.
+- **`E_x`** (§8.6.7) — the amendment's activation epoch: epoch 8, by the owner's decision. It is fixed by
+  a signed amendment entry, which must be signed before epoch 8 starts, and later changes go by entry too. It
+  must be a future epoch whose provider rows no root has built yet, and earlier epochs keep their fixed
+  inputs.
+
+*Terms of §8.7 (capture the flag, decided 2026‑11‑11; in effect from `E_c = 8`):*
+
+- **Capture the flag (CTF)** — a per‑country coverage auction beside the provider pool (`CAPTURETHEFLAG.md`).
+  Each epoch every one of the 249 ISO 3166‑1 countries has 5 provider and 5 extender slots, drawn among the
+  NO's eligible miners there. A tenth of the providers' share `μ` funds it (§8.5).
+- **CTF pool** — NO `n`'s second vault2 pool, `2^32 + n` (UR's is 4,294,967,297), with its own vault‑owned
+  UID. It settles, and its accounts are claimed, exactly like the provider pool's, and its winners are paid to
+  the payout coldkey that the provider pool already selects.
+- **Slot** — one `(country, role, rank)` prize, rank 1–5, so `S = 2,490` in all. Each is worth the epoch's
+  fresh CTF funding ÷ 2,490 in rao, the remainder going one rao each to the first slots in slot order.
+- **Pot** — what a country's unwon slots of one role carry forward. Each winner takes its own slot and a fifth
+  of the pot carried into its country and role, and the rest keeps carrying.
+- **CTF census** — the NO's per‑epoch, operator‑attested list of its CTF candidates: role, country, keyed unit
+  and client id, with exclusion counts but no coldkeys or addresses. Its hash is committed on chain
+  (`commitCtfCensus`) within 600 blocks of the epoch's end, before the drand round that seeds the draw exists.
+- **Draw / ticket** — in each country and role, the up to five units with the smallest tickets win. Tickets are
+  keyed by a seed from the first drand quicknet round at least 60 s after the census commitment, and a unit
+  holds one ticket per role, whatever its size.
+- **Pending award** — a winner's pot share while the carry has not come back before the epoch's close. It is
+  paid in the first epoch whose carry is back.
+- **Carry contract (`STCtfCarry`)** — the immutable, ownerless contract, one per CTF pool, to whose account
+  each root pays the pots and pending awards. After the root finalizes, anyone calls its `recycle`, which claims
+  that account and returns the α to the CTF pool hotkey for the next close; `recycledFor` records each return.
+- **`E_c`** (§8.7.5) — capture the flag's first epoch: epoch 8, by the owner's decision, which is the extender
+  pool's `E_x` too. It is fixed, with the shares and the CTF parameters, by the signed amendment entry v2,
+  which must be signed before epoch 8 starts.
 
 ---
 

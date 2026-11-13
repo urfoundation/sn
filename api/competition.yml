@@ -28,14 +28,31 @@ info:
     local record keeps private_score separate from public score/published/winner.
     Its bounded refresh lane automatically fetches feedback for pre-upgrade
     completed records and probes ambiguous completed cache-hit admissions.
-    Missing status is not success; known failed/canceled jobs are not refreshed.
+    Missing status is not success; submission failures and canceled jobs are not
+    refreshed. A separate bounded owner-probe lane can discover an explicitly
+    operator-authorized recovery of a cached infrastructure failure. It reserves
+    a per-job refresh interval before HTTP, shares that backoff across cached
+    associations and restarts, and alternates with ordinary polling. A probe
+    alone never authorizes another evaluation or changes a terminal failure.
     The lane alternates with ordinary FIFO polling and backs off old replicas
     that still omit private feedback. Feedback stops routine per-job polling;
     only existing public result reconciliation can establish winner/reward state.
     Update Apex consumers before rollout: old consumers may reject production
-    score feedback, and old adapter binaries cannot read newly persisted
-    private_score/refresh fields. Do not roll an old binary back onto new state.
-    Identical canonical patch bytes in one round map to one durable job/result.
+    score feedback or recovery metadata, and old adapter binaries cannot read
+    newly persisted private_score/refresh/reevaluation/history fields. Do not
+    roll an old binary back onto new state.
+    Identical canonical patch bytes in one round map to one durable job. The
+    optional reevaluation marker identifies at most one separately authorized,
+    bounded recovery cycle of that same job after a proved evaluator defect.
+    Its canonical receipt binds scope, the original terminal failure, incident
+    evidence and the qualified fixed runtime; it is not a cryptographic signature
+    or a new public authorization endpoint. Authorization provenance is the
+    authenticated API and its append-only operator audit. Original terminal
+    history and the expired original budget remain immutable. Existing job and
+    status_url identities, frozen evaluator inputs and publication gates remain
+    unchanged. Clients must reject a missing, malformed, conflicting, stale or
+    wrongly scoped marker after observing a recovery cycle; they must not clear
+    a cached failure merely because the API now says queued or running.
     Before production epoch one, an operator may run an independently numbered
     staging era beginning at epoch zero. Staging submissions are fee-free but
     traverse the same durable FIFO and evaluator as production. Each staging
@@ -445,6 +462,9 @@ paths:
         authority. Other submitters, anonymous readers and control-plane roles
         cannot read the job. Ownership is per credential, not per miner behind a
         shared credential; Apex must enforce its own miner-to-submission mapping.
+        An optional reevaluation receipt identifies a separately authorized
+        single recovery cycle of this same job; it does not publish the old or
+        new outcome or extend the original execution budget.
         Responses, including failures, use Cache-Control no-store.
       parameters:
         - name: jobId
@@ -546,6 +566,8 @@ paths:
         full error text, arbitrary diagnostics and review decisions stay sealed.
         This additive feedback does not amend the round's frozen evaluator,
         scoring policy, source/OpenAPI evidence or public decision contract.
+        Optional reevaluation metadata is a same-job, single-cycle operator
+        recovery receipt, not a new admission, publication or reward decision.
         Anonymous readers, other credential owners and control-plane/operator
         roles are denied. Apex must map a shared credential's feedback to the
         authenticated individual miner. All responses use Cache-Control no-store.
@@ -653,6 +675,13 @@ paths:
         expected replacement is only a consistency check. Approving the current
         recipient creates a genuine review, not a second reward entitlement.
         Source-only deferral does not imply reward disqualification.
+        Every new review in every epoch requires production_benefit_addendum
+        with the exact published version/hash. Its omission remains readable
+        and accepted only for an exact historical idempotency replay, not a new
+        insert. NO_PRODUCTION_BENEFIT rejects reward/source eligibility under
+        workload_generalization without alleging fraud or malicious intent.
+        Missing production-path or causal evidence holds review; numerical gate
+        success alone does not prove useful production-client benefit.
       parameters:
         - {name: roundId, in: path, required: true, schema: {type: string, format: uuid}}
       requestBody:
@@ -754,6 +783,99 @@ paths:
         "409": {$ref: "#/components/responses/CompetitionConflict"}
         "503": {$ref: "#/components/responses/CompetitionUnavailable"}
 
+  /competition/v2/source-handoffs:
+    post:
+      operationId: CompetitionV2SourceHandoff
+      tags: [Competition operator]
+      summary: Record explicit operator approval or rejection of the selected product source
+      description: |
+        Requires the separately scoped source_handoff role. Automated source
+        publishers, reviewers, schedulers and legacy operators cannot use it.
+        This additional human gate binds the current election, reviewed patch
+        and selected product source lock, not the trusted instrument overlay.
+        An exact same-actor replay returns the original receipt; a stale revision
+        or changed current decision/review/source is a conflict. Approval does
+        not publish source, start intake, grant worker readiness, reset a job
+        clock or release payment. A no-winner carry cannot invent a winner.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CompetitionSourceOperatorHandoffArgs"}
+      responses:
+        "200":
+          description: Append-only operator handoff receipt.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CompetitionSourceOperatorHandoff"}
+        "400": {$ref: "#/components/responses/CompetitionBadRequest"}
+        "401": {$ref: "#/components/responses/CompetitionUnauthorized"}
+        "403": {$ref: "#/components/responses/CompetitionForbidden"}
+        "409": {$ref: "#/components/responses/CompetitionConflict"}
+        "503": {$ref: "#/components/responses/CompetitionUnavailable"}
+
+  /competition/v2/review-handoff-imports:
+    post:
+      operationId: CompetitionV2ReviewHandoffImport
+      tags: [Competition operator]
+      summary: Import the exact completed model proposal after explicit operator review
+      description: |
+        Requires the independent, fully scoped review_operator capability. Model
+        reviewers, schedulers, source publishers and legacy operators cannot use
+        this endpoint. A prospective database-owned Qwen/Gemma multi-pass run
+        must have completed all calls within its original, non-renewable window.
+        This operation imports precisely the retained proposal, never edited
+        findings or a backdated insertion. A proposal may approve or disqualify
+        the elected candidate; inspect it before authorizing import. Current
+        election and exact proposal/evidence digests must still match. Exact
+        same-actor replay returns the original record. This does not release
+        reward/source holds, publish source or satisfy the source_handoff gate.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CompetitionReviewHandoffImport"}
+      responses:
+        "200":
+          description: Append-only integrity review with separate model-completion and operator-insertion times.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CompetitionIntegrityReviewResult"}
+        "400": {$ref: "#/components/responses/CompetitionBadRequest"}
+        "401": {$ref: "#/components/responses/CompetitionUnauthorized"}
+        "403": {$ref: "#/components/responses/CompetitionForbidden"}
+        "409": {$ref: "#/components/responses/CompetitionConflict"}
+        "503": {$ref: "#/components/responses/CompetitionUnavailable"}
+
+  /competition/v2/official-review-imports:
+    post:
+      operationId: CompetitionV2OfficialReviewImport
+      tags: [Competition operator]
+      summary: Import an exact operator-authorized epoch-one official review
+      description: >-
+        Requires the separately scoped review_operator capability and an exact
+        official_review_import_sha256 grant deployed by the operator. Only
+        production epoch one is supported. Records Astra/max provenance and
+        explicit native-qualification/calibration waivers without impersonating
+        Snow, resetting an old review deadline, changing scores, or releasing
+        reward/source holds. Ordinary review submission rejects this override.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CompetitionOfficialReviewImport"}
+      responses:
+        "200":
+          description: Append-only official integrity review; exact same-actor replay retains the original record.
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/CompetitionIntegrityReviewResult"}
+        "400": {$ref: "#/components/responses/CompetitionBadRequest"}
+        "401": {$ref: "#/components/responses/CompetitionUnauthorized"}
+        "403": {$ref: "#/components/responses/CompetitionForbidden"}
+        "409": {$ref: "#/components/responses/CompetitionConflict"}
+        "503": {$ref: "#/components/responses/CompetitionUnavailable"}
+
   /competition/v2/holds:
     post:
       operationId: CompetitionV2Hold
@@ -809,7 +931,7 @@ components:
       description: |
         Opaque competition token. Legacy submitter/operator roles retain their
         original v1 authority. V2 scheduler, reviewer, settlement and
-        source_promoter are distinct roles scoped to environment, competition_id
+        source_promoter, source_handoff and review_operator are distinct roles scoped to environment, competition_id
         and season_id. Legacy operators never inherit v2 privileges. Revoked
         credentials fail immediately on the next request.
 
@@ -1113,11 +1235,70 @@ components:
         - contains: {type: object, required: [model, criterion], properties: {model: {const: gemma-4-26b-a4b}, criterion: {const: source_safety}}}
           minContains: 1
           maxContains: 1
+    CompetitionProductionBenefitAddendum:
+      type: object
+      additionalProperties: false
+      required: [version, sha256]
+      properties:
+        version: {type: string, const: production-benefit/1}
+        sha256: {type: string, const: 6e2246f2cdef9f8d4348da95578b8f8a1676ce7afc7b5dc747ca5ce5c774ce32}
+      description: Separately published production-client-benefit eligibility rule. It changes neither frozen scores/gates nor provider membership and does not reopen immutable approvals. Native checks authenticate policy identity, not the truth of causal claims.
     CompetitionIntegrityReviewRequest:
       type: object
       additionalProperties: false
       required: [idempotency_key, expected_revision, job_id, patch_sha256, base_source_lock_sha256, score_sha256, baseline_sha256, artifact_manifest_sha256, criteria_version, reward_disposition, source_disposition, reason_codes, public_explanation, withheld_evidence_explanation, private_evidence_sha256, findings]
       allOf:
+        - if:
+            anyOf:
+              - required: [reason_codes]
+                properties:
+                  reason_codes: {contains: {const: NO_PRODUCTION_BENEFIT}}
+              - required: [findings]
+                properties:
+                  findings:
+                    contains:
+                      required: [reason_code]
+                      properties: {reason_code: {const: NO_PRODUCTION_BENEFIT}}
+          then:
+            required: [production_benefit_addendum]
+            properties:
+              reward_disposition: {const: disqualified}
+              source_disposition: {const: rejected}
+              reason_codes: {contains: {const: NO_PRODUCTION_BENEFIT}}
+              findings:
+                contains:
+                  required: [criterion, disposition, reason_code]
+                  properties:
+                    criterion: {const: workload_generalization}
+                    disposition: {const: fail}
+                    reason_code: {const: NO_PRODUCTION_BENEFIT}
+                items:
+                  if:
+                    required: [reason_code]
+                    properties: {reason_code: {const: NO_PRODUCTION_BENEFIT}}
+                  then:
+                    properties:
+                      criterion: {const: workload_generalization}
+                      disposition: {const: fail}
+        - if:
+            required: [production_benefit_addendum]
+            anyOf:
+              - properties: {reward_disposition: {enum: [approved, restored]}}
+              - properties: {source_disposition: {const: approved}}
+          then:
+            properties:
+              findings:
+                contains:
+                  required: [criterion, disposition]
+                  properties:
+                    criterion: {const: workload_generalization}
+                    disposition: {const: pass}
+                items:
+                  if:
+                    required: [criterion]
+                    properties: {criterion: {const: workload_generalization}}
+                  then:
+                    properties: {disposition: {const: pass}}
         - if:
             required: [reviewer_model]
             properties:
@@ -1174,6 +1355,7 @@ components:
         baseline_sha256: {$ref: "#/components/schemas/Sha256"}
         artifact_manifest_sha256: {$ref: "#/components/schemas/Sha256"}
         criteria_version: {type: string, maxLength: 128}
+        production_benefit_addendum: {$ref: "#/components/schemas/CompetitionProductionBenefitAddendum"}
         reward_disposition: {type: string, enum: [approved, disqualified, restored, unchanged]}
         source_disposition: {type: string, enum: [approved, rejected, deferred, unchanged]}
         reason_codes: {type: array, minItems: 1, maxItems: 16, items: {type: string}}
@@ -1189,9 +1371,50 @@ components:
           description: Required by each elected-winner policy; binds the exact current reward decision and durable review window.
         reviewer_model:
           type: string
-          enum: [snow-qwen-gemma-union, snow-qwen-gemma-muse-union, gpt-5.4-mini, gpt-6.1-sol]
+          enum: [snow-qwen-gemma-union, snow-qwen-gemma-muse-union, gpt-5.4-mini, gpt-6.1-sol, gpt-6-astra]
           description: Required broker provenance pinned by the frozen policy. New Snow v2 reviews require both Qwen and Gemma; historical v1 retains three members. These aggregates and historical mini/xhigh or Sol/max tuples cannot be mixed or relabeled. Not independent model attestation.
         reviewer_reasoning: {type: string, enum: [provider-default, xhigh, max]}
+        handoff_id:
+          type: string
+          format: uuid
+          description: Present only on an exact native pending proposal imported by review_operator; ordinary review submission rejects this field.
+        official_review_override:
+          $ref: "#/components/schemas/CompetitionOfficialReviewOverride"
+          description: Accepted only through the independently pinned official-review import, never the ordinary or native Snow review routes.
+    CompetitionOfficialReviewOverride:
+      type: object
+      additionalProperties: false
+      required: [authorization_sha256, completed_at, native_qualification_waived, unaccepted_calibration_acknowledged]
+      properties:
+        authorization_sha256: {$ref: "#/components/schemas/Sha256"}
+        completed_at: {type: string, format: date-time, description: Actual external review completion, not a native handoff timestamp.}
+        native_qualification_waived: {type: boolean, enum: [true]}
+        unaccepted_calibration_acknowledged: {type: boolean, enum: [true]}
+    CompetitionOfficialReviewImport:
+      type: object
+      additionalProperties: false
+      required: [round_id, review]
+      properties:
+        round_id: {type: string, format: uuid}
+        review:
+          $ref: "#/components/schemas/CompetitionIntegrityReviewRequest"
+          description: Exact six affirmative criteria with gpt-6-astra/max attribution and the production-benefit addendum. The full canonical request digest must equal the deployed grant.
+          required: [official_review_override, expected_decision_sha256, reviewer_model, reviewer_reasoning, production_benefit_addendum]
+          properties:
+            reviewer_model: {const: gpt-6-astra}
+            reviewer_reasoning: {const: max}
+            reward_disposition: {const: approved}
+            source_disposition: {const: approved}
+            reason_codes: {type: array, minItems: 1, maxItems: 1, items: {const: APPROVED}}
+            findings:
+              type: array
+              minItems: 6
+              maxItems: 6
+              items:
+                properties:
+                  model: {const: ""}
+                  disposition: {const: pass}
+                  reason_code: {const: APPROVED}
     CompetitionIntegrityReviewResult:
       type: object
       additionalProperties: false
@@ -1201,6 +1424,10 @@ components:
         round_id: {type: string, format: uuid}
         actor_id: {type: string}
         created_at: {type: string, format: date-time}
+        model_completed_at:
+          type: string
+          format: date-time
+          description: Native immutable completion time for a handoff import, never a caller-supplied or backdated created_at. Omitted for legacy records.
         request: {$ref: "#/components/schemas/CompetitionIntegrityReviewRequest"}
         request_sha256: {$ref: "#/components/schemas/Sha256"}
         reward_decision: {$ref: "#/components/schemas/CompetitionRewardDecision"}
@@ -1213,6 +1440,7 @@ components:
         round_id: {type: string, format: uuid}
         actor_id: {type: string, const: ""}
         created_at: {type: string, format: date-time}
+        model_completed_at: {type: string, format: date-time}
         request_sha256: {$ref: "#/components/schemas/Sha256"}
         reward_decision: {$ref: "#/components/schemas/CompetitionRewardDecision"}
         request:
@@ -1225,6 +1453,7 @@ components:
             expected_decision_sha256: {$ref: "#/components/schemas/Sha256"}
             reviewer_model: {type: string, enum: [snow-qwen-gemma-union, snow-qwen-gemma-muse-union, gpt-5.4-mini, gpt-6.1-sol]}
             reviewer_reasoning: {type: string, enum: [provider-default, xhigh, max]}
+            handoff_id: {type: string, format: uuid}
             job_id: {type: string, format: uuid}
             patch_sha256: {$ref: "#/components/schemas/Sha256"}
             base_source_lock_sha256: {$ref: "#/components/schemas/Sha256"}
@@ -1337,11 +1566,78 @@ components:
         settlement_receipts: {type: array, items: {$ref: "#/components/schemas/CompetitionSettlementReceipt"}}
         incidents: {type: array, items: {$ref: "#/components/schemas/CompetitionAutomationIncident"}}
         invalidated: {type: boolean}
+    CompetitionSourceOperatorHandoffArgs:
+      type: object
+      additionalProperties: false
+      required: [target_epoch, expected_revision, reward_decision_sha256, product_source_lock_sha256, disposition, idempotency_key, evidence_sha256]
+      description: Exact human decision on the currently elected and genuinely reviewed product source. Digests bind retained evidence but are not substitutes for authenticated operator authority.
+      properties:
+        target_epoch: {type: integer, minimum: 2, maximum: 6}
+        expected_revision: {type: integer, format: int64, minimum: 0, maximum: 9223372036854775806}
+        reward_decision_sha256: {$ref: "#/components/schemas/Sha256"}
+        selected_job_id: {type: string, format: uuid}
+        patch_sha256: {$ref: "#/components/schemas/Sha256"}
+        review_id: {type: string, format: uuid}
+        review_decision_sha256: {$ref: "#/components/schemas/Sha256"}
+        product_source_lock_sha256: {$ref: "#/components/schemas/Sha256"}
+        disposition: {type: string, enum: [approve_promotion, reject_promotion, approve_no_winner_carry]}
+        idempotency_key: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"}
+        evidence_sha256: {$ref: "#/components/schemas/Sha256"}
+      allOf:
+        - if:
+            required: [disposition]
+            properties:
+              disposition: {enum: [approve_promotion, reject_promotion]}
+          then:
+            required: [selected_job_id, patch_sha256, review_id, review_decision_sha256]
+          else:
+            not:
+              anyOf:
+                - required: [selected_job_id]
+                - required: [patch_sha256]
+                - required: [review_id]
+                - required: [review_decision_sha256]
+
+    CompetitionReviewHandoffImport:
+      type: object
+      additionalProperties: false
+      required: [handoff_id, round_id, decision_sha256, proposal_sha256, evidence_sha256, disposition]
+      properties:
+        handoff_id: {type: string, format: uuid}
+        round_id: {type: string, format: uuid}
+        decision_sha256: {$ref: "#/components/schemas/Sha256"}
+        proposal_sha256: {$ref: "#/components/schemas/Sha256"}
+        evidence_sha256: {$ref: "#/components/schemas/Sha256"}
+        disposition: {type: string, const: publish_exact_model_proposal}
+
+    CompetitionSourceOperatorHandoff:
+      type: object
+      additionalProperties: false
+      required: [schema, kind, environment, competition_id, season_id, revision, actor_id, request, request_sha256, created_at]
+      properties:
+        schema: {type: integer, const: 1}
+        kind: {type: string, const: source-operator-handoff/v1}
+        environment: {type: string}
+        competition_id: {type: string}
+        season_id: {type: string}
+        revision: {type: integer, format: int64, minimum: 1}
+        actor_id: {type: string, description: Authenticated operator token identity, never the raw credential.}
+        request: {$ref: "#/components/schemas/CompetitionSourceOperatorHandoffArgs"}
+        request_sha256: {$ref: "#/components/schemas/Sha256"}
+        created_at: {type: string, format: date-time}
+
     CompetitionSourceActivation:
       type: object
       required: [target_round_id]
       description: Separately authorized reviewed source intent; public projection omits raw manifest and private Git refs.
+      allOf:
+        - if:
+            required: [work_coverage_policy]
+          then:
+            required: [g2_volume_policy]
       properties:
+        work_coverage_policy: {$ref: "#/components/schemas/CompetitionWorkCoveragePolicy"}
+        g2_volume_policy: {type: string, enum: [minimum-work/1]}
         staging:
           type: boolean
           default: false
@@ -1398,6 +1694,7 @@ components:
       additionalProperties: false
       required: [round_id, job_id, reward_revision, reward_decision_sha256, started_at, deadline]
       properties:
+        handoff_id: {type: string, format: uuid, description: Optional identity of the prospective immutable multi-pass owner; absent for legacy checkpoints.}
         round_id: {type: string, format: uuid}
         job_id: {type: string, format: uuid}
         reward_revision: {type: integer, minimum: 1}
@@ -1432,7 +1729,7 @@ components:
       additionalProperties: false
       required: [kind, active, expected_revision, idempotency_key, reason_code, public_explanation, evidence_sha256]
       properties:
-        kind: {type: string, enum: [admission, evaluation, source_activation, reward_delivery]}
+        kind: {type: string, enum: [admission, evaluation, source_activation, reward_delivery, finalization], description: "Finalization pauses only new seals and first elections in the exact environment/competition/season; intake and grading continue, and existing seals retain their authorized publication time."}
         active: {type: boolean}
         expected_revision: {type: integer, minimum: 0}
         idempotency_key: {type: string, minLength: 1, maxLength: 128}
@@ -1498,11 +1795,12 @@ components:
       type: object
       additionalProperties: false
       required: [intake_ready, grading_ready, publication_held]
-      description: Mutable infrastructure and durable-hold status; never an assertion that calibration or reviewer qualification passed. intake_ready means infrastructure eligible for admission, not that the submission window is open; clients must also check the round status and opens_at/closes_at.
+      description: Mutable infrastructure and durable-hold status; never an assertion that calibration or reviewer qualification passed. intake_ready means infrastructure eligible for admission, not that the submission window is open; clients must also check the round status and opens_at/closes_at. Explicit prospective intake-first epochs can admit queued submissions after real source/image/rules publication and API acknowledgment while grading_ready remains false. Candidate clocks remain unstarted until actual runtime acknowledgments, host admission and the immutable same-round R9 baseline are ready. publication_held remains true during this preparation; no readiness receipt or grading permission is fabricated.
       properties:
         intake_ready: {type: boolean}
         grading_ready: {type: boolean}
         publication_held: {type: boolean}
+        finalization_held: {type: boolean, description: Prospective finalization hold only; does not hide existing seals or pause intake/grading. Omitted when inactive.}
 
     CompetitionReadinessResult:
       type: object
@@ -1528,13 +1826,22 @@ components:
             required: [evaluation_policy]
             properties:
               evaluation_policy:
-                required: [g2_volume_policy]
+                required: [work_coverage_policy]
           then:
             properties:
-              scorer_version: {const: sim-latency-score/2}
+              scorer_version: {const: sim-latency-score/3}
           else:
-            properties:
-              scorer_version: {const: sim-latency-score/1}
+            if:
+              required: [evaluation_policy]
+              properties:
+                evaluation_policy:
+                  required: [g2_volume_policy]
+            then:
+              properties:
+                scorer_version: {const: sim-latency-score/2}
+            else:
+              properties:
+                scorer_version: {const: sim-latency-score/1}
       required:
         - competition_id
         - enabled
@@ -1559,8 +1866,8 @@ components:
           const: 1
         scorer_version:
           type: string
-          enum: [sim-latency-score/1, sim-latency-score/2]
-          description: Frozen implementation version. Omitted evaluation_policy.g2_volume_policy requires scorer/1; explicit minimum-work/1 requires scorer/2. The score document schema remains 1.
+          enum: [sim-latency-score/1, sim-latency-score/2, sim-latency-score/3]
+          description: Frozen implementation version. No G2 or coverage policy means scorer/1; minimum-work/1 alone means scorer/2; an explicit work_coverage_policy requires minimum-work/1 and scorer/3. The score document schema remains 1.
         base_sha:
           $ref: "#/components/schemas/GitSha"
         evaluator_image_digest:
@@ -1664,7 +1971,12 @@ components:
     CompetitionEvaluationPolicy:
       type: object
       additionalProperties: false
-      description: Frozen for each round. Current production epoch one and historical policies omit g2_volume_policy and retain both inclusive 95–105% workload bands. The approved production epoch-two transition and later rounds explicitly select minimum-work/1; no current round or historical result is rejudged.
+      description: Frozen for each round. Production epoch one and historical policies retain their original G1/G2 and scorer versions. A prospective independently approved work_coverage_policy adds G7 and scorer/3 to minimum-work/1 without changing raw p95, G1 or the G2 lower floors. No current round or historical result is rejudged.
+      allOf:
+        - if:
+            required: [work_coverage_policy]
+          then:
+            required: [g2_volume_policy]
       required:
         - hardware_id
         - host_qualification_sha256
@@ -1695,10 +2007,11 @@ components:
         - queue_limit
         - score_timeout_seconds
       properties:
+        work_coverage_policy: {$ref: "#/components/schemas/CompetitionWorkCoveragePolicy"}
         g2_volume_policy:
           type: string
           enum: [minimum-work/1]
-          description: Optional versioned G2 contract. Omission means scorer/1 and inclusive 95–105% request-count and received-byte median bands. minimum-work/1 means scorer/2 and candidate median requests and received bytes each at least 95% of the corresponding baseline median, inclusively, with neither upper bound. All other gates, significance, takeover margin, R=9 and the 10800-second submission budget remain unchanged.
+          description: Optional versioned G2 contract. Omission means scorer/1 and inclusive 95–105% attempted-request-count and received-byte median bands. minimum-work/1 alone means scorer/2; with work_coverage_policy it means scorer/3. Either minimum-work instrument requires candidate median requests and received bytes each at least 95% of the corresponding baseline median, inclusively, with neither upper bound. A separate G7 requires the complete approved coverage policy; G2 does not itself authorize intentional traffic suppression.
         hardware_id:
           type: string
           minLength: 1
@@ -2116,6 +2429,11 @@ components:
           oneOf:
             - $ref: "#/components/schemas/CompetitionEvaluationFailure"
             - type: "null"
+        reevaluation:
+          description: Optional message-free, authenticated same-job recovery marker. Omitted for the original cycle, including all historical responses without a recovery. A valid cycle can replace only its bound original infrastructure failure, never completed scoring or an ordinary gate failure. Consumers pin its immutable canonical receipt and retain the original failure. This field does not change owner authorization, public embargoes or the frozen evaluator request schema.
+          oneOf:
+            - $ref: "#/components/schemas/CompetitionJobReevaluationCycle"
+            - type: "null"
         submitted_at:
           type: string
           format: date-time
@@ -2141,7 +2459,7 @@ components:
           $ref: "#/components/schemas/ImageDigest"
           description: Exact main worker container content identity for the current or terminal attempt; control-plane provenance, not a scoring input.
         score:
-          description: Completed production scores are available privately to the owning credential before public release while state remains completed. The projection keeps the typed score/significance, only G1_success/G2_volume/G3_path_integrity/G4_matchmaking/G5_stability/G6_resources identifiers and reviewed numeric/bool gate details, plus known numeric baseline/candidate/replicate summaries. Unknown keys, all free-form diagnostic strings, evaluation IDs, findings, secrets and review decisions are omitted. Full published/staging documents retain their existing publication gates; private feedback is not a winner or approval.
+          description: Completed production scores are available privately to the owning credential before public release while state remains completed. The projection keeps typed score/significance, G1_success/G2_volume/G3_path_integrity/G4_matchmaking/G5_stability/G6_resources and, only for coverage rounds, G7_work_coverage. Gate details and baseline/candidate/replicate summaries retain reviewed numeric/bool fields. Coverage feedback also retains the validated public work_coverage_policy and fixed scorer/G2 version labels; nested gate policy and hidden work-plan identities are omitted. Unknown keys, free-form diagnostic strings, evaluation IDs, findings, secrets and review decisions are omitted. Private feedback is not a stored eligibility input, winner or approval.
           oneOf:
             - $ref: "#/components/schemas/CompetitionScoreResult"
             - type: "null"
@@ -2155,6 +2473,168 @@ components:
       type: string
       description: completed is the legacy completion marker before public publication; it may carry private owner score feedback and must never be interpreted as publication or winner approval.
       enum: [queued, running, completed, succeeded, failed, canceled]
+
+    CompetitionJobReevaluationCycle:
+      type: object
+      additionalProperties: false
+      description: |
+        One backend-verified, operator-authorized recovery cycle of the same
+        admitted job. The receipt SHA-256 is the canonical JSON digest of this
+        object with receipt_sha256 empty and started_at omitted. It detects
+        inconsistent or replayed metadata but is not an authorization signature;
+        trust its provenance only through the authenticated job endpoint.
+        Every other field is immutable and bound by that digest. started_at may
+        advance only from absent to the first claim timestamp, then remains
+        immutable. The new cycle owns the normal three-hour execution budget;
+        the original job's start, deadline, terminal outcome and audit remain
+        unchanged. Neither the receipt nor private feedback grants publication,
+        winner approval, source approval, payment, or another recovery cycle.
+      required:
+        - schema
+        - environment
+        - competition_id
+        - season_id
+        - job_id
+        - round_id
+        - patch_sha256
+        - round_policy_sha256
+        - baseline_sha256
+        - cycle
+        - receipt_sha256
+        - authorization_sha256
+        - evidence_sha256
+        - previous_terminal_sha256
+        - previous_failure
+        - runtime_qualification_sha256
+        - fixed_source_commit
+        - fixed_worker_sha256
+        - fixed_worker_image_digest
+        - api_image_digest
+        - authorized_at
+        - execution_timeout_seconds
+      oneOf:
+        - not: {anyOf: [{required: [incident_class]}, {required: [distributed]}]}
+          properties:
+            schema: {const: 1}
+            previous_failure:
+              properties:
+                kind: {const: infrastructure}
+                code: {enum: [artifact_archive_failed, evaluation_time_budget_exhausted]}
+        - required: [incident_class]
+          not: {required: [distributed]}
+          properties:
+            schema: {const: 1}
+            incident_class: {const: operator_authorized_heartbeat_budget_v1}
+            previous_failure:
+              properties:
+                kind: {const: infrastructure}
+                code: {const: evaluation_time_budget_exhausted}
+        - required: [incident_class]
+          not: {required: [distributed]}
+          properties:
+            schema: {const: 1}
+            incident_class: {const: operator_authorized_backing_service_v1}
+            previous_failure:
+              properties:
+                kind: {const: submission}
+                code: {const: run_unstable}
+        - required: [incident_class]
+          not: {required: [distributed]}
+          properties:
+            schema: {const: 1}
+            incident_class: {const: operator_authorized_interrupted_budget_v1}
+            previous_failure:
+              properties:
+                kind: {const: infrastructure}
+                code: {const: evaluation_time_budget_exhausted}
+        - required: [incident_class, distributed]
+          properties:
+            schema: {const: 2}
+            incident_class: {const: operator_authorized_distributed_infrastructure_v1}
+            previous_failure:
+              properties:
+                kind: {const: infrastructure}
+                code: {const: evaluation_time_budget_exhausted}
+      properties:
+        schema: {type: integer, enum: [1, 2]}
+        environment:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        competition_id:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        season_id:
+          type: string
+          pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
+        job_id: {type: string, format: uuid}
+        round_id: {type: string, format: uuid}
+        patch_sha256: {$ref: "#/components/schemas/Sha256"}
+        round_policy_sha256: {$ref: "#/components/schemas/Sha256"}
+        baseline_sha256: {$ref: "#/components/schemas/Sha256"}
+        cycle:
+          type: integer
+          const: 1
+          description: Exactly one recovery is permitted; original-cycle responses omit reevaluation.
+        receipt_sha256: {$ref: "#/components/schemas/Sha256"}
+        authorization_sha256: {$ref: "#/components/schemas/Sha256"}
+        evidence_sha256: {$ref: "#/components/schemas/Sha256"}
+        previous_terminal_sha256: {$ref: "#/components/schemas/Sha256"}
+        incident_class:
+          type: string
+          enum: [operator_authorized_heartbeat_budget_v1, operator_authorized_backing_service_v1, operator_authorized_interrupted_budget_v1, operator_authorized_distributed_infrastructure_v1]
+          description: Optional explicit operator incident exception. Older archive recoveries omit it. A backing-service exception retains the original submission/run_unstable failure. An interrupted-budget exception binds separately retained operator-stop evidence and real claim/terminal history, not a fabricated heartbeat diagnosis. No exception reclassifies the old result or makes all unstable or expired runs eligible.
+        previous_failure:
+          $ref: "#/components/schemas/CompetitionEvaluationFailure"
+          description: Exact original message-free failure, constrained by incident_class above and bound by backend-verified operator authority. Neither a terminal code nor candidate-produced log content alone proves eligibility or authorizes another evaluation.
+        distributed:
+          $ref: "#/components/schemas/CompetitionDistributedJobReevaluationCycle"
+        runtime_qualification_sha256: {$ref: "#/components/schemas/Sha256"}
+        fixed_source_commit:
+          type: string
+          pattern: "^[0-9a-f]{40}$"
+          description: Control-program source commit containing the qualified remediation, not a replacement for the round's frozen evaluated repository commits.
+        fixed_worker_sha256: {$ref: "#/components/schemas/Sha256"}
+        fixed_worker_image_digest: {$ref: "#/components/schemas/ImageDigest"}
+        api_image_digest:
+          $ref: "#/components/schemas/ImageDigest"
+          description: API image identity recorded by the recovery qualification. It does not change the original admission's API identity or freeze subsequent main API releases.
+        authorized_at: {type: string, format: date-time}
+        started_at:
+          oneOf:
+            - {type: string, format: date-time}
+            - {type: "null"}
+        execution_timeout_seconds:
+          type: integer
+          const: 10800
+
+    CompetitionDistributedJobReevaluationCycle:
+      type: object
+      additionalProperties: false
+      description: |
+        Separate schema-2 authority for an explicitly approved distributed
+        terminal-infrastructure incident. Before queuing the cycle, the backend
+        requires the evaluation hold, all frozen hosts and database slots idle,
+        unchanged supervisor/host fences, and authenticated closure of the exact
+        original run. Native inventories remain private; only their digest is
+        public. Original admission ordering, paid entitlement, source, baseline,
+        evaluator image and old clocks/failure are not rewritten. The new
+        three-hour clock starts only at the first fenced database claim. This
+        marker neither reopens intake nor grants another cycle or publication.
+      required: [schema, reason, original_host_id, original_slot_id, original_fencing_token, original_run_id, original_started_at, original_deadline_at, source_lock_sha256, evaluator_image_digest, policy_approval_sha256, closure_evidence_sha256, native_proof_sha256]
+      properties:
+        schema: {type: integer, const: 1}
+        reason: {type: string, enum: [retention_budget_exhausted, closed_legacy_prelaunch]}
+        original_host_id: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"}
+        original_slot_id: {type: integer, minimum: 1}
+        original_fencing_token: {type: integer, minimum: 1}
+        original_run_id: {$ref: "#/components/schemas/Sha256"}
+        original_started_at: {type: string, format: date-time}
+        original_deadline_at: {type: string, format: date-time}
+        source_lock_sha256: {$ref: "#/components/schemas/Sha256"}
+        evaluator_image_digest: {$ref: "#/components/schemas/ImageDigest"}
+        policy_approval_sha256: {$ref: "#/components/schemas/Sha256"}
+        closure_evidence_sha256: {$ref: "#/components/schemas/Sha256"}
+        native_proof_sha256: {$ref: "#/components/schemas/Sha256"}
 
     CompetitionEvaluationStatus:
       type: string
@@ -2177,10 +2657,62 @@ components:
           type: boolean
           const: false
 
+    CompetitionWorkCoveragePolicy:
+      type: object
+      required: [kind, minimum_page_coverage_ratio, minimum_byte_coverage_ratio]
+      description: Approved relative coverage floors, frozen verbatim in source intent, instrument approval/build receipt, round, baseline and score. Each dimension must retain at least 95% of its own baseline coverage; an 80% baseline requires 76%, not 75%. There is no upper-volume bound or absolute coverage minimum. Intentional traffic suppression remains prohibited regardless of these tolerances. Absence preserves historical scorer/1 or scorer/2; JSON null is not absence. Source validation alone does not establish runtime qualification.
+      properties:
+        kind: {type: string, const: seeded-crawl-coverage/v1}
+        minimum_page_coverage_ratio: {type: number, const: 0.95}
+        minimum_byte_coverage_ratio: {type: number, const: 0.95}
+      additionalProperties: false
+
+    CompetitionWorkCoverageSummary:
+      type: object
+      additionalProperties: false
+      required: [plan_sha256, offered_roots, expected_pages, expected_bytes, completed_pages, completed_bytes, page_coverage, byte_coverage]
+      description: Independent seeded offered-work census, not a denominator reconstructed from attempted requests. Missing or pruned descendants retain expected work and earn no completion credit. Public retained evidence includes the plan identity; private owner feedback omits this nested summary.
+      properties:
+        plan_sha256: {$ref: "#/components/schemas/Sha256"}
+        offered_roots: {type: integer, minimum: 1}
+        expected_pages: {type: integer, minimum: 1}
+        expected_bytes: {type: integer, minimum: 1}
+        completed_pages: {type: integer, minimum: 0}
+        completed_bytes: {type: integer, minimum: 0}
+        page_coverage: {type: number, minimum: 0, maximum: 1}
+        byte_coverage: {type: number, minimum: 0, maximum: 1}
+
     CompetitionScoreResult:
       type: object
       additionalProperties: false
       required: [score_schema, placeable, gates, significance]
+      allOf:
+        - if:
+            anyOf:
+              - required: [diagnostics]
+                properties:
+                  diagnostics:
+                    required: [work_coverage_policy]
+              - required: [diagnostics]
+                properties:
+                  diagnostics:
+                    required: [scorer_version]
+                    properties:
+                      scorer_version: {const: sim-latency-score/3}
+              - required: [gates]
+                properties:
+                  gates:
+                    required: [G7_work_coverage]
+          then:
+            required: [diagnostics]
+            properties:
+              diagnostics:
+                required: [work_coverage_policy, g2_volume_policy, scorer_version]
+                properties:
+                  scorer_version: {const: sim-latency-score/3}
+                  g2_volume_policy: {const: minimum-work/1}
+              gates:
+                required: [G7_work_coverage]
       properties:
         score_schema:
           type: integer
@@ -2201,13 +2733,47 @@ components:
           description: True only when correctness gates, the epoch margin, and the per-candidate shared-control significance test all pass; production additionally requires honesty review. Staging records this diagnostic but does not require it to name its best placeable winner.
         gates:
           type: object
+          properties:
+            G7_work_coverage:
+              allOf:
+                - $ref: "#/components/schemas/CompetitionGate"
+                - properties:
+                    details:
+                      properties:
+                        policy: {$ref: "#/components/schemas/CompetitionWorkCoveragePolicy"}
+                        baseline:
+                          oneOf:
+                            - $ref: "#/components/schemas/CompetitionWorkCoverageSummary"
+                            - type: "null"
+                        candidate:
+                          oneOf:
+                            - $ref: "#/components/schemas/CompetitionWorkCoverageSummary"
+                            - type: "null"
           additionalProperties:
             $ref: "#/components/schemas/CompetitionGate"
         significance:
           $ref: "#/components/schemas/CompetitionScoreSignificance"
         diagnostics:
           type: object
-          description: Private pre-publication owner feedback includes only reviewed numeric/bool fields and numeric baseline/candidate/replicate summaries. No free-form strings, artifact identities, evaluation IDs or findings. Publicly released documents retain their historical diagnostics contract.
+          description: Private owner feedback retains reviewed numeric/bool fields and, for coverage rounds, the validated public coverage policy and fixed scorer/G2 labels. It omits hidden plan identities, nested work summaries, free-form strings, artifact/evaluation IDs and findings. Publicly released evidence may additionally retain full work_coverage summaries.
+          properties:
+            work_coverage_policy: {$ref: "#/components/schemas/CompetitionWorkCoveragePolicy"}
+            g2_volume_policy: {type: string, enum: [minimum-work/1]}
+            scorer_version: {type: string, enum: [sim-latency-score/1, sim-latency-score/2, sim-latency-score/3]}
+            baseline:
+              type: object
+              properties:
+                work_coverage: {$ref: "#/components/schemas/CompetitionWorkCoverageSummary"}
+            candidate:
+              type: object
+              properties:
+                work_coverage: {$ref: "#/components/schemas/CompetitionWorkCoverageSummary"}
+            replicates:
+              type: array
+              items:
+                type: object
+                properties:
+                  work_coverage: {$ref: "#/components/schemas/CompetitionWorkCoverageSummary"}
           additionalProperties: true
 
     CompetitionScoreSignificance:

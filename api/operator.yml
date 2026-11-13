@@ -1,0 +1,3046 @@
+openapi: "3.1.0"
+info:
+  version: 2026.11.12
+  title: URnetwork Operator API
+  summary: The network operator's public SN25 routes, starting with capture the flag.
+  description: |
+    The public routes a network operator's server serves for SN25 (Bittensor
+    subnet 25) that this document describes: the state of the capture the
+    flag (CTF) pool under `/sn/ctf`, and the settlement v2 ledger account
+    route that the apps claim from. The same server process serves the
+    URnetwork API of connect/api/bringyour.yml. More `/sn` routes may move
+    into this document later. The document itself is served at
+    `GET /sn/openapi.yml`, and every other route here links to it.
+
+    ## Capture the flag
+
+    Capture the flag pays for presence in each of the 249 ISO 3166-1
+    countries. Every epoch (one week, 50,400 blocks), each country has five
+    provider slots and five extender slots, ten in all and 2,490 across the
+    countries. A slot is worth the CTF pool's fresh funding for the epoch
+    divided by 2,490, rounded down to the rao; the remainder adds one rao to
+    each of the first slots in slot order (country code, then providers
+    before extenders, then rank).
+
+    - **Eligibility**. A provider or extender of the operator is a candidate
+      in a country when it is online, passing the operator's checks and in
+      that country for at least half of the epoch, and active at its end.
+    - **Units**. Candidates are grouped by their egress IPv4 /29 or IPv6 /48,
+      keyed. A unit is one ticket in its country's draw for a role, whatever
+      its size.
+    - **The draw**. Right after an epoch ends the operator commits the
+      census of candidates on chain. A drand quicknet round published at
+      least 60 seconds after the commitment seeds the draw of up to five
+      winning units per country and role, so nobody can steer it.
+    - **Pots**. A slot nobody wins adds its amount to its country's pot for
+      that role. Each winner takes its own slot and a fifth of the pot
+      carried into its country and role, and the rest keeps carrying.
+    - **Payment**. Winners are paid to the payout coldkey their provider pool
+      account already uses, through the CTF pool's settlement v2 ledger, and
+      claimed like any pool account (`GET /sn/ledger/account`).
+
+    Vocabulary:
+
+    - **Last epoch** is the latest epoch with a committed CTF root, whose
+      root may still be pending. Its draw is the basis of the per-country
+      draw figures: slots won, units, near misses and the chance to win.
+    - **This epoch** is the one in progress. For the few hours after an
+      epoch ends, until its root is committed, `pending_draw` reports its
+      census and drand round, and last epoch is the one before it.
+    - **Pots** are carried out of last epoch into **the next draw**: this
+      epoch's, or the pending one while `pending_draw` is set.
+    - A role is **not fully captured** where at least one of its five slots
+      went unclaimed at last epoch's draw, so a newcomer who meets the
+      presence rule wins by default. Without a draw last epoch (before the
+      first root, or when no census was committed in time) there is no such
+      basis, and the draw figures are null rather than zero.
+    - A country's **flag is held** where all ten of its slots were won at
+      last epoch's draw.
+
+    ## Conventions
+
+    - **Amounts** are `Amount` objects: `alpha`, the exact amount in alpha as
+      a decimal string with nine fractional digits and no grouping or
+      exponent, and `rao`, the same amount as an integer (1 alpha is 10^9
+      rao). Every CTF amount stays far below 2^53 rao, so JavaScript reads
+      `rao` exactly. The `unit` object of each answer names the token. The
+      ledger route keeps the decimal strings of rao its clients already
+      parse.
+    - **Times** are RFC 3339 in UTC with a `Z`. `as_of` is when the answer's
+      data last changed: the server rebuilds it when an epoch starts, when a
+      census or a root is committed, and when a root is finalized. Between
+      those events the body, its `ETag` and `as_of` stay the same, and
+      `Last-Modified` carries `as_of` as an HTTP date. A census commitment
+      shows in `pending_draw`. The one exception is `GET /sn/ctf/client`,
+      whose wins' `claimed` follows the chain's claims, so its body and
+      `ETag` also change when an account is claimed. Times of future
+      blocks are estimates at 12 seconds per block.
+    - **Countries** are lowercase ISO 3166-1 alpha-2 codes (`is`), the 249
+      codes of the standard. Kosovo (`xk`) is not one. Names are English and
+      come from the API, so a client keeps no second country list.
+    - **Slots** are counted as `total`, `won` and `open`, per role and in
+      sum.
+    - **Chance to win** is a fraction from 0 to 1, the draw's exact odds for
+      a newcomer: `min(1, 5 / entries)`, where `entries` are last epoch's
+      eligible units in the role plus the newcomer. It is 1 at five entries
+      or fewer, and null without a draw last epoch. Each answer that carries
+      it also carries its `definitions`.
+    - **Errors** are RFC 9457 problem details (`application/problem+json`),
+      with a `code` member for programs. Errors the load balancer produces
+      itself are not: a 429 for the per-address rate limit, and a 502 or
+      504 when the api cannot be reached.
+    - **CORS**. Every answer from the api carries exactly one
+      `Access-Control-Allow-Origin`: `*`, or the request's own origin when it
+      is one of the operator's own sites, which the load balancer answers
+      for. So a page on any origin can read the public answers with a plain
+      GET. `GET /sn/ctf/client` takes an `Authorization` header, whose
+      preflight only the operator's own sites pass. The load balancer's own
+      errors carry the header only for those sites.
+    - **Link**. Every 200 answer except the document itself carries
+      `Link: </sn/openapi.yml>; rel="service-desc"; type="application/yaml"`.
+    - **Caching**. Each route states its `Cache-Control`. The cacheable JSON
+      answers carry a strong `ETag` of the exact body and `Last-Modified`,
+      and the document carries an `ETag`. A request whose `If-None-Match`
+      names the current tag is answered 304 without a body.
+      `If-Modified-Since` is not used: revalidate with the tag.
+    - **Compatibility**. Fields and enum values are only ever added, never
+      removed or repurposed. Clients ignore fields they do not know, and
+      treat an enum value they do not know as the nearest general case the
+      field's description names.
+  contact:
+    name: URnetwork
+    email: support@ur.xyz
+    url: https://ur.io
+  license:
+    name: Mozilla Public License, v. 2.0
+    url: https://mozilla.org/MPL/2.0/
+servers:
+  - url: https://api.bringyour.com
+
+tags:
+  - name: Capture the flag
+    description: The capture the flag pool's public state, draws and awards, and a client's own status.
+  - name: Ledger
+    description: Settlement v2 ledger accounts and their claim proofs, for every pool of the operator.
+  - name: Service description
+    description: This document.
+
+paths:
+  /sn/ctf:
+    get:
+      operationId: snCtf
+      tags: [Capture the flag]
+      security: []
+      summary: The current state of capture the flag in every country
+      description: |
+        The pool's facts, this epoch and its estimated draw time, last
+        epoch's amounts and slot counts, the counts the ur.xyz `/ctf` page
+        filters on, and one row per country of the 249, in code order. A row
+        gives, per role, the slots won last epoch, the units in last epoch's
+        draw, the pot carried into the next draw, a newcomer's estimated take
+        and chance to win, and the near misses; and for the country, the
+        estimate of what its next draw holds and the epochs since it last had
+        a winner.
+
+        Without a draw last epoch the draw figures are null: every role's
+        slots, units, near misses, entries and chance to win, and the
+        not-fully-captured counts. Before the pool's first root `last_epoch`
+        is null too, the pots are empty and the estimates null. While an
+        ended epoch's root is pending, `pending_draw` names its census and
+        drand round.
+
+        `Cache-Control: public, max-age=60`. The ur.xyz `/ctf` pages do not
+        read it live: once each epoch's CTF root is committed, the site takes
+        a snapshot of this answer, checks it against this document's
+        arithmetic and rebuilds the pages from it. A read that fails, or a
+        draw still pending after a drawn one, stops the import, and the pages
+        keep the last snapshot, never zeros.
+      parameters:
+        - $ref: "#/components/parameters/IfNoneMatch"
+      responses:
+        "200":
+          description: The current state.
+          headers:
+            Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
+            Cache-Control: {$ref: "#/components/headers/CacheControlPublic60"}
+            ETag: {$ref: "#/components/headers/ETag"}
+            Last-Modified: {$ref: "#/components/headers/LastModified"}
+            Link: {$ref: "#/components/headers/Link"}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CtfState"
+              examples:
+                epoch10:
+                  $ref: "#/components/examples/CtfState"
+                firstDrawPending:
+                  $ref: "#/components/examples/CtfStateFirstDrawPending"
+        "304":
+          $ref: "#/components/responses/NotModified"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+  /sn/ctf/here:
+    get:
+      operationId: snCtfHere
+      tags: [Capture the flag]
+      security: []
+      summary: The visitor's country, from its address
+      description: |
+        The caller's country from GeoLite2 on the request's address, so the
+        page can open on the visitor's own country. It is null when the
+        address has no country there, or a country that is not one of the
+        249 codes (Kosovo, `xk`). Nothing about the request is stored or
+        logged.
+
+        `Cache-Control: private, no-store`, so neither a shared cache nor the
+        browser keeps it; it has no `ETag`.
+      responses:
+        "200":
+          description: The caller's country, or null.
+          headers:
+            Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
+            Cache-Control: {$ref: "#/components/headers/CacheControlPrivateNoStore"}
+            Link: {$ref: "#/components/headers/Link"}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CtfHere"
+              examples:
+                iceland:
+                  summary: An address in Iceland
+                  value:
+                    country: is
+                unknown:
+                  summary: An address with no country, or one outside the 249 codes
+                  value:
+                    country: null
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+  /sn/ctf/country/{cc}:
+    get:
+      operationId: snCtfCountry
+      tags: [Capture the flag]
+      security: []
+      summary: One country's state and its history since the pool's first epoch
+      description: |
+        The country's row of `GET /sn/ctf`, with the same pool, epoch and
+        definitions context, and its history: for each epoch from the
+        pool's first, newest first, per role, the units in the draw, the
+        slots won, the pot carried in and out, what was awarded, the median
+        award and the share of entries that won. The ur.xyz country page
+        `/ctf/{cc}` names this route as its data in JSON; the page itself is
+        built from the snapshot of `GET /sn/ctf`.
+
+        `Cache-Control: public, max-age=60`.
+      parameters:
+        - $ref: "#/components/parameters/CountryCode"
+        - $ref: "#/components/parameters/IfNoneMatch"
+      responses:
+        "200":
+          description: The country's state and history.
+          headers:
+            Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
+            Cache-Control: {$ref: "#/components/headers/CacheControlPublic60"}
+            ETag: {$ref: "#/components/headers/ETag"}
+            Last-Modified: {$ref: "#/components/headers/LastModified"}
+            Link: {$ref: "#/components/headers/Link"}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CtfCountryResult"
+              examples:
+                iceland:
+                  $ref: "#/components/examples/CtfCountryResult"
+        "304":
+          $ref: "#/components/responses/NotModified"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/UnknownCountry"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+  /sn/ctf/top:
+    get:
+      operationId: snCtfTop
+      tags: [Capture the flag]
+      security: []
+      summary: The largest open pots
+      description: |
+        The countries where a role was not fully captured at last epoch's
+        draw, so a newcomer who meets the presence rule wins by default,
+        largest pot first, then by code.
+
+        - `role=provider` or `role=extender` lists the countries where that
+          role was not fully captured, ranked by its pot.
+        - `role=any`, the default, lists the countries where either role was
+          not fully captured, ranked by the provider and extender pots
+          together, as the page's "not fully captured" views do. Five winners
+          empty a role's pot, so that is the open roles' pots.
+
+        The seven territories without a permanent population (`aq`, `bv`,
+        `gs`, `hm`, `io`, `tf`, `um`) are left out unless
+        `include_uninhabited=true`: their pots grow every epoch and are
+        unlikely ever to be won. Without a draw last epoch the list is
+        empty.
+
+        `Cache-Control: public, max-age=60`.
+      parameters:
+        - $ref: "#/components/parameters/Role"
+        - $ref: "#/components/parameters/TopLimit"
+        - $ref: "#/components/parameters/IncludeUninhabited"
+        - $ref: "#/components/parameters/IfNoneMatch"
+      responses:
+        "200":
+          description: The countries, largest pot first.
+          headers:
+            Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
+            Cache-Control: {$ref: "#/components/headers/CacheControlPublic60"}
+            ETag: {$ref: "#/components/headers/ETag"}
+            Last-Modified: {$ref: "#/components/headers/LastModified"}
+            Link: {$ref: "#/components/headers/Link"}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CtfTopResult"
+              examples:
+                providers:
+                  $ref: "#/components/examples/CtfTopResult"
+        "304":
+          $ref: "#/components/responses/NotModified"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+  /sn/ctf/epoch/{epoch}:
+    get:
+      operationId: snCtfEpoch
+      tags: [Capture the flag]
+      security: []
+      summary: One closed epoch's census, draw, amounts, awards and pots
+      description: |
+        Everything needed to check one epoch's draw and its arithmetic: the
+        census commitment (its hash and block, the candidate and unit counts
+        and the exclusion counts), the drand round and the seed it gave, the
+        epoch's amounts, every country's units, winners and pots in and
+        out, every award with its winner's coldkey, the pending awards still
+        owed after the epoch, and the root that covers it. The ledger objects
+        behind these figures are named in `objects` and served by
+        `GET /sn/ledger/object`, which checks each against its hash.
+
+        An epoch is served once a committed root covers it. Its census and
+        draw are fixed by then, and its awards are final once the root is
+        finalized. An epoch with no committed census has no draw: null
+        `census` and `draw`, no awards, and every slot carried.
+
+        `Cache-Control: public, max-age=31536000, immutable` once the root is
+        finalized, and `public, max-age=60` while it is pending: a pending
+        root can still be replaced by a later one, and after an auditor
+        refuses one, the operator can rebuild the epoch's awards (its census
+        and drand round stay fixed).
+      parameters:
+        - $ref: "#/components/parameters/Epoch"
+        - $ref: "#/components/parameters/IfNoneMatch"
+      responses:
+        "200":
+          description: The epoch.
+          headers:
+            Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
+            Cache-Control: {$ref: "#/components/headers/CacheControlEpoch"}
+            ETag: {$ref: "#/components/headers/ETag"}
+            Last-Modified: {$ref: "#/components/headers/LastModified"}
+            Link: {$ref: "#/components/headers/Link"}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CtfEpochResult"
+              examples:
+                epoch9:
+                  $ref: "#/components/examples/CtfEpochResult"
+        "304":
+          $ref: "#/components/responses/NotModified"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "404":
+          $ref: "#/components/responses/UnknownEpoch"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+  /sn/ctf/client:
+    get:
+      operationId: snCtfClient
+      tags: [Capture the flag]
+      security:
+        - BearerAuth: []
+      summary: The caller's own capture the flag wins and status, a client's or its network's
+      description: |
+        The wins of the client or the network the bearer token names, each
+        with whether it is claimed, so that an app can say "you won a slot"
+        for every win not claimed yet; and, for a client, its status in each
+        of its recent epochs.
+
+        **Whom it answers for.** A client JWT (`by_client_jwt` from
+        `POST /network/auth-client`, as the URnetwork apps hold it) is
+        answered for its own client: its `client_id`; in `epochs`, per role,
+        whether it was a candidate and, if not, the first rule that excluded
+        it, its country and unit family, its presence against the half-epoch
+        rule, and whether it won, with its rank, its slot amount, its share
+        of the pot and the coldkey paid; and its `wins`. The network's own
+        credential, its JWT (as ur.io holds it) or an API key, is answered
+        for the network: `wins` holds the wins of every client the network
+        has had, removed ones included, each naming its `client_id`, while
+        `client_id` is null and `epochs` is `[]`. Each win keeps the network
+        it was won for, recorded with the award, so a client's wins stay its
+        network's after the client is removed and its records are deleted.
+        A token of either kind that authenticates is never answered 401.
+
+        **Which wins.** Every win of those clients that is not known to be
+        claimed (`claimed` false or null), whatever its epoch, and every win
+        of the `limit` most recent epochs that a committed root covers (the
+        epochs `epochs` lists for a client), claimed or not. Newest first: by
+        epoch descending, then providers before extenders, then country, then
+        rank. An app shows the wins with `claimed: false` as won and not
+        claimed yet.
+
+        **Claimed.** vault2's claims are cumulative: a claim pays an account
+        up to its cumulative in a finalized root and records that cumulative
+        as the account's `claimed`, so `claimed` is always the cumulative of
+        the root of the account's latest claim.
+
+        - A win's paying epoch is its own epoch, or, when its pot share was a
+          pending award (`pending`), the first epoch after it that matured,
+          which pays every pending award.
+        - Its paying root is the committed root that covers the paying epoch:
+          the first pending or finalized CTF root whose epoch is at or after
+          it.
+        - A win is claimed when its paying root is finalized and vault2's
+          `claimed` for the CTF account of the win's coldkey, read at the
+          finalized head as `GET /sn/ledger/account` reads it, is at least
+          that account's cumulative in the paying root: the account's latest
+          claim used that root or a later one. An account claimed exactly
+          through the paying root has claimed the win.
+        - Otherwise it is not: while its paying root is pending, while its
+          pending pot share waits for a matured epoch that a committed root
+          covers, and while the account is claimed only through an earlier
+          root. A root that covers several epochs is claimed as a whole.
+        - Every coldkey's state is read, those of the newest wins first. An
+          answer reads vault2's `claimed` of all its accounts at one finalized
+          block, and a value read is used again for up to 25 seconds.
+        - When vault2's `claimed` of an account cannot be read again in the
+          five seconds or so an answer gives it, vault2 being unreadable or
+          slow, the answer uses the last value this server read for that
+          account, however old. vault2's `claimed` only grows, so such a value
+          can only show a claimed win as not claimed yet, for a little longer.
+        - `claimed` is null when the account's state could not be read: its
+          ledger could not be read in those five seconds, or vault2's
+          `claimed` could not be read and this server has no earlier value
+          for the account; and when the state disagrees with itself or
+          with the win: vault2's `claimed` above the finalized cumulative, the
+          server's records not adding up, or the account's cumulative in the
+          paying root below the win's own `amount`, which that root pays
+          whole. (A win whose pending pot share a shortfall cut before it was
+          paid, which needs every pot empty, can read null too.) A claim state
+          that cannot be read never fails the answer. A client shows such a
+          win neither as claimed nor as not. A win whose paying root is
+          pending, or which has none yet, is never null.
+
+        `Cache-Control: private, no-cache`: the app may keep it, revalidating
+        with its `ETag`. `claimed` is read from the chain, each account's at
+        most every 25 seconds, so the answer and its `ETag` also change when
+        an account is claimed, within 25 seconds of the claim's finalized
+        block while vault2 can be read, while `as_of` stays the time of the
+        capture the flag state.
+      parameters:
+        - $ref: "#/components/parameters/ClientLimit"
+        - $ref: "#/components/parameters/IfNoneMatch"
+      responses:
+        "200":
+          description: The client's status per epoch.
+          headers:
+            Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
+            Cache-Control: {$ref: "#/components/headers/CacheControlPrivateNoCache"}
+            ETag: {$ref: "#/components/headers/ETag"}
+            Last-Modified: {$ref: "#/components/headers/LastModified"}
+            Link: {$ref: "#/components/headers/Link"}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CtfClientResult"
+              examples:
+                provider:
+                  $ref: "#/components/examples/CtfClientResult"
+                network:
+                  $ref: "#/components/examples/CtfClientResultNetwork"
+        "304":
+          $ref: "#/components/responses/NotModified"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "503":
+          $ref: "#/components/responses/Unavailable"
+
+  /sn/ledger/account:
+    get:
+      operationId: snLedgerAccount
+      tags: [Ledger]
+      security: []
+      summary: A coldkey's settlement v2 accounts in every pool, with their claim proofs
+      description: |
+        The coldkey's settlement v2 account in each pool that holds it, one
+        entry per pool in ascending `no_id`, with what a claim needs: the
+        latest finalized root's cumulative, its bottom-up proof, and vault2's
+        `claimed`, read at the finalized block tag. The pools are the
+        operator's own, its pool (`no_id` n) and, while capture the flag is
+        on at this server, its capture the flag pool (`no_id` 2^32 + n,
+        4294967297 for operator 1), when the latest finalized root or the
+        pending root holds the coldkey, and any other pool where this server
+        has recorded an account for the coldkey. While capture the flag is
+        off, no capture the flag pool is read or answered, not even one with
+        a recorded account, so none can fail an answer. Amounts are decimal
+        strings of rao. A CTF account is claimed from vault2 like any pool's.
+
+        Each entry names its pool's `kind` and a display `label`. Entries
+        carry every field they carried before, so a client that predates
+        `kind` shows a CTF account as "Pool 4294967297" and claims it like
+        any pool.
+
+        An account only in the pending root has a null `root_index` and
+        `proof`, and a `cumulative` and `claimed` of "0". A coldkey that no
+        root holds, like every coldkey while settlement v2 is not configured,
+        has `"accounts": []`.
+
+        **Whole or partial**. With `partial=true` a pool whose ledger cannot
+        be read (its objects cannot be read or do not rebuild its committed
+        root, its roots or accounts cannot be read from the server's
+        database, vault2's `claimed` cannot be read or is above the finalized
+        cumulative, or a recorded account is not at its index) is left out of
+        `accounts` and named in `unavailable_pools`, and the other pools are
+        answered. A client shows such a pool as unavailable, never as zero.
+        Even then the answer is a 502 when the server cannot tell which pools
+        to answer, because its record of the coldkey's accounts cannot be
+        read.
+
+        Without `partial=true`, as every client that predates
+        `unavailable_pools` asks, no pool is named unavailable: the list is
+        always `[]`. A CTF pool whose ledger cannot be read is left out of
+        `accounts`, and the other pools are answered exactly as before the
+        CTF pool existed: such a client keeps the operator's pool's balance,
+        and its CTF balance is missing until that pool can be read again. A
+        fault in any other pool's ledger, the operator's pool's above all,
+        still fails the whole answer with a 502, as before, so such a client
+        never takes a partial list of those pools for a whole one. A client
+        that knows `unavailable_pools` sends `partial=true`, so that it shows
+        a CTF pool it cannot read as unavailable rather than leaving it out.
+
+        Public: a proof only reveals published data, and a claim always pays
+        the leaf's coldkey. `Cache-Control: no-store`.
+
+        connect/api/bringyour.yml lists this operation too, for the
+        generated clients and the API reference, and describes the same
+        fields: every field it gives the answer is here, with the same type.
+      parameters:
+        - $ref: "#/components/parameters/Coldkey"
+        - $ref: "#/components/parameters/Partial"
+      responses:
+        "200":
+          description: The coldkey's accounts.
+          headers:
+            Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
+            Cache-Control: {$ref: "#/components/headers/CacheControlNoStore"}
+            Link: {$ref: "#/components/headers/Link"}
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SnLedgerAccountResult"
+              examples:
+                whole:
+                  $ref: "#/components/examples/SnLedgerAccountResultWhole"
+                partial:
+                  $ref: "#/components/examples/SnLedgerAccountResultPartial"
+                without_partial:
+                  $ref: "#/components/examples/SnLedgerAccountResultWithoutPartial"
+                none:
+                  summary: A coldkey that no root holds
+                  value:
+                    coldkey: "0xf08f1f0f942a5a04608e09b82d93a481366853421cef48d0ae53d0076c34c45b"
+                    accounts: []
+                    unavailable_pools: []
+        "400":
+          $ref: "#/components/responses/BadColdkey"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+        "502":
+          $ref: "#/components/responses/LedgerUnavailable"
+
+  /sn/openapi.yml:
+    get:
+      operationId: snOpenApi
+      tags: [Service description]
+      security: []
+      summary: This document
+      description: |
+        This OpenAPI document, byte for byte as the serving release was built
+        with it (sn/api/operator.yml), so it always describes the routes the
+        server serves. Every other route here links to it with
+        `Link: </sn/openapi.yml>; rel="service-desc"`.
+
+        `Cache-Control: public, max-age=3600`.
+      parameters:
+        - $ref: "#/components/parameters/IfNoneMatch"
+      responses:
+        "200":
+          description: The document, as YAML.
+          headers:
+            Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
+            Cache-Control: {$ref: "#/components/headers/CacheControlDocument"}
+            ETag: {$ref: "#/components/headers/ETag"}
+          content:
+            application/yaml:
+              schema:
+                type: string
+              examples:
+                document:
+                  summary: The start of the document
+                  value: |
+                    openapi: "3.1.0"
+                    info:
+                      version: 2026.11.12
+                      title: URnetwork Operator API
+        "304":
+          $ref: "#/components/responses/NotModified"
+        "429":
+          $ref: "#/components/responses/RateLimited"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        `Authorization: Bearer` and a URnetwork token: a client JWT
+        (`by_client_jwt` from `POST /network/auth-client`), as the URnetwork
+        apps send it, or the network's own credential, its JWT or an API key
+        (`urn_…`), as ur.io sends its JWT. connect/api/bringyour.yml
+        describes how to obtain them.
+
+  parameters:
+    IfNoneMatch:
+      name: If-None-Match
+      in: header
+      required: false
+      description: An `ETag` from an earlier answer. When it is the current tag, the answer is 304 without a body.
+      schema:
+        type: string
+      example: '"9f2c4e01a7d3b5c86e10f4a2d9b7c3e5"'
+    CountryCode:
+      name: cc
+      in: path
+      required: true
+      description: The country's ISO 3166-1 alpha-2 code, one of the 249. Either case is accepted; answers use lowercase.
+      schema:
+        type: string
+        pattern: "^[A-Za-z]{2}$"
+      example: is
+    Epoch:
+      name: epoch
+      in: path
+      required: true
+      description: The epoch, at or after the pool's first epoch (8 for operator 1).
+      schema:
+        type: integer
+        minimum: 0
+      example: 9
+    Role:
+      name: role
+      in: query
+      required: false
+      description: The role whose pots rank the countries, or `any` for both together.
+      schema:
+        type: string
+        enum: [provider, extender, any]
+        default: any
+      example: provider
+    TopLimit:
+      name: limit
+      in: query
+      required: false
+      description: How many countries to list, at most.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 249
+        default: 10
+      example: 2
+    IncludeUninhabited:
+      name: include_uninhabited
+      in: query
+      required: false
+      description: Also list the seven territories without a permanent population.
+      schema:
+        type: boolean
+        default: false
+      example: false
+    ClientLimit:
+      name: limit
+      in: query
+      required: false
+      description: |
+        How many of the most recent covered epochs to answer, at most: a
+        client's `epochs`, and the epochs whose claimed wins `wins` lists as
+        well as the others.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 52
+        default: 8
+      example: 8
+    Coldkey:
+      name: coldkey
+      in: query
+      required: true
+      description: |
+        The coldkey: an ss58 address with the Bittensor prefix (42) and a
+        valid checksum, or `0x` and 64 hex digits in either case.
+      schema:
+        type: string
+      example: 5HW7s9UfaeoXgURs6sFo3EcKXHHriPqU2yAqdw99B6BxVLmo
+    Partial:
+      name: partial
+      in: query
+      required: false
+      description: |
+        `true` to answer the pools that can be read and name the others in
+        `unavailable_pools`. Without it a CTF pool that cannot be read is
+        left out of `accounts`, unnamed, and any other pool that cannot be
+        read fails the whole answer with a 502.
+      schema:
+        type: boolean
+        default: false
+      example: true
+
+  headers:
+    AccessControlAllowOrigin:
+      description: |
+        Exactly one value: `*`, or the request's own origin when it is one of
+        the operator's own sites, which the load balancer answers for. Either
+        lets a page on that origin read the answer.
+      schema:
+        type: string
+      example: "*"
+    CacheControlPublic60:
+      description: Any cache may keep the answer for a minute.
+      schema:
+        type: string
+        const: "public, max-age=60"
+    CacheControlEpoch:
+      description: Immutable once the epoch's root is finalized; a minute while it is pending.
+      schema:
+        type: string
+        enum: ["public, max-age=31536000, immutable", "public, max-age=60"]
+    CacheControlPrivateNoStore:
+      description: Not kept by any cache.
+      schema:
+        type: string
+        const: "private, no-store"
+    CacheControlPrivateNoCache:
+      description: Kept only by the caller, which revalidates it with its `ETag` before every reuse.
+      schema:
+        type: string
+        const: "private, no-cache"
+    CacheControlNoStore:
+      description: Not kept by any cache.
+      schema:
+        type: string
+        const: "no-store"
+    CacheControlDocument:
+      description: Any cache may keep the document for an hour.
+      schema:
+        type: string
+        const: "public, max-age=3600"
+    ETag:
+      description: A strong entity tag of the exact body. It changes exactly when the body does.
+      schema:
+        type: string
+        pattern: '^"[^"]+"$'
+      example: '"9f2c4e01a7d3b5c86e10f4a2d9b7c3e5"'
+    LastModified:
+      description: The answer's `as_of`, as an HTTP date.
+      schema:
+        type: string
+      example: "Fri, 11 Dec 2026 22:24:12 GMT"
+    Link:
+      description: This document, the service description of every route here.
+      schema:
+        type: string
+        const: '</sn/openapi.yml>; rel="service-desc"; type="application/yaml"'
+
+  responses:
+    RateLimited:
+      description: |
+        Too many requests from the caller's address: the load balancer's
+        per-address rate limit, before the api sees the request. The body is
+        the load balancer's own page, not a problem document. Retry after a
+        pause.
+      headers:
+        Access-Control-Allow-Origin:
+          description: Only for the operator's own sites, whose origin the load balancer echoes.
+          schema:
+            type: string
+      content:
+        text/html:
+          schema:
+            type: string
+          examples:
+            page:
+              summary: The load balancer's page
+              value: "<html><head><title>429 Too Many Requests</title></head><body><center><h1>429 Too Many Requests</h1></center></body></html>"
+    NotModified:
+      description: The `If-None-Match` names the current tag. No body; the headers are those of the 200 answer.
+      headers:
+        Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
+        ETag: {$ref: "#/components/headers/ETag"}
+    BadRequest:
+      description: A parameter is missing or malformed.
+      headers:
+        Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          examples:
+            badLimit:
+              summary: A limit out of range
+              value:
+                type: about:blank
+                title: Bad Request
+                status: 400
+                code: bad_request
+                detail: limit must be an integer from 1 to 249.
+    BadColdkey:
+      description: The coldkey is missing, or is neither an ss58 address with the Bittensor prefix nor `0x` and 64 hex digits.
+      headers:
+        Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          examples:
+            badColdkey:
+              summary: A coldkey that does not parse
+              value:
+                type: about:blank
+                title: Bad Request
+                status: 400
+                code: bad_request
+                detail: coldkey is not an ss58 address or 0x and 64 hex digits
+    Unauthorized:
+      description: The bearer token is missing, or it does not authenticate (malformed, expired or revoked).
+      headers:
+        Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
+        WWW-Authenticate:
+          description: The scheme the route takes.
+          schema:
+            type: string
+            pattern: "^Bearer( |$)"
+          example: Bearer
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          examples:
+            noToken:
+              summary: No bearer token
+              value:
+                type: about:blank
+                title: Unauthorized
+                status: 401
+                code: unauthorized
+                detail: Send a client's or a network's bearer token.
+    UnknownCountry:
+      description: The code is not one of the 249 ISO 3166-1 alpha-2 codes.
+      headers:
+        Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          examples:
+            kosovo:
+              summary: Kosovo, which has no ISO 3166-1 code
+              value:
+                type: about:blank
+                title: Not Found
+                status: 404
+                code: unknown_country
+                detail: xk is not one of the 249 ISO 3166-1 alpha-2 codes.
+    UnknownEpoch:
+      description: The epoch is before the pool's first epoch, or no committed root covers it yet.
+      headers:
+        Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          examples:
+            notYet:
+              summary: An epoch still in progress
+              value:
+                type: about:blank
+                title: Not Found
+                status: 404
+                code: unknown_epoch
+                detail: No committed root covers epoch 10 yet.
+    Unavailable:
+      description: The capture the flag state cannot be read now, or capture the flag is not configured on this server. Show it as unavailable, never as zero.
+      headers:
+        Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          examples:
+            unavailable:
+              summary: The state cannot be read
+              value:
+                type: about:blank
+                title: Service Unavailable
+                status: 503
+                code: unavailable
+                detail: The capture the flag state is unavailable. Try again shortly.
+    LedgerUnavailable:
+      description: |
+        The ledger is unavailable, so nothing is answered. Without
+        `partial=true`: the server's record of the coldkey's accounts cannot
+        be read, or the ledger of a pool other than a CTF pool cannot be
+        read: its objects cannot be read or do not rebuild its committed
+        root, its roots or accounts cannot be read from the server's
+        database, there is no chain client or vault2's `claimed` cannot be
+        read, `claimed` is above the finalized cumulative, or an account the
+        server recorded is not at its index in the finalized root. A CTF pool
+        that cannot be read is left out of the answer instead. With
+        `partial=true`: the server's record of the coldkey's accounts cannot
+        be read, so it cannot tell which pools to answer.
+      headers:
+        Access-Control-Allow-Origin: {$ref: "#/components/headers/AccessControlAllowOrigin"}
+      content:
+        application/problem+json:
+          schema:
+            $ref: "#/components/schemas/Problem"
+          examples:
+            unavailable:
+              summary: The ledger cannot be read
+              value:
+                type: about:blank
+                title: Bad Gateway
+                status: 502
+                code: ledger_unavailable
+                detail: Ledger account unavailable.
+
+  examples:
+    CtfState:
+      summary: Epoch 10 in progress, epoch 9 drawn
+      description: Abridged to three of the 249 countries; the totals count all of them.
+      value:
+        as_of: "2026-12-11T22:24:12Z"
+        unit: {token: alpha, symbol: α, netuid: 25, decimals: 9}
+        pool:
+          no_id: 1
+          pool_id: 4294967297
+          vault: "0xe4865eb1bebdf5c6a10c9d37f3ccdd59aee8f20c"
+          carry_contract: "0x981cfe73af944cc61589cdf6f51ccfac4cbd5f54"
+          carry_coldkey: "0x48cb91133081290b45bc8350c49f03041e4a4d948e43419f011e636674a2ce57"
+          first_epoch: 8
+          countries_version: "sha256:437f10be50e9e64024f6dbb668c672c6c3fe9f8caf25123fc661cfe8181cb792"
+        current_epoch:
+          epoch: 10
+          start_block: 9700828
+          end_block: 9751227
+          draw_at: "2026-12-18T18:30:24Z"
+        last_epoch:
+          epoch: 9
+          drawn: true
+          root:
+            status: pending
+            seq: 2
+            root_index: null
+            epoch: 9
+            ledger_hash: "sha256:24501e4d3d59d895c8b58d764569249930920c45abe1cf99c8c97e2a4853cea5"
+            committed_block: 9701994
+            finalized_block: null
+          amounts:
+            funding: {alpha: "212.273417481", rao: 212273417481}
+            returned: {alpha: "92.689523909", rao: 92689523909}
+            owed: {alpha: "92.689523909", rao: 92689523909}
+            matured: true
+            fresh: {alpha: "119.583893572", rao: 119583893572}
+            slot: {alpha: "0.048025660", rao: 48025660}
+            awarded: {alpha: "37.299195141", rao: 37299195141}
+            paid: {alpha: "37.299195141", rao: 37299195141}
+            pending_paid: {alpha: "0.000000000", rao: 0}
+            pending_in: {alpha: "0.000000000", rao: 0}
+            pending: {alpha: "0.000000000", rao: 0}
+            carried_in: {alpha: "92.689523909", rao: 92689523909}
+            carried: {alpha: "174.974222340", rao: 174974222340}
+          slots: {total: 2490, won: 571, open: 1919}
+        pending_draw: null
+        totals:
+          countries: 249
+          flags_held: 6
+          not_fully_captured: {providers: 175, extenders: 243}
+        definitions:
+          chance_to_win: "A newcomer's chance to win one of a role's five slots in the next draw: min(1, 5 / entries), the draw's exact odds, where entries are last epoch's eligible units in the role plus the newcomer. 1 means a newcomer who meets the presence rule wins by default. Null without a draw last epoch."
+          win_estimate: "What a newcomer who wins a slot of the role in the next draw would take: one slot at last epoch's slot amount plus a fifth of the role's pot, rounded down to the rao."
+          available: "An estimate of what a country's next draw holds: its provider and extender pots plus ten slots at last epoch's slot amount."
+          eligibility: "Online, passing the operator's checks and in the country for at least half of the epoch, and active at its end."
+        links:
+          page: https://ur.xyz/ctf
+          chance_to_win: https://ur.xyz/ctf#chance-to-win
+        countries:
+          - code: de
+            name: Germany
+            sentence_name: Germany
+            inhabited: true
+            flag_held: false
+            open_epochs: 0
+            near_misses: 7
+            available: {alpha: "0.614728448", rao: 614728448}
+            awarded: {alpha: "0.441836072", rao: 441836072}
+            providers:
+              slots: {total: 5, won: 5, open: 0}
+              units: 1862
+              near_misses: 7
+              pot: {alpha: "0.000000000", rao: 0}
+              awarded: {alpha: "0.240128300", rao: 240128300}
+              win_estimate: {alpha: "0.048025660", rao: 48025660}
+              entries: 1863
+              chance_to_win: 0.0026838432635534087
+            extenders:
+              slots: {total: 5, won: 3, open: 2}
+              units: 3
+              near_misses: 0
+              pot: {alpha: "0.134471848", rao: 134471848}
+              awarded: {alpha: "0.201707772", rao: 201707772}
+              win_estimate: {alpha: "0.074920029", rao: 74920029}
+              entries: 4
+              chance_to_win: 1
+          - code: is
+            name: Iceland
+            sentence_name: Iceland
+            inhabited: true
+            flag_held: false
+            open_epochs: 0
+            near_misses: 1
+            available: {alpha: "1.191036368", rao: 1191036368}
+            awarded: {alpha: "0.153682112", rao: 153682112}
+            providers:
+              slots: {total: 5, won: 2, open: 3}
+              units: 2
+              near_misses: 1
+              pot: {alpha: "0.230523168", rao: 230523168}
+              awarded: {alpha: "0.153682112", rao: 153682112}
+              win_estimate: {alpha: "0.094130293", rao: 94130293}
+              entries: 3
+              chance_to_win: 1
+            extenders:
+              slots: {total: 5, won: 0, open: 5}
+              units: 0
+              near_misses: 0
+              pot: {alpha: "0.480256600", rao: 480256600}
+              awarded: {alpha: "0.000000000", rao: 0}
+              win_estimate: {alpha: "0.144076980", rao: 144076980}
+              entries: 1
+              chance_to_win: 1
+          - code: tm
+            name: Turkmenistan
+            sentence_name: Turkmenistan
+            inhabited: true
+            flag_held: false
+            open_epochs: 2
+            near_misses: 1
+            available: {alpha: "1.440769800", rao: 1440769800}
+            awarded: {alpha: "0.000000000", rao: 0}
+            providers:
+              slots: {total: 5, won: 0, open: 5}
+              units: 0
+              near_misses: 1
+              pot: {alpha: "0.480256600", rao: 480256600}
+              awarded: {alpha: "0.000000000", rao: 0}
+              win_estimate: {alpha: "0.144076980", rao: 144076980}
+              entries: 1
+              chance_to_win: 1
+            extenders:
+              slots: {total: 5, won: 0, open: 5}
+              units: 0
+              near_misses: 0
+              pot: {alpha: "0.480256600", rao: 480256600}
+              awarded: {alpha: "0.000000000", rao: 0}
+              win_estimate: {alpha: "0.144076980", rao: 144076980}
+              entries: 1
+              chance_to_win: 1
+
+    CtfStateFirstDrawPending:
+      summary: Epoch 8's draw pending, before the pool's first root
+      description: The first epoch has ended and its census is committed, but no root is committed yet, so there is no last epoch and no draw figures. Abridged to one of the 249 countries.
+      value:
+        as_of: "2026-12-04T19:07:24Z"
+        unit: {token: alpha, symbol: α, netuid: 25, decimals: 9}
+        pool:
+          no_id: 1
+          pool_id: 4294967297
+          vault: "0xe4865eb1bebdf5c6a10c9d37f3ccdd59aee8f20c"
+          carry_contract: "0x981cfe73af944cc61589cdf6f51ccfac4cbd5f54"
+          carry_coldkey: "0x48cb91133081290b45bc8350c49f03041e4a4d948e43419f011e636674a2ce57"
+          first_epoch: 8
+          countries_version: "sha256:437f10be50e9e64024f6dbb668c672c6c3fe9f8caf25123fc661cfe8181cb792"
+        current_epoch:
+          epoch: 9
+          start_block: 9650428
+          end_block: 9700827
+          draw_at: "2026-12-11T18:30:24Z"
+        last_epoch: null
+        pending_draw:
+          epoch: 8
+          census_hash: "sha256:dcc3b0bc5e6da359da19da0855805825c000d7da16b69a58ef5d9612c5ee8846"
+          census_block: 9650612
+          round: 34535980
+        totals:
+          countries: 249
+          flags_held: 0
+          not_fully_captured: null
+        definitions:
+          chance_to_win: "A newcomer's chance to win one of a role's five slots in the next draw: min(1, 5 / entries), the draw's exact odds, where entries are last epoch's eligible units in the role plus the newcomer. 1 means a newcomer who meets the presence rule wins by default. Null without a draw last epoch."
+          win_estimate: "What a newcomer who wins a slot of the role in the next draw would take: one slot at last epoch's slot amount plus a fifth of the role's pot, rounded down to the rao."
+          available: "An estimate of what a country's next draw holds: its provider and extender pots plus ten slots at last epoch's slot amount."
+          eligibility: "Online, passing the operator's checks and in the country for at least half of the epoch, and active at its end."
+        links:
+          page: https://ur.xyz/ctf
+          chance_to_win: https://ur.xyz/ctf#chance-to-win
+        countries:
+          - code: is
+            name: Iceland
+            sentence_name: Iceland
+            inhabited: true
+            flag_held: false
+            open_epochs: 0
+            near_misses: null
+            available: null
+            awarded: {alpha: "0.000000000", rao: 0}
+            providers:
+              slots: null
+              units: null
+              near_misses: null
+              pot: {alpha: "0.000000000", rao: 0}
+              awarded: {alpha: "0.000000000", rao: 0}
+              win_estimate: null
+              entries: null
+              chance_to_win: null
+            extenders:
+              slots: null
+              units: null
+              near_misses: null
+              pot: {alpha: "0.000000000", rao: 0}
+              awarded: {alpha: "0.000000000", rao: 0}
+              win_estimate: null
+              entries: null
+              chance_to_win: null
+
+    CtfCountryResult:
+      summary: Iceland, as of epoch 10
+      value:
+        as_of: "2026-12-11T22:24:12Z"
+        unit: {token: alpha, symbol: α, netuid: 25, decimals: 9}
+        pool:
+          no_id: 1
+          pool_id: 4294967297
+          vault: "0xe4865eb1bebdf5c6a10c9d37f3ccdd59aee8f20c"
+          carry_contract: "0x981cfe73af944cc61589cdf6f51ccfac4cbd5f54"
+          carry_coldkey: "0x48cb91133081290b45bc8350c49f03041e4a4d948e43419f011e636674a2ce57"
+          first_epoch: 8
+          countries_version: "sha256:437f10be50e9e64024f6dbb668c672c6c3fe9f8caf25123fc661cfe8181cb792"
+        current_epoch:
+          epoch: 10
+          start_block: 9700828
+          end_block: 9751227
+          draw_at: "2026-12-18T18:30:24Z"
+        last_epoch:
+          epoch: 9
+          drawn: true
+          root:
+            status: pending
+            seq: 2
+            root_index: null
+            epoch: 9
+            ledger_hash: "sha256:24501e4d3d59d895c8b58d764569249930920c45abe1cf99c8c97e2a4853cea5"
+            committed_block: 9701994
+            finalized_block: null
+          amounts:
+            funding: {alpha: "212.273417481", rao: 212273417481}
+            returned: {alpha: "92.689523909", rao: 92689523909}
+            owed: {alpha: "92.689523909", rao: 92689523909}
+            matured: true
+            fresh: {alpha: "119.583893572", rao: 119583893572}
+            slot: {alpha: "0.048025660", rao: 48025660}
+            awarded: {alpha: "37.299195141", rao: 37299195141}
+            paid: {alpha: "37.299195141", rao: 37299195141}
+            pending_paid: {alpha: "0.000000000", rao: 0}
+            pending_in: {alpha: "0.000000000", rao: 0}
+            pending: {alpha: "0.000000000", rao: 0}
+            carried_in: {alpha: "92.689523909", rao: 92689523909}
+            carried: {alpha: "174.974222340", rao: 174974222340}
+          slots: {total: 2490, won: 571, open: 1919}
+        pending_draw: null
+        definitions:
+          chance_to_win: "A newcomer's chance to win one of a role's five slots in the next draw: min(1, 5 / entries), the draw's exact odds, where entries are last epoch's eligible units in the role plus the newcomer. 1 means a newcomer who meets the presence rule wins by default. Null without a draw last epoch."
+          win_estimate: "What a newcomer who wins a slot of the role in the next draw would take: one slot at last epoch's slot amount plus a fifth of the role's pot, rounded down to the rao."
+          available: "An estimate of what a country's next draw holds: its provider and extender pots plus ten slots at last epoch's slot amount."
+          eligibility: "Online, passing the operator's checks and in the country for at least half of the epoch, and active at its end."
+        links:
+          page: https://ur.xyz/ctf/is
+          chance_to_win: https://ur.xyz/ctf#chance-to-win
+        country:
+          code: is
+          name: Iceland
+          sentence_name: Iceland
+          inhabited: true
+          flag_held: false
+          open_epochs: 0
+          near_misses: 1
+          available: {alpha: "1.191036368", rao: 1191036368}
+          awarded: {alpha: "0.153682112", rao: 153682112}
+          providers:
+            slots: {total: 5, won: 2, open: 3}
+            units: 2
+            near_misses: 1
+            pot: {alpha: "0.230523168", rao: 230523168}
+            awarded: {alpha: "0.153682112", rao: 153682112}
+            win_estimate: {alpha: "0.094130293", rao: 94130293}
+            entries: 3
+            chance_to_win: 1
+          extenders:
+            slots: {total: 5, won: 0, open: 5}
+            units: 0
+            near_misses: 0
+            pot: {alpha: "0.480256600", rao: 480256600}
+            awarded: {alpha: "0.000000000", rao: 0}
+            win_estimate: {alpha: "0.144076980", rao: 144076980}
+            entries: 1
+            chance_to_win: 1
+        history:
+          - epoch: 9
+            drawn: true
+            root_status: pending
+            slot: {alpha: "0.048025660", rao: 48025660}
+            providers:
+              units: 2
+              slots: {total: 5, won: 2, open: 3}
+              pot_in: {alpha: "0.144076980", rao: 144076980}
+              pot_out: {alpha: "0.230523168", rao: 230523168}
+              awarded: {alpha: "0.153682112", rao: 153682112}
+              median_award: {alpha: "0.076841056", rao: 76841056}
+              winning_share: 1
+            extenders:
+              units: 0
+              slots: {total: 5, won: 0, open: 5}
+              pot_in: {alpha: "0.240128300", rao: 240128300}
+              pot_out: {alpha: "0.480256600", rao: 480256600}
+              awarded: {alpha: "0.000000000", rao: 0}
+              median_award: null
+              winning_share: null
+          - epoch: 8
+            drawn: true
+            root_status: finalized
+            slot: {alpha: "0.048025660", rao: 48025660}
+            providers:
+              units: 2
+              slots: {total: 5, won: 2, open: 3}
+              pot_in: {alpha: "0.000000000", rao: 0}
+              pot_out: {alpha: "0.144076980", rao: 144076980}
+              awarded: {alpha: "0.096051320", rao: 96051320}
+              median_award: {alpha: "0.048025660", rao: 48025660}
+              winning_share: 1
+            extenders:
+              units: 0
+              slots: {total: 5, won: 0, open: 5}
+              pot_in: {alpha: "0.000000000", rao: 0}
+              pot_out: {alpha: "0.240128300", rao: 240128300}
+              awarded: {alpha: "0.000000000", rao: 0}
+              median_award: null
+              winning_share: null
+
+    CtfTopResult:
+      summary: The two largest provider pots
+      description: "`GET /sn/ctf/top?role=provider&limit=2`. Equal pots rank by code."
+      value:
+        as_of: "2026-12-11T22:24:12Z"
+        unit: {token: alpha, symbol: α, netuid: 25, decimals: 9}
+        current_epoch:
+          epoch: 10
+          start_block: 9700828
+          end_block: 9751227
+          draw_at: "2026-12-18T18:30:24Z"
+        last_epoch:
+          epoch: 9
+          drawn: true
+          root:
+            status: pending
+            seq: 2
+            root_index: null
+            epoch: 9
+            ledger_hash: "sha256:24501e4d3d59d895c8b58d764569249930920c45abe1cf99c8c97e2a4853cea5"
+            committed_block: 9701994
+            finalized_block: null
+          amounts:
+            funding: {alpha: "212.273417481", rao: 212273417481}
+            returned: {alpha: "92.689523909", rao: 92689523909}
+            owed: {alpha: "92.689523909", rao: 92689523909}
+            matured: true
+            fresh: {alpha: "119.583893572", rao: 119583893572}
+            slot: {alpha: "0.048025660", rao: 48025660}
+            awarded: {alpha: "37.299195141", rao: 37299195141}
+            paid: {alpha: "37.299195141", rao: 37299195141}
+            pending_paid: {alpha: "0.000000000", rao: 0}
+            pending_in: {alpha: "0.000000000", rao: 0}
+            pending: {alpha: "0.000000000", rao: 0}
+            carried_in: {alpha: "92.689523909", rao: 92689523909}
+            carried: {alpha: "174.974222340", rao: 174974222340}
+          slots: {total: 2490, won: 571, open: 1919}
+        pending_draw: null
+        role: provider
+        include_uninhabited: false
+        definitions:
+          chance_to_win: "A newcomer's chance to win one of a role's five slots in the next draw: min(1, 5 / entries), the draw's exact odds, where entries are last epoch's eligible units in the role plus the newcomer. 1 means a newcomer who meets the presence rule wins by default. Null without a draw last epoch."
+          win_estimate: "What a newcomer who wins a slot of the role in the next draw would take: one slot at last epoch's slot amount plus a fifth of the role's pot, rounded down to the rao."
+          available: "An estimate of what a country's next draw holds: its provider and extender pots plus ten slots at last epoch's slot amount."
+          eligibility: "Online, passing the operator's checks and in the country for at least half of the epoch, and active at its end."
+        links:
+          page: https://ur.xyz/ctf
+          chance_to_win: https://ur.xyz/ctf#chance-to-win
+        countries:
+          - rank: 1
+            open_pot: {alpha: "0.480256610", rao: 480256610}
+            country:
+              code: ad
+              name: Andorra
+              sentence_name: Andorra
+              inhabited: true
+              flag_held: false
+              open_epochs: 2
+              near_misses: 1
+              available: {alpha: "1.440769820", rao: 1440769820}
+              awarded: {alpha: "0.000000000", rao: 0}
+              providers:
+                slots: {total: 5, won: 0, open: 5}
+                units: 0
+                near_misses: 1
+                pot: {alpha: "0.480256610", rao: 480256610}
+                awarded: {alpha: "0.000000000", rao: 0}
+                win_estimate: {alpha: "0.144076982", rao: 144076982}
+                entries: 1
+                chance_to_win: 1
+              extenders:
+                slots: {total: 5, won: 0, open: 5}
+                units: 0
+                near_misses: 0
+                pot: {alpha: "0.480256610", rao: 480256610}
+                awarded: {alpha: "0.000000000", rao: 0}
+                win_estimate: {alpha: "0.144076982", rao: 144076982}
+                entries: 1
+                chance_to_win: 1
+          - rank: 2
+            open_pot: {alpha: "0.480256610", rao: 480256610}
+            country:
+              code: ag
+              name: Antigua and Barbuda
+              sentence_name: Antigua and Barbuda
+              inhabited: true
+              flag_held: false
+              open_epochs: 2
+              near_misses: 0
+              available: {alpha: "1.440769820", rao: 1440769820}
+              awarded: {alpha: "0.000000000", rao: 0}
+              providers:
+                slots: {total: 5, won: 0, open: 5}
+                units: 0
+                near_misses: 0
+                pot: {alpha: "0.480256610", rao: 480256610}
+                awarded: {alpha: "0.000000000", rao: 0}
+                win_estimate: {alpha: "0.144076982", rao: 144076982}
+                entries: 1
+                chance_to_win: 1
+              extenders:
+                slots: {total: 5, won: 0, open: 5}
+                units: 0
+                near_misses: 0
+                pot: {alpha: "0.480256610", rao: 480256610}
+                awarded: {alpha: "0.000000000", rao: 0}
+                win_estimate: {alpha: "0.144076982", rao: 144076982}
+                entries: 1
+                chance_to_win: 1
+
+    CtfEpochResult:
+      summary: Epoch 9, drawn, its root pending
+      description: Abridged to two of the 249 countries and to their awards; the totals count all of them.
+      value:
+        as_of: "2026-12-11T22:24:12Z"
+        unit: {token: alpha, symbol: α, netuid: 25, decimals: 9}
+        pool:
+          no_id: 1
+          pool_id: 4294967297
+          vault: "0xe4865eb1bebdf5c6a10c9d37f3ccdd59aee8f20c"
+          carry_contract: "0x981cfe73af944cc61589cdf6f51ccfac4cbd5f54"
+          carry_coldkey: "0x48cb91133081290b45bc8350c49f03041e4a4d948e43419f011e636674a2ce57"
+          first_epoch: 8
+          countries_version: "sha256:437f10be50e9e64024f6dbb668c672c6c3fe9f8caf25123fc661cfe8181cb792"
+        epoch: 9
+        start_block: 9650428
+        end_block: 9700827
+        census:
+          hash: "sha256:d4043cf526a1241cc43e12ffca22d7cc9f1d25fb48f69105e9c00c45d16f4384"
+          block: 9701016
+          candidates: 4217
+          units: {providers: 3311, extenders: 203}
+          excused_samples: 0
+          excluded:
+            providers:
+              offline_at_end: 1204
+              not_public: 9
+              no_location: 97
+              inactive: 0
+              presence: 388
+              country_changed: 41
+              duplicate_address: 512
+              no_wallet: 2876
+              head_bound: 3
+              own_network: 14
+            extenders:
+              offline_at_end: 0
+              not_public: 0
+              no_location: 0
+              inactive: 19
+              presence: 37
+              country_changed: 4
+              duplicate_address: 11
+              no_wallet: 58
+              head_bound: 0
+              own_network: 6
+        draw:
+          round: 34737596
+          signature: "0x73e43efd9f0a00bdd1540713defd666a1ddd2a4abb0b8687568e0229798166702c3293f57bd83ab5caf1847750668e9f"
+          randomness: "0x23e5164cdfea5d12d5776efba524f2d69d0e68e589542df11c9a30439c118b59"
+          seed: "0xefa60014c24d06af5f268332777df1b3bb37964fd796a401365a97908e943924"
+        amounts:
+          funding: {alpha: "212.273417481", rao: 212273417481}
+          returned: {alpha: "92.689523909", rao: 92689523909}
+          owed: {alpha: "92.689523909", rao: 92689523909}
+          matured: true
+          fresh: {alpha: "119.583893572", rao: 119583893572}
+          slot: {alpha: "0.048025660", rao: 48025660}
+          awarded: {alpha: "37.299195141", rao: 37299195141}
+          paid: {alpha: "37.299195141", rao: 37299195141}
+          pending_paid: {alpha: "0.000000000", rao: 0}
+          pending_in: {alpha: "0.000000000", rao: 0}
+          pending: {alpha: "0.000000000", rao: 0}
+          carried_in: {alpha: "92.689523909", rao: 92689523909}
+          carried: {alpha: "174.974222340", rao: 174974222340}
+        slots: {total: 2490, won: 571, open: 1919}
+        root:
+          status: pending
+          seq: 2
+          root_index: null
+          epoch: 9
+          ledger_hash: "sha256:24501e4d3d59d895c8b58d764569249930920c45abe1cf99c8c97e2a4853cea5"
+          committed_block: 9701994
+          finalized_block: null
+        objects:
+          header: "sha256:24501e4d3d59d895c8b58d764569249930920c45abe1cf99c8c97e2a4853cea5"
+          countries: "sha256:437f10be50e9e64024f6dbb668c672c6c3fe9f8caf25123fc661cfe8181cb792"
+          census: "sha256:d4043cf526a1241cc43e12ffca22d7cc9f1d25fb48f69105e9c00c45d16f4384"
+          awards: "sha256:ff7585cd5160a0fd85132913316db0ad1f5857d815ed1b86805653a6667fed77"
+          pots: "sha256:4f6744a94ff5058e6ea84d6e721e7829bba993c2806ef77f443297e3189ad594"
+          pending: "sha256:be29081246143837934fa356e57c4199cde917e3b2b1121a66a79828042e1309"
+        countries:
+          - code: de
+            name: Germany
+            providers:
+              units: 1862
+              slots: {total: 5, won: 5, open: 0}
+              near_misses: 7
+              pot_in: {alpha: "0.000000000", rao: 0}
+              pot_out: {alpha: "0.000000000", rao: 0}
+              awarded: {alpha: "0.240128300", rao: 240128300}
+              pending: {alpha: "0.000000000", rao: 0}
+            extenders:
+              units: 3
+              slots: {total: 5, won: 3, open: 2}
+              near_misses: 0
+              pot_in: {alpha: "0.096051320", rao: 96051320}
+              pot_out: {alpha: "0.134471848", rao: 134471848}
+              awarded: {alpha: "0.201707772", rao: 201707772}
+              pending: {alpha: "0.000000000", rao: 0}
+          - code: is
+            name: Iceland
+            providers:
+              units: 2
+              slots: {total: 5, won: 2, open: 3}
+              near_misses: 1
+              pot_in: {alpha: "0.144076980", rao: 144076980}
+              pot_out: {alpha: "0.230523168", rao: 230523168}
+              awarded: {alpha: "0.153682112", rao: 153682112}
+              pending: {alpha: "0.000000000", rao: 0}
+            extenders:
+              units: 0
+              slots: {total: 5, won: 0, open: 5}
+              near_misses: 0
+              pot_in: {alpha: "0.240128300", rao: 240128300}
+              pot_out: {alpha: "0.480256600", rao: 480256600}
+              awarded: {alpha: "0.000000000", rao: 0}
+              pending: {alpha: "0.000000000", rao: 0}
+        awards:
+          - role: provider
+            country: is
+            rank: 1
+            unit_hash: "0xbff10d155002ae2bc161c89a95766e4a5cd280391b99e32978984cc780e2cc40"
+            unit_family: 4
+            client_id: "3f6c2a1e-8d4b-4c7a-9e21-5b0d7f3a9c64"
+            coldkey: "0xff05d4de50cdc2b6d6aca7b376cfdb00f65c4243f6799c4eaca182e877faf619"
+            coldkey_ss58: 5Hq5oMjMnNDPJyRUScRVkWoFxYRdNqkHsjMBCxhPtYAEcnTd
+            slot: {alpha: "0.048025660", rao: 48025660}
+            pot_share: {alpha: "0.028815396", rao: 28815396}
+            pending: false
+          - role: provider
+            country: is
+            rank: 2
+            unit_hash: "0x2e219eede8d65552190d89501944b8e017cfcb8b9ec48546d35e726d03d9bbad"
+            unit_family: 6
+            client_id: "9b17e4d2-05c3-4f8e-a6b9-2d4c8e1f7a30"
+            coldkey: "0x87c5a0a3c10a0ab30a16652028d3fba705915b792985166e7a7df6768e165de8"
+            coldkey_ss58: 5F8j2eZsNcJDZGgj3Uho2S6qQVgu8yfiNJCHr2pfbHxjBdQN
+            slot: {alpha: "0.048025660", rao: 48025660}
+            pot_share: {alpha: "0.028815396", rao: 28815396}
+            pending: false
+          - role: extender
+            country: de
+            rank: 1
+            unit_hash: "0x2e83f818828a57989be42f4f89727b2b47875c27b075bafcbdbb65cf4a85a927"
+            unit_family: 4
+            client_id: "6a0f3c9d-71e2-4b58-8c3a-e94d2b6f1057"
+            coldkey: "0xb515f4c4f7bc1e73557df4d34f7fb3ae7885d1fa1e522eea3439d1c198697afb"
+            coldkey_ss58: 5GA93f6m9nTDubvFwi7jKnX4E4YREFXCSbuTJMFqtrutGJFi
+            slot: {alpha: "0.048025660", rao: 48025660}
+            pot_share: {alpha: "0.019210264", rao: 19210264}
+            pending: false
+          - role: extender
+            country: de
+            rank: 2
+            unit_hash: "0xa6ee15d500038852162c3b173fc36802ca1b09d5d4f71ca33d886367a096034e"
+            unit_family: 4
+            client_id: "c2d85b16-3e9a-47f0-b1c4-8a7e05d93f2b"
+            coldkey: "0xaf9c263393b32738af9b5e0e33a370e9f325c481e373ec63e01df7fcf6b5249b"
+            coldkey_ss58: 5G2xd5zwgweh6m74ZJshMrhAEANqEzSryFsiidm59nSpan6L
+            slot: {alpha: "0.048025660", rao: 48025660}
+            pot_share: {alpha: "0.019210264", rao: 19210264}
+            pending: false
+          - role: extender
+            country: de
+            rank: 3
+            unit_hash: "0x24f62f391d6bd309b55c893634304cc2bd779b07bbb830fda04cfdbf637c0df8"
+            unit_family: 6
+            client_id: "0e4b7a2c-9f16-4d83-a5e0-3c8b1d6f249a"
+            coldkey: "0xb6fa6539c9f6465c7d47ebb5d1130e304234408b5b71b194d8251ad94ed6ffd0"
+            coldkey_ss58: 5GCcxMP8CK4JV2ASw6rSfcqbPmcpxSHZHNyAUmgjnSVU9L3M
+            slot: {alpha: "0.048025660", rao: 48025660}
+            pot_share: {alpha: "0.019210264", rao: 19210264}
+            pending: false
+        pending_awards: []
+
+    CtfClientResult:
+      summary: A provider in Iceland that won in both epochs, its epoch 8 win claimed
+      value:
+        as_of: "2026-12-11T22:24:12Z"
+        unit: {token: alpha, symbol: α, netuid: 25, decimals: 9}
+        client_id: "3f6c2a1e-8d4b-4c7a-9e21-5b0d7f3a9c64"
+        epochs:
+          - epoch: 9
+            drawn: true
+            root_status: pending
+            providers:
+              candidate: true
+              reason: null
+              country: is
+              unit_family: 4
+              presence: {present: 664, required: 336, samples: 672, excused: 0}
+              units_in_draw: 2
+              won: true
+              rank: 1
+              slot: {alpha: "0.048025660", rao: 48025660}
+              pot_share: {alpha: "0.028815396", rao: 28815396}
+              pending: false
+              coldkey: "0xff05d4de50cdc2b6d6aca7b376cfdb00f65c4243f6799c4eaca182e877faf619"
+              coldkey_ss58: 5Hq5oMjMnNDPJyRUScRVkWoFxYRdNqkHsjMBCxhPtYAEcnTd
+            extenders:
+              candidate: false
+              reason: presence
+              country: is
+              unit_family: 4
+              presence: {present: 201, required: 336, samples: 672, excused: 0}
+              units_in_draw: null
+              won: false
+              rank: null
+              slot: null
+              pot_share: null
+              pending: false
+              coldkey: null
+              coldkey_ss58: null
+          - epoch: 8
+            drawn: true
+            root_status: finalized
+            providers:
+              candidate: true
+              reason: null
+              country: is
+              unit_family: 4
+              presence: {present: 671, required: 336, samples: 672, excused: 0}
+              units_in_draw: 2
+              won: true
+              rank: 2
+              slot: {alpha: "0.048025660", rao: 48025660}
+              pot_share: {alpha: "0.000000000", rao: 0}
+              pending: false
+              coldkey: "0xff05d4de50cdc2b6d6aca7b376cfdb00f65c4243f6799c4eaca182e877faf619"
+              coldkey_ss58: 5Hq5oMjMnNDPJyRUScRVkWoFxYRdNqkHsjMBCxhPtYAEcnTd
+            extenders:
+              candidate: false
+              reason: not_in_role
+              country: null
+              unit_family: null
+              presence: null
+              units_in_draw: null
+              won: false
+              rank: null
+              slot: null
+              pot_share: null
+              pending: false
+              coldkey: null
+              coldkey_ss58: null
+        wins:
+          - epoch: 9
+            role: provider
+            country: is
+            rank: 1
+            client_id: "3f6c2a1e-8d4b-4c7a-9e21-5b0d7f3a9c64"
+            amount: {alpha: "0.076841056", rao: 76841056}
+            slot: {alpha: "0.048025660", rao: 48025660}
+            pot_share: {alpha: "0.028815396", rao: 28815396}
+            pending: false
+            root_status: pending
+            coldkey: "0xff05d4de50cdc2b6d6aca7b376cfdb00f65c4243f6799c4eaca182e877faf619"
+            coldkey_ss58: 5Hq5oMjMnNDPJyRUScRVkWoFxYRdNqkHsjMBCxhPtYAEcnTd
+            claimed: false
+          - epoch: 8
+            role: provider
+            country: is
+            rank: 2
+            client_id: "3f6c2a1e-8d4b-4c7a-9e21-5b0d7f3a9c64"
+            amount: {alpha: "0.048025660", rao: 48025660}
+            slot: {alpha: "0.048025660", rao: 48025660}
+            pot_share: {alpha: "0.000000000", rao: 0}
+            pending: false
+            root_status: finalized
+            coldkey: "0xff05d4de50cdc2b6d6aca7b376cfdb00f65c4243f6799c4eaca182e877faf619"
+            coldkey_ss58: 5Hq5oMjMnNDPJyRUScRVkWoFxYRdNqkHsjMBCxhPtYAEcnTd
+            claimed: true
+
+    CtfClientResultNetwork:
+      summary: A network's credential, its provider in Iceland claimed through epoch 8 and its extender in Germany not yet
+      value:
+        as_of: "2026-12-11T22:24:12Z"
+        unit: {token: alpha, symbol: α, netuid: 25, decimals: 9}
+        client_id: null
+        epochs: []
+        wins:
+          - epoch: 9
+            role: provider
+            country: is
+            rank: 1
+            client_id: "3f6c2a1e-8d4b-4c7a-9e21-5b0d7f3a9c64"
+            amount: {alpha: "0.076841056", rao: 76841056}
+            slot: {alpha: "0.048025660", rao: 48025660}
+            pot_share: {alpha: "0.028815396", rao: 28815396}
+            pending: false
+            root_status: pending
+            coldkey: "0xff05d4de50cdc2b6d6aca7b376cfdb00f65c4243f6799c4eaca182e877faf619"
+            coldkey_ss58: 5Hq5oMjMnNDPJyRUScRVkWoFxYRdNqkHsjMBCxhPtYAEcnTd
+            claimed: false
+          - epoch: 9
+            role: extender
+            country: de
+            rank: 1
+            client_id: "6a0f3c9d-71e2-4b58-8c3a-e94d2b6f1057"
+            amount: {alpha: "0.067235924", rao: 67235924}
+            slot: {alpha: "0.048025660", rao: 48025660}
+            pot_share: {alpha: "0.019210264", rao: 19210264}
+            pending: false
+            root_status: pending
+            coldkey: "0xb515f4c4f7bc1e73557df4d34f7fb3ae7885d1fa1e522eea3439d1c198697afb"
+            coldkey_ss58: 5GA93f6m9nTDubvFwi7jKnX4E4YREFXCSbuTJMFqtrutGJFi
+            claimed: false
+          - epoch: 8
+            role: provider
+            country: is
+            rank: 2
+            client_id: "3f6c2a1e-8d4b-4c7a-9e21-5b0d7f3a9c64"
+            amount: {alpha: "0.048025660", rao: 48025660}
+            slot: {alpha: "0.048025660", rao: 48025660}
+            pot_share: {alpha: "0.000000000", rao: 0}
+            pending: false
+            root_status: finalized
+            coldkey: "0xff05d4de50cdc2b6d6aca7b376cfdb00f65c4243f6799c4eaca182e877faf619"
+            coldkey_ss58: 5Hq5oMjMnNDPJyRUScRVkWoFxYRdNqkHsjMBCxhPtYAEcnTd
+            claimed: true
+          - epoch: 8
+            role: extender
+            country: de
+            rank: 1
+            client_id: "6a0f3c9d-71e2-4b58-8c3a-e94d2b6f1057"
+            amount: {alpha: "0.048025660", rao: 48025660}
+            slot: {alpha: "0.048025660", rao: 48025660}
+            pot_share: {alpha: "0.000000000", rao: 0}
+            pending: false
+            root_status: finalized
+            coldkey: "0xb515f4c4f7bc1e73557df4d34f7fb3ae7885d1fa1e522eea3439d1c198697afb"
+            coldkey_ss58: 5GA93f6m9nTDubvFwi7jKnX4E4YREFXCSbuTJMFqtrutGJFi
+            claimed: false
+
+    SnLedgerAccountResultWhole:
+      summary: A coldkey with an account in the provider pool and one in the CTF pool
+      value:
+        coldkey: "0xff05d4de50cdc2b6d6aca7b376cfdb00f65c4243f6799c4eaca182e877faf619"
+        accounts:
+          - vault: "0xe4865eb1bebdf5c6a10c9d37f3ccdd59aee8f20c"
+            no_id: 1
+            kind: pool
+            label: Pool 1
+            index: 6
+            root_index: 4
+            cumulative: "4211936625"
+            proof:
+              - hash: "0x2edbe394b30435f75fca2493b1b0431dda29c643b9d24ce1f0c0632e8ab9652b"
+                sum: "18822104577"
+              - hash: "0xe0df72383e4030456f88ec13c633910020f00f3cc4c04982ac19513ef563ce84"
+                sum: "40512990318"
+              - hash: "0x967c10cacff9bfd061138eb81f849c6f94e1e27defad3c57804fb637060496f2"
+                sum: "5915666385961"
+            claimed: "3110220000"
+            pending_cumulative: "4592881205"
+          - vault: "0xe4865eb1bebdf5c6a10c9d37f3ccdd59aee8f20c"
+            no_id: 4294967297
+            kind: ctf
+            label: Capture the flag
+            index: 3
+            root_index: 0
+            cumulative: "48025660"
+            proof:
+              - hash: "0x43af2f1f1e5ebe5fb11a995f6c7255cadaffe900e0ca280b2da41da7fa76b3a3"
+                sum: "96051320"
+              - hash: "0x7d3d11bfea3520ca5f74fab149582fb1633a89ed20b57907bbdd201e3b4b144f"
+                sum: "119439816592"
+            claimed: "0"
+            pending_cumulative: "124866716"
+        unavailable_pools: []
+    SnLedgerAccountResultPartial:
+      summary: With partial=true, while the CTF pool's ledger cannot be read
+      value:
+        coldkey: "0xff05d4de50cdc2b6d6aca7b376cfdb00f65c4243f6799c4eaca182e877faf619"
+        accounts:
+          - vault: "0xe4865eb1bebdf5c6a10c9d37f3ccdd59aee8f20c"
+            no_id: 1
+            kind: pool
+            label: Pool 1
+            index: 6
+            root_index: 4
+            cumulative: "4211936625"
+            proof:
+              - hash: "0x2edbe394b30435f75fca2493b1b0431dda29c643b9d24ce1f0c0632e8ab9652b"
+                sum: "18822104577"
+              - hash: "0xe0df72383e4030456f88ec13c633910020f00f3cc4c04982ac19513ef563ce84"
+                sum: "40512990318"
+              - hash: "0x967c10cacff9bfd061138eb81f849c6f94e1e27defad3c57804fb637060496f2"
+                sum: "5915666385961"
+            claimed: "3110220000"
+            pending_cumulative: "4592881205"
+        unavailable_pools:
+          - vault: "0xe4865eb1bebdf5c6a10c9d37f3ccdd59aee8f20c"
+            no_id: 4294967297
+            kind: ctf
+            label: Capture the flag
+    SnLedgerAccountResultWithoutPartial:
+      summary: Without partial=true, while the CTF pool's ledger cannot be read
+      value:
+        coldkey: "0xff05d4de50cdc2b6d6aca7b376cfdb00f65c4243f6799c4eaca182e877faf619"
+        accounts:
+          - vault: "0xe4865eb1bebdf5c6a10c9d37f3ccdd59aee8f20c"
+            no_id: 1
+            kind: pool
+            label: Pool 1
+            index: 6
+            root_index: 4
+            cumulative: "4211936625"
+            proof:
+              - hash: "0x2edbe394b30435f75fca2493b1b0431dda29c643b9d24ce1f0c0632e8ab9652b"
+                sum: "18822104577"
+              - hash: "0xe0df72383e4030456f88ec13c633910020f00f3cc4c04982ac19513ef563ce84"
+                sum: "40512990318"
+              - hash: "0x967c10cacff9bfd061138eb81f849c6f94e1e27defad3c57804fb637060496f2"
+                sum: "5915666385961"
+            claimed: "3110220000"
+            pending_cumulative: "4592881205"
+        unavailable_pools: []
+
+  schemas:
+    Problem:
+      type: object
+      description: An RFC 9457 problem details object.
+      required: [type, title, status, code]
+      properties:
+        type:
+          type: string
+          description: "`about:blank`: the status and `code` say what went wrong."
+          examples: [about:blank]
+        title:
+          type: string
+          description: The HTTP status phrase.
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        code:
+          type: string
+          description: |
+            For programs. A code a client does not know reads as the status
+            alone.
+          enum: [bad_request, unauthorized, unknown_country, unknown_epoch, unavailable, ledger_unavailable]
+        detail:
+          type: string
+          description: A sentence for people, never for parsing.
+
+    Unit:
+      type: object
+      description: The unit of every amount of the answer.
+      required: [token, symbol, netuid, decimals]
+      properties:
+        token:
+          type: string
+          const: alpha
+          description: Alpha, the token of the subnet.
+        symbol:
+          type: string
+          const: α
+        netuid:
+          type: integer
+          const: 25
+          description: The Bittensor subnet.
+        decimals:
+          type: integer
+          const: 9
+          description: 1 alpha is 10^9 rao.
+
+    Amount:
+      type: object
+      description: An exact amount, in alpha and in rao. The two always agree exactly.
+      required: [alpha, rao]
+      properties:
+        alpha:
+          type: string
+          description: The amount in alpha, a decimal string with exactly nine fractional digits, no grouping and no exponent.
+          pattern: "^(0|[1-9][0-9]*)\\.[0-9]{9}$"
+        rao:
+          type: integer
+          minimum: 0
+          description: The same amount in rao. CTF amounts stay far below 2^53.
+
+    NullableAmount:
+      description: An amount, or null where none applies.
+      oneOf:
+        - $ref: "#/components/schemas/Amount"
+        - type: "null"
+
+    Timestamp:
+      type: string
+      format: date-time
+      description: RFC 3339 in UTC, to the second, with a `Z`.
+      pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+
+    CountryCode:
+      type: string
+      description: A lowercase ISO 3166-1 alpha-2 code, one of the 249.
+      pattern: "^[a-z]{2}$"
+
+    Sha256Ref:
+      type: string
+      description: |
+        A ledger object reference: `sha256:` and the 64 lowercase hex digits
+        of the object's sha256. `GET /sn/ledger/object?hash=` serves the
+        object and checks it against the hash.
+      pattern: "^sha256:[0-9a-f]{64}$"
+
+    Address:
+      type: string
+      description: An EVM address, `0x` and 40 lowercase hex digits.
+      pattern: "^0x[0-9a-f]{40}$"
+
+    Bytes32:
+      type: string
+      description: 32 bytes, `0x` and 64 lowercase hex digits.
+      pattern: "^0x[0-9a-f]{64}$"
+
+    Coldkey:
+      type: string
+      description: A coldkey's public key, `0x` and 64 lowercase hex digits.
+      pattern: "^0x[0-9a-f]{64}$"
+
+    ColdkeySs58:
+      type: string
+      description: The same coldkey as an ss58 address with the Bittensor prefix (42).
+      pattern: "^5[1-9A-HJ-NP-Za-km-z]{47}$"
+
+    Role:
+      type: string
+      description: The miner role a slot, an award or a candidate is for.
+      enum: [provider, extender]
+
+    RootStatus:
+      type: string
+      description: |
+        `pending`: committed and not yet finalized; a fault or a missed
+        approval can still replace it with a later root. `finalized`: its
+        accounts can be claimed.
+      enum: [pending, finalized]
+
+    CtfSlots:
+      type: object
+      description: Slots, as counted for last epoch's draw. `won` + `open` = `total`.
+      required: [total, won, open]
+      properties:
+        total:
+          type: integer
+          minimum: 0
+          description: 5 per country and role, 2,490 in all.
+        won:
+          type: integer
+          minimum: 0
+        open:
+          type: integer
+          minimum: 0
+          description: Slots that went unclaimed; their amounts joined the pots.
+
+    CtfPool:
+      type: object
+      description: The CTF pool's identity on chain.
+      required: [no_id, pool_id, vault, carry_contract, carry_coldkey, first_epoch, countries_version]
+      properties:
+        no_id:
+          type: integer
+          minimum: 1
+          description: The network operator's id.
+        pool_id:
+          type: integer
+          description: The CTF pool's vault2 pool id, 2^32 + `no_id` (4294967297 for operator 1). Ledger accounts carry it as their `no_id`.
+        vault:
+          $ref: "#/components/schemas/Address"
+        carry_contract:
+          $ref: "#/components/schemas/Address"
+          description: The immutable, ownerless carry contract that takes each root's pots and pending awards and moves them back onto the pool.
+        carry_coldkey:
+          $ref: "#/components/schemas/Coldkey"
+          description: The carry contract's coldkey, the EVM mirror of its address (blake2b-256 of "evm:" and the address), which holds the carry account in the pool's ledger.
+        first_epoch:
+          type: integer
+          description: The pool's first epoch (8 for operator 1).
+        countries_version:
+          $ref: "#/components/schemas/Sha256Ref"
+
+    CtfCurrentEpoch:
+      type: object
+      description: This epoch, the one in progress, whose draw follows its end. While `pending_draw` is set, the pending draw comes first.
+      required: [epoch, start_block, end_block, draw_at]
+      properties:
+        epoch:
+          type: integer
+        start_block:
+          type: integer
+        end_block:
+          type: integer
+          description: The epoch's last block. Presence counts through it.
+        draw_at:
+          $ref: "#/components/schemas/Timestamp"
+          description: |
+            When the epoch ends, estimated at 12 seconds per block from its
+            first block; the estimate does not move during the epoch. The
+            census is committed within 600 blocks (about two hours) after
+            the end, and the draw uses the first drand round at least 60
+            seconds after the commitment.
+
+    CtfRoot:
+      type: object
+      description: |
+        The CTF root that covers the epoch: the first committed root whose
+        epochs include it, or the root that replaced it.
+      required: [status, seq, root_index, epoch, ledger_hash, committed_block, finalized_block]
+      properties:
+        status:
+          $ref: "#/components/schemas/RootStatus"
+        seq:
+          type: integer
+          minimum: 1
+          description: vault2's commit sequence number of the root.
+        root_index:
+          type: [integer, "null"]
+          minimum: 0
+          description: The root's index among the pool's finalized roots in vault2; null while pending.
+        epoch:
+          type: integer
+          description: The last epoch the root covers.
+        ledger_hash:
+          $ref: "#/components/schemas/Sha256Ref"
+          description: The root's ledger header, whose sha256 is the root's `ledgerHash` on chain.
+        committed_block:
+          type: integer
+        finalized_block:
+          type: [integer, "null"]
+          description: Null while pending.
+
+    CtfEpochAmounts:
+      type: object
+      description: |
+        One epoch's amounts. `fresh` = `funding` − (`matured` ? `owed` :
+        `returned`); `slot` = floor(`fresh` / 2490); and `carried` =
+        `carried_in` + `fresh` − `paid` + `pending_in` − `pending`.
+      required: [funding, returned, owed, matured, fresh, slot, awarded, paid, pending_paid, pending_in, pending, carried_in, carried]
+      properties:
+        funding:
+          $ref: "#/components/schemas/Amount"
+          description: What vault2 captured for the CTF pool for the epoch, the returned carry included.
+        returned:
+          $ref: "#/components/schemas/Amount"
+          description: The stake the carry contract returned for the epoch.
+        owed:
+          $ref: "#/components/schemas/Amount"
+          description: The carry still owed back before the epoch's capture.
+        matured:
+          type: boolean
+          description: Everything owed back had returned (within 4 rao of rounding), so pot shares are paid now rather than as pending awards.
+        fresh:
+          $ref: "#/components/schemas/Amount"
+          description: The fresh funding the epoch's slots divide. Returned carry pays obligations, never new slots.
+        slot:
+          $ref: "#/components/schemas/Amount"
+          description: A slot's amount, floor(`fresh` / 2490). The first `fresh` mod 2490 slots in slot order take one rao more.
+        awarded:
+          $ref: "#/components/schemas/Amount"
+          description: What the epoch's winners won, their slots and pot shares, whether paid now or pending.
+        paid:
+          $ref: "#/components/schemas/Amount"
+          description: What the epoch's root paid winners for the epoch, the earlier pending awards it paid included.
+        pending_paid:
+          $ref: "#/components/schemas/Amount"
+          description: The earlier pending awards paid in the epoch, in full, because it matured.
+        pending_in:
+          $ref: "#/components/schemas/Amount"
+          description: The pending awards owed before the epoch.
+        pending:
+          $ref: "#/components/schemas/Amount"
+          description: The pending awards still owed after the epoch.
+        carried_in:
+          $ref: "#/components/schemas/Amount"
+          description: The pots carried into the epoch, every country and role.
+        carried:
+          $ref: "#/components/schemas/Amount"
+          description: The pots after the epoch, which carry into the next one.
+
+    CtfPendingDraw:
+      type: object
+      description: |
+        An epoch that has ended and whose root is not committed yet: its
+        census and drand round, as far as they have happened. Its winners
+        and pots appear when its root is committed and it becomes last
+        epoch. The three census and round fields are null together, until
+        the census is committed.
+      required: [epoch, census_hash, census_block, round]
+      properties:
+        epoch:
+          type: integer
+        census_hash:
+          description: The census committed on chain; null until it is.
+          oneOf:
+            - $ref: "#/components/schemas/Sha256Ref"
+            - type: "null"
+        census_block:
+          type: [integer, "null"]
+          description: The block of the census commitment.
+        round:
+          type: [integer, "null"]
+          description: The drand quicknet round that draws it, the first at least 60 seconds after the census block's timestamp.
+
+    NullablePendingDraw:
+      description: An ended epoch whose root is pending; null otherwise.
+      oneOf:
+        - $ref: "#/components/schemas/CtfPendingDraw"
+        - type: "null"
+
+    CtfLastEpoch:
+      type: object
+      description: Last epoch, the latest with a committed CTF root.
+      required: [epoch, drawn, root, amounts, slots]
+      properties:
+        epoch:
+          type: integer
+        drawn:
+          type: boolean
+          description: A census was committed in time and the draw ran. Without one, every slot carried.
+        root:
+          $ref: "#/components/schemas/CtfRoot"
+        amounts:
+          $ref: "#/components/schemas/CtfEpochAmounts"
+        slots:
+          $ref: "#/components/schemas/CtfSlots"
+
+    CtfRoleState:
+      type: object
+      description: |
+        One role in one country: last epoch's draw, and what the next draw
+        holds. The draw figures (`slots`, `units`, `near_misses`, `entries`
+        and `chance_to_win`) are null together, without a draw last epoch.
+      required: [slots, units, near_misses, pot, awarded, win_estimate, entries, chance_to_win]
+      properties:
+        slots:
+          description: Last epoch's draw's slots; null without a draw last epoch.
+          oneOf:
+            - $ref: "#/components/schemas/CtfSlots"
+            - type: "null"
+        units:
+          type: [integer, "null"]
+          minimum: 0
+          description: The eligible units in last epoch's draw, one ticket each; null without a draw last epoch.
+        near_misses:
+          type: [integer, "null"]
+          minimum: 0
+          description: |
+            The miners in the country that last epoch's census left out only
+            for too little presence or a change of country: they passed
+            every other rule. Null without a draw last epoch.
+        pot:
+          $ref: "#/components/schemas/Amount"
+          description: |
+            The pot carried out of last epoch into the next draw. Five winners
+            empty it, so a pot above zero after a draw means the role was not
+            fully captured. Zero before the first root.
+        awarded:
+          $ref: "#/components/schemas/Amount"
+          description: What last epoch's winners won, slots and pot shares; zero without a draw.
+        win_estimate:
+          $ref: "#/components/schemas/NullableAmount"
+          description: |
+            What a newcomer who wins a slot in the next draw would take: one
+            slot at last epoch's slot amount plus a fifth of `pot`, rounded
+            down to the rao. Null before the first root.
+        entries:
+          type: [integer, "null"]
+          minimum: 1
+          description: The entries of `chance_to_win`, `units` + 1; null without a draw last epoch.
+        chance_to_win:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 1
+          description: |
+            min(1, 5 / `entries`), the draw's exact odds for a newcomer,
+            estimated from last epoch's draw. It is 1 exactly where the role
+            was not fully captured, so a newcomer who meets the presence rule
+            wins by default; the page shows a percentage only where all five
+            slots were won. Null without a draw last epoch, when there is no
+            basis for either.
+
+    CtfCountryState:
+      type: object
+      description: One country's row.
+      required: [code, name, sentence_name, inhabited, flag_held, open_epochs, near_misses, available, awarded, providers, extenders]
+      properties:
+        code:
+          $ref: "#/components/schemas/CountryCode"
+        name:
+          type: string
+          description: The English name, the ISO 3166-1 common name where it has one.
+        sentence_name:
+          type: string
+          description: |
+            The name as an English sentence uses it, with "the" where the
+            name takes one: "Iceland", "the United States", "the DR Congo".
+            Strip a leading "the " for a heading or a breadcrumb.
+        inhabited:
+          type: boolean
+          description: |
+            False for the seven territories without a permanent population
+            (`aq`, `bv`, `gs`, `hm`, `io`, `tf`, `um`). They keep their slots
+            and pots.
+        flag_held:
+          type: boolean
+          description: All ten slots were won at last epoch's draw; false without one.
+        open_epochs:
+          type: integer
+          minimum: 0
+          description: The consecutive epochs, up to and including last epoch, with no winner in either role; 0 when last epoch had one.
+        near_misses:
+          type: [integer, "null"]
+          minimum: 0
+          description: Both roles' near misses; null without a draw last epoch.
+        available:
+          $ref: "#/components/schemas/NullableAmount"
+          description: |
+            An estimate of what the country's next draw holds: both pots plus
+            ten slots at last epoch's slot amount. Null before the first
+            root.
+        awarded:
+          $ref: "#/components/schemas/Amount"
+          description: What last epoch's winners in the country won, both roles; zero without a draw.
+        providers:
+          $ref: "#/components/schemas/CtfRoleState"
+        extenders:
+          $ref: "#/components/schemas/CtfRoleState"
+
+    CtfTotals:
+      type: object
+      description: Counts over the 249 countries, from last epoch's draw.
+      required: [countries, flags_held, not_fully_captured]
+      properties:
+        countries:
+          type: integer
+          description: Always 249, the ISO 3166-1 alpha-2 codes.
+        flags_held:
+          type: integer
+          minimum: 0
+          description: Countries whose ten slots were all won at last epoch's draw.
+        not_fully_captured:
+          description: |
+            Countries where at least one of the role's five slots went
+            unclaimed at last epoch's draw, so a newcomer wins by default.
+            Null without a draw last epoch.
+          oneOf:
+            - type: object
+              required: [providers, extenders]
+              properties:
+                providers:
+                  type: integer
+                  minimum: 0
+                extenders:
+                  type: integer
+                  minimum: 0
+            - type: "null"
+
+    CtfDefinitions:
+      type: object
+      description: Plain definitions of the estimates the answer carries.
+      required: [chance_to_win, win_estimate, available, eligibility]
+      properties:
+        chance_to_win:
+          type: string
+        win_estimate:
+          type: string
+        available:
+          type: string
+        eligibility:
+          type: string
+
+    CtfLinks:
+      type: object
+      description: Pages for people.
+      required: [page, chance_to_win]
+      properties:
+        page:
+          type: string
+          format: uri
+          description: The ur.xyz page the answer is for, the hub or a country page.
+        chance_to_win:
+          type: string
+          format: uri
+          description: Where the page defines the chance to win.
+
+    CtfState:
+      type: object
+      description: The answer of `GET /sn/ctf`.
+      required: [as_of, unit, pool, current_epoch, last_epoch, pending_draw, totals, definitions, links, countries]
+      properties:
+        as_of:
+          $ref: "#/components/schemas/Timestamp"
+        unit:
+          $ref: "#/components/schemas/Unit"
+        pool:
+          $ref: "#/components/schemas/CtfPool"
+        current_epoch:
+          $ref: "#/components/schemas/CtfCurrentEpoch"
+        last_epoch:
+          description: Null before the pool's first epoch has a committed root.
+          oneOf:
+            - $ref: "#/components/schemas/CtfLastEpoch"
+            - type: "null"
+        pending_draw:
+          $ref: "#/components/schemas/NullablePendingDraw"
+        totals:
+          $ref: "#/components/schemas/CtfTotals"
+        definitions:
+          $ref: "#/components/schemas/CtfDefinitions"
+        links:
+          $ref: "#/components/schemas/CtfLinks"
+        countries:
+          type: array
+          description: All 249 countries, by code.
+          items:
+            $ref: "#/components/schemas/CtfCountryState"
+
+    CtfHere:
+      type: object
+      description: The answer of `GET /sn/ctf/here`.
+      required: [country]
+      properties:
+        country:
+          description: The caller's country, or null.
+          oneOf:
+            - $ref: "#/components/schemas/CountryCode"
+            - type: "null"
+
+    CtfHistoryRole:
+      type: object
+      description: One role in one country in one epoch.
+      required: [units, slots, pot_in, pot_out, awarded, median_award, winning_share]
+      properties:
+        units:
+          type: integer
+          minimum: 0
+          description: The eligible units in the draw.
+        slots:
+          $ref: "#/components/schemas/CtfSlots"
+        pot_in:
+          $ref: "#/components/schemas/Amount"
+          description: The pot carried into the epoch.
+        pot_out:
+          $ref: "#/components/schemas/Amount"
+          description: The pot carried out of it.
+        awarded:
+          $ref: "#/components/schemas/Amount"
+          description: What the role's winners won, slots and pot shares.
+        median_award:
+          $ref: "#/components/schemas/NullableAmount"
+          description: The lower median of the winners' awards (slot and pot share), the ⌈W/2⌉-th smallest of W; null without winners.
+        winning_share:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 1
+          description: The share of entries that won, `slots.won` / `units`; null without units.
+
+    CtfHistoryEpoch:
+      type: object
+      description: One country in one epoch.
+      required: [epoch, drawn, root_status, slot, providers, extenders]
+      properties:
+        epoch:
+          type: integer
+        drawn:
+          type: boolean
+          description: A census was committed in time and the draw ran.
+        root_status:
+          $ref: "#/components/schemas/RootStatus"
+        slot:
+          $ref: "#/components/schemas/Amount"
+          description: The epoch's slot amount.
+        providers:
+          $ref: "#/components/schemas/CtfHistoryRole"
+        extenders:
+          $ref: "#/components/schemas/CtfHistoryRole"
+
+    CtfCountryResult:
+      type: object
+      description: The answer of `GET /sn/ctf/country/{cc}`.
+      required: [as_of, unit, pool, current_epoch, last_epoch, pending_draw, definitions, links, country, history]
+      properties:
+        as_of:
+          $ref: "#/components/schemas/Timestamp"
+        unit:
+          $ref: "#/components/schemas/Unit"
+        pool:
+          $ref: "#/components/schemas/CtfPool"
+        current_epoch:
+          $ref: "#/components/schemas/CtfCurrentEpoch"
+        last_epoch:
+          description: Null before the pool's first epoch has a committed root.
+          oneOf:
+            - $ref: "#/components/schemas/CtfLastEpoch"
+            - type: "null"
+        pending_draw:
+          $ref: "#/components/schemas/NullablePendingDraw"
+        definitions:
+          $ref: "#/components/schemas/CtfDefinitions"
+        links:
+          $ref: "#/components/schemas/CtfLinks"
+        country:
+          $ref: "#/components/schemas/CtfCountryState"
+        history:
+          type: array
+          description: Every epoch from the pool's first that a committed root covers, newest first.
+          items:
+            $ref: "#/components/schemas/CtfHistoryEpoch"
+
+    CtfTopEntry:
+      type: object
+      description: One country of `GET /sn/ctf/top`.
+      required: [rank, open_pot, country]
+      properties:
+        rank:
+          type: integer
+          minimum: 1
+        open_pot:
+          $ref: "#/components/schemas/Amount"
+          description: The pot the country ranks by, the role's or both together.
+        country:
+          $ref: "#/components/schemas/CtfCountryState"
+
+    CtfTopResult:
+      type: object
+      description: The answer of `GET /sn/ctf/top`.
+      required: [as_of, unit, current_epoch, last_epoch, pending_draw, role, include_uninhabited, definitions, links, countries]
+      properties:
+        as_of:
+          $ref: "#/components/schemas/Timestamp"
+        unit:
+          $ref: "#/components/schemas/Unit"
+        current_epoch:
+          $ref: "#/components/schemas/CtfCurrentEpoch"
+        last_epoch:
+          description: The epoch the pots and slots come from; null before the pool's first epoch has a committed root.
+          oneOf:
+            - $ref: "#/components/schemas/CtfLastEpoch"
+            - type: "null"
+        pending_draw:
+          $ref: "#/components/schemas/NullablePendingDraw"
+        role:
+          type: string
+          enum: [provider, extender, any]
+        include_uninhabited:
+          type: boolean
+        definitions:
+          $ref: "#/components/schemas/CtfDefinitions"
+        links:
+          $ref: "#/components/schemas/CtfLinks"
+        countries:
+          type: array
+          items:
+            $ref: "#/components/schemas/CtfTopEntry"
+
+    CtfExclusionCounts:
+      type: object
+      description: |
+        How many of the miners the presence samples found in the role during
+        the epoch each rule excluded, summed from the committed census's
+        exclusion object. Each miner counts once, under the first rule it
+        failed in the census's own order (the sn `ctf` package's `Reason`):
+        `inactive`, `offline_at_end`, `not_public`, `no_location`,
+        `own_network`, `head_bound`, `no_wallet`, `duplicate_address`,
+        `country_changed`, `presence`. With `country_changed` and `presence`
+        last, those two together count exactly the near misses: the miners
+        every other rule admitted. This is not the order of
+        `CtfExclusionReason`, in which
+        `GET /sn/ctf/client` names a client's `reason`, so a miner that
+        failed several rules can count here under another rule than its
+        `reason` there. A rule that does not apply to the role counts 0.
+      required: [offline_at_end, not_public, no_location, inactive, presence, country_changed, duplicate_address, no_wallet, head_bound, own_network]
+      properties:
+        offline_at_end: {type: integer, minimum: 0}
+        not_public: {type: integer, minimum: 0}
+        no_location: {type: integer, minimum: 0}
+        inactive: {type: integer, minimum: 0}
+        presence: {type: integer, minimum: 0}
+        country_changed: {type: integer, minimum: 0}
+        duplicate_address: {type: integer, minimum: 0}
+        no_wallet: {type: integer, minimum: 0}
+        head_bound: {type: integer, minimum: 0}
+        own_network: {type: integer, minimum: 0}
+
+    CtfExclusionReason:
+      type: string
+      description: |
+        Why a client was not a candidate in a role (`GET /sn/ctf/client`),
+        the first rule it failed, in this order:
+
+        - `not_in_role`: no presence sample found it in the role during the
+          epoch (`GET /sn/ctf/client` only).
+        - `offline_at_end`: not an active, top-level, connected provider
+          passing the operator's provider checks at the epoch's end.
+        - `not_public`: its provide key is not Public.
+        - `no_location`: no valid location at the epoch's end.
+        - `inactive`: the extender record or all its addresses were revoked
+          or inactive at the epoch's end.
+        - `presence`: present in its country for less than half of the
+          epoch's samples.
+        - `country_changed`: its country at the end differs from where it
+          was present, or an activation was in another country.
+        - `duplicate_address`: a candidate with a lower client id has its
+          IPv4 address or IPv6 /64.
+        - `no_wallet`: no payout coldkey.
+        - `head_bound`: an active fleet binding at either boundary; a head
+          client earns in one tier only.
+        - `own_network`: on one of the operator's own networks.
+
+        A reason a client does not know reads as "not a candidate". The
+        census's exclusion counts keep the census's own order instead
+        (`CtfExclusionCounts`).
+      enum: [not_in_role, offline_at_end, not_public, no_location, inactive, presence, country_changed, duplicate_address, no_wallet, head_bound, own_network]
+
+    CtfCensus:
+      type: object
+      description: The census commitment and its counts.
+      required: [hash, block, candidates, units, excused_samples, excluded]
+      properties:
+        hash:
+          $ref: "#/components/schemas/Sha256Ref"
+          description: The census header's sha256, the `censusHash` committed on chain; also the header's object reference.
+        block:
+          type: integer
+          description: The block of the commitment, within 600 blocks of the epoch's end.
+        candidates:
+          type: integer
+          minimum: 0
+          description: Census rows, one per candidate client and role.
+        units:
+          type: object
+          description: Units in the draws, per role.
+          required: [providers, extenders]
+          properties:
+            providers: {type: integer, minimum: 0}
+            extenders: {type: integer, minimum: 0}
+        excused_samples:
+          type: integer
+          minimum: 0
+          description: Samples the operator excused for a platform-wide outage it declared; the half-epoch rule counts without them.
+        excluded:
+          type: object
+          required: [providers, extenders]
+          properties:
+            providers:
+              $ref: "#/components/schemas/CtfExclusionCounts"
+            extenders:
+              $ref: "#/components/schemas/CtfExclusionCounts"
+
+    CtfDraw:
+      type: object
+      description: |
+        The draw's randomness: drand quicknet (chain hash
+        52db9ba70e0cc0f6eaf7803dd07447a1f5477735fd3f661792ba94600c84e971),
+        whose round r is published at 1692803367 + 3·(r − 1) seconds. Any
+        drand relay serves the round; its signature verifies against
+        quicknet's public key.
+      required: [round, signature, randomness, seed]
+      properties:
+        round:
+          type: integer
+          description: The first quicknet round at least 60 seconds after the census block's timestamp.
+        signature:
+          type: string
+          description: The round's BLS signature, 48 bytes.
+          pattern: "^0x[0-9a-f]{96}$"
+        randomness:
+          $ref: "#/components/schemas/Bytes32"
+          description: sha256 of the signature.
+        seed:
+          $ref: "#/components/schemas/Bytes32"
+          description: |
+            keccak256("urnetwork/ctf-draw/v1" ‖ chain id ‖ netuid ‖ pool id ‖
+            epoch ‖ census hash ‖ randomness). Each unit's ticket is
+            keccak256(seed ‖ role ‖ country ‖ unit); the smallest tickets
+            win.
+
+    CtfEpochObjects:
+      type: object
+      description: The epoch's ledger objects, each served by `GET /sn/ledger/object`.
+      required: [header, countries, census, awards, pots, pending]
+      properties:
+        header:
+          $ref: "#/components/schemas/Sha256Ref"
+          description: The covering root's ledger header (`root.ledger_hash`).
+        countries:
+          $ref: "#/components/schemas/Sha256Ref"
+          description: The country list, the 249 codes in order.
+        census:
+          description: The census header (`census.hash`); null without a census.
+          oneOf:
+            - $ref: "#/components/schemas/Sha256Ref"
+            - type: "null"
+        awards:
+          $ref: "#/components/schemas/Sha256Ref"
+        pots:
+          $ref: "#/components/schemas/Sha256Ref"
+        pending:
+          $ref: "#/components/schemas/Sha256Ref"
+
+    CtfEpochRole:
+      type: object
+      description: One role in one country in the epoch.
+      required: [units, slots, near_misses, pot_in, pot_out, awarded, pending]
+      properties:
+        units:
+          type: integer
+          minimum: 0
+        slots:
+          $ref: "#/components/schemas/CtfSlots"
+        near_misses:
+          type: integer
+          minimum: 0
+        pot_in:
+          $ref: "#/components/schemas/Amount"
+        pot_out:
+          $ref: "#/components/schemas/Amount"
+        awarded:
+          $ref: "#/components/schemas/Amount"
+          description: The role's awards, slots and pot shares.
+        pending:
+          $ref: "#/components/schemas/Amount"
+          description: The part of `awarded` that is pending awards, owed until an epoch matures.
+
+    CtfEpochCountry:
+      type: object
+      required: [code, name, providers, extenders]
+      properties:
+        code:
+          $ref: "#/components/schemas/CountryCode"
+        name:
+          type: string
+        providers:
+          $ref: "#/components/schemas/CtfEpochRole"
+        extenders:
+          $ref: "#/components/schemas/CtfEpochRole"
+
+    CtfAward:
+      type: object
+      description: One winner, as its award row records it.
+      required: [role, country, rank, unit_hash, unit_family, client_id, coldkey, coldkey_ss58, slot, pot_share, pending]
+      properties:
+        role:
+          $ref: "#/components/schemas/Role"
+        country:
+          $ref: "#/components/schemas/CountryCode"
+        rank:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: By ticket, smallest first.
+        unit_hash:
+          $ref: "#/components/schemas/Bytes32"
+          description: The winning unit's keyed hash, as the census lists it. No address is published.
+        unit_family:
+          type: integer
+          enum: [4, 6]
+          description: An IPv4 /29 or an IPv6 /48.
+        client_id:
+          type: string
+          format: uuid
+          description: The unit's winning member.
+        coldkey:
+          $ref: "#/components/schemas/Coldkey"
+          description: The payout coldkey the provider pool's wallet selection gives the client.
+        coldkey_ss58:
+          $ref: "#/components/schemas/ColdkeySs58"
+        slot:
+          $ref: "#/components/schemas/Amount"
+        pot_share:
+          $ref: "#/components/schemas/Amount"
+          description: A fifth of the pot carried in, rounded down; one rao more for the best ranks when five won and the pot did not divide by five.
+        pending:
+          type: boolean
+          description: The pot share is a pending award, paid in full in the first matured epoch, because the epoch did not mature.
+
+    CtfPendingAward:
+      type: object
+      description: A pot share still owed.
+      required: [award_epoch, role, country, rank, coldkey, coldkey_ss58, amount]
+      properties:
+        award_epoch:
+          type: integer
+        role:
+          $ref: "#/components/schemas/Role"
+        country:
+          $ref: "#/components/schemas/CountryCode"
+        rank:
+          type: integer
+          minimum: 1
+          maximum: 5
+        coldkey:
+          $ref: "#/components/schemas/Coldkey"
+        coldkey_ss58:
+          $ref: "#/components/schemas/ColdkeySs58"
+        amount:
+          $ref: "#/components/schemas/Amount"
+
+    CtfEpochResult:
+      type: object
+      description: The answer of `GET /sn/ctf/epoch/{epoch}`.
+      required: [as_of, unit, pool, epoch, start_block, end_block, census, draw, amounts, slots, root, objects, countries, awards, pending_awards]
+      properties:
+        as_of:
+          $ref: "#/components/schemas/Timestamp"
+        unit:
+          $ref: "#/components/schemas/Unit"
+        pool:
+          $ref: "#/components/schemas/CtfPool"
+        epoch:
+          type: integer
+        start_block:
+          type: integer
+        end_block:
+          type: integer
+        census:
+          description: Null when no census was committed in time.
+          oneOf:
+            - $ref: "#/components/schemas/CtfCensus"
+            - type: "null"
+        draw:
+          description: Null without a census.
+          oneOf:
+            - $ref: "#/components/schemas/CtfDraw"
+            - type: "null"
+        amounts:
+          $ref: "#/components/schemas/CtfEpochAmounts"
+        slots:
+          $ref: "#/components/schemas/CtfSlots"
+        root:
+          $ref: "#/components/schemas/CtfRoot"
+        objects:
+          $ref: "#/components/schemas/CtfEpochObjects"
+        countries:
+          type: array
+          description: All 249 countries, by code.
+          items:
+            $ref: "#/components/schemas/CtfEpochCountry"
+        awards:
+          type: array
+          description: Every award, by role (providers first), country and rank.
+          items:
+            $ref: "#/components/schemas/CtfAward"
+        pending_awards:
+          type: array
+          description: The pending awards still owed after the epoch, by award epoch, role, country and rank.
+          items:
+            $ref: "#/components/schemas/CtfPendingAward"
+
+    CtfPresence:
+      type: object
+      description: |
+        The client's quarter-hour presence samples in the role: 672 an epoch.
+        `required` is half of the samples the operator did not excuse,
+        rounded up. `present` counts samples in the client's own country,
+        which for a candidate is not always the role's `country`, its unit's
+        draw country.
+      required: [present, required, samples, excused]
+      properties:
+        present:
+          type: integer
+          minimum: 0
+          description: |
+            The samples the operator did not excuse that found it present in
+            the role in its own country at the epoch's end, even a code
+            outside the 249, for which `country` is null. That is the role's
+            `country` unless it was a candidate whose unit draws in another
+            country: `country` is then the draw's, and `present` still counts
+            its own.
+        required:
+          type: integer
+          minimum: 0
+        samples:
+          type: integer
+          minimum: 0
+        excused:
+          type: integer
+          minimum: 0
+
+    CtfClientRole:
+      type: object
+      description: The client in one role in one epoch.
+      required: [candidate, reason, country, unit_family, presence, units_in_draw, won, rank, slot, pot_share, pending, coldkey, coldkey_ss58]
+      properties:
+        candidate:
+          type: boolean
+        reason:
+          description: Why it was not a candidate; null when it was.
+          oneOf:
+            - $ref: "#/components/schemas/CtfExclusionReason"
+            - type: "null"
+        country:
+          description: |
+            When it was a candidate, the country of its unit's draw: a unit
+            enters one draw per role, in the own country of its candidate
+            with the lowest client id, and its other candidates follow it
+            there, so this can differ from the client's own country.
+            Otherwise its own country at the epoch's end. Null when it has
+            none of the 249, and when no sample found it in the role.
+            `presence.present` counts samples in the client's own country,
+            never in the draw's.
+          oneOf:
+            - $ref: "#/components/schemas/CountryCode"
+            - type: "null"
+        unit_family:
+          type: [integer, "null"]
+          enum: [4, 6, null]
+        presence:
+          description: Null when no sample found it in the role.
+          oneOf:
+            - $ref: "#/components/schemas/CtfPresence"
+            - type: "null"
+        units_in_draw:
+          type: [integer, "null"]
+          minimum: 1
+          description: The units in its country's draw for the role when it was a candidate.
+        won:
+          type: boolean
+        rank:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 5
+        slot:
+          $ref: "#/components/schemas/NullableAmount"
+        pot_share:
+          $ref: "#/components/schemas/NullableAmount"
+        pending:
+          type: boolean
+          description: Its pot share is a pending award.
+        coldkey:
+          description: The coldkey its award is paid to; null when it did not win.
+          oneOf:
+            - $ref: "#/components/schemas/Coldkey"
+            - type: "null"
+        coldkey_ss58:
+          oneOf:
+            - $ref: "#/components/schemas/ColdkeySs58"
+            - type: "null"
+
+    CtfClientEpoch:
+      type: object
+      required: [epoch, drawn, root_status, providers, extenders]
+      properties:
+        epoch:
+          type: integer
+        drawn:
+          type: boolean
+          description: A census was committed in time and the draw ran.
+        root_status:
+          $ref: "#/components/schemas/RootStatus"
+        providers:
+          $ref: "#/components/schemas/CtfClientRole"
+        extenders:
+          $ref: "#/components/schemas/CtfClientRole"
+
+    CtfClientWin:
+      type: object
+      description: |
+        One win of the client, or of one of the network's clients: an award
+        of a committed root, as `GET /sn/ctf/epoch/{epoch}` lists it, and
+        whether it is claimed (`GET /sn/ctf/client` says how that is read).
+      required: [epoch, role, country, rank, client_id, amount, slot, pot_share, pending, root_status, coldkey, coldkey_ss58, claimed]
+      properties:
+        epoch:
+          type: integer
+          description: The epoch whose draw it won.
+        role:
+          $ref: "#/components/schemas/Role"
+        country:
+          $ref: "#/components/schemas/CountryCode"
+          description: The country of its unit's draw.
+        rank:
+          type: integer
+          minimum: 1
+          maximum: 5
+        client_id:
+          type: string
+          format: uuid
+          description: The client that won.
+        amount:
+          $ref: "#/components/schemas/Amount"
+          description: The whole award, `slot` and `pot_share` together.
+        slot:
+          $ref: "#/components/schemas/Amount"
+        pot_share:
+          $ref: "#/components/schemas/Amount"
+        pending:
+          type: boolean
+          description: |
+            Its pot share was a pending award, because its epoch had not
+            matured; the first matured epoch after it pays it.
+        root_status:
+          $ref: "#/components/schemas/RootStatus"
+          description: |
+            The status of the committed root that covers its epoch: `pending`
+            is not claimable yet.
+        coldkey:
+          $ref: "#/components/schemas/Coldkey"
+          description: The coldkey its award is paid to, whose account in the CTF pool holds it.
+        coldkey_ss58:
+          $ref: "#/components/schemas/ColdkeySs58"
+        claimed:
+          type: [boolean, "null"]
+          description: |
+            Whether its coldkey's account in the CTF pool has been claimed
+            through the root that pays it; null when that could not be read
+            for this answer. When vault2 cannot be read again in time, the
+            server's last value read for the account is used, which can only
+            lag: `claimed` only grows.
+
+    CtfClientResult:
+      type: object
+      description: The answer of `GET /sn/ctf/client`.
+      required: [as_of, unit, client_id, epochs, wins]
+      properties:
+        as_of:
+          $ref: "#/components/schemas/Timestamp"
+        unit:
+          $ref: "#/components/schemas/Unit"
+        client_id:
+          type: [string, "null"]
+          format: uuid
+          description: The client a client JWT names; null for the network's credential, which names no one client.
+        epochs:
+          type: array
+          description: The client's status per epoch, newest first; `[]` before the first root, and for the network's credential.
+          items:
+            $ref: "#/components/schemas/CtfClientEpoch"
+        wins:
+          type: array
+          description: |
+            The wins of the client, or of every client of the network: every
+            one not known to be claimed, and every one of the `limit` most
+            recent covered epochs; newest first. `[]` before the first root.
+          items:
+            $ref: "#/components/schemas/CtfClientWin"
+
+    SnLedgerPoolKind:
+      type: string
+      description: |
+        `pool`: an operator's pool, paying providers and, from epoch 8,
+        extenders. `ctf`: an operator's capture the flag pool. A client that
+        does not know a kind shows the entry as a pool.
+      enum: [pool, ctf]
+
+    SnLedgerAccountResult:
+      type: object
+      required: [coldkey, accounts, unavailable_pools]
+      properties:
+        coldkey:
+          $ref: "#/components/schemas/Coldkey"
+          description: The coldkey, `0x` and 64 lowercase hex digits.
+        accounts:
+          description: |
+            The coldkey's account in each pool that holds it, one entry per
+            pool in ascending `no_id`; `[]`, never null, for a coldkey that
+            no root holds and while settlement v2 is not configured.
+          type: array
+          items:
+            $ref: "#/components/schemas/SnLedgerAccount"
+        unavailable_pools:
+          description: |
+            With `partial=true`, the pools whose ledger could not be read, in
+            ascending `no_id`: whether the coldkey has an account there is
+            unknown. Always `[]` without `partial=true`, which leaves a CTF
+            pool that cannot be read out of `accounts` instead.
+          type: array
+          items:
+            $ref: "#/components/schemas/SnLedgerUnavailablePool"
+
+    SnLedgerAccount:
+      type: object
+      required: [vault, no_id, kind, label, index, root_index, cumulative, proof, claimed, pending_cumulative]
+      properties:
+        vault:
+          $ref: "#/components/schemas/Address"
+          description: The pool's settlement vault (vault2), `0x` and 40 lowercase hex digits.
+        no_id:
+          type: integer
+          description: The pool's vault2 id, which a claim names; the operator's id for its pool, 2^32 + the operator's id for its CTF pool.
+        kind:
+          $ref: "#/components/schemas/SnLedgerPoolKind"
+        label:
+          type: string
+          description: |
+            An English display name for the pool, for clients without a
+            localized one: "Pool 1" for operator 1's pool, as the apps name
+            it, and "Capture the flag" for its CTF pool. Not for parsing.
+        index:
+          type: integer
+          description: The account's fixed position in the pool's sum tree.
+        root_index:
+          description: |
+            The latest finalized root's index in vault2's roots for the pool;
+            null when the account is only in the pending root.
+          type: [integer, "null"]
+        cumulative:
+          description: |
+            The account's cumulative in the latest finalized root, a decimal
+            string of rao; "0" when the account is only in the pending root.
+          type: string
+          pattern: "^[0-9]+$"
+        proof:
+          description: |
+            The claim proof against the latest finalized root: the siblings
+            from the leaf up, one per tree level, `[]` at depth 0 (a root of
+            one account); null when the account is only in the pending root.
+          type: [array, "null"]
+          items:
+            $ref: "#/components/schemas/SnLedgerProofNode"
+        claimed:
+          description: |
+            What vault2 has already paid the account, read at the finalized
+            block tag, a decimal string of rao, never above `cumulative`; "0"
+            when the account is only in the pending root, which needs no chain
+            read.
+          type: string
+          pattern: "^[0-9]+$"
+        pending_cumulative:
+          description: |
+            The account's cumulative in the pending root, a decimal string of
+            rao; null when there is no pending root or the account is not in
+            it.
+          type: [string, "null"]
+          pattern: "^[0-9]+$"
+
+    SnLedgerProofNode:
+      type: object
+      required: [hash, sum]
+      properties:
+        hash:
+          $ref: "#/components/schemas/Bytes32"
+          description: The sibling's node hash, `0x` and 64 lowercase hex digits.
+        sum:
+          description: The sibling's sum, a decimal string of rao.
+          type: string
+          pattern: "^[0-9]+$"
+
+    SnLedgerUnavailablePool:
+      type: object
+      description: A pool the answer would cover whose ledger could not be read.
+      required: [vault, no_id, kind, label]
+      properties:
+        vault:
+          $ref: "#/components/schemas/Address"
+        no_id:
+          type: integer
+        kind:
+          $ref: "#/components/schemas/SnLedgerPoolKind"
+        label:
+          type: string

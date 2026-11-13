@@ -1,0 +1,53 @@
+{
+ "swapType": "aggregator",
+ "inAmount": "2000000000",
+ "outAmount": "528865369",
+ "otherAmountThreshold": "524634446",
+ "swapMode": "ExactIn",
+ "slippageBps": 80,
+ "priceImpactPct": "-0.0007420759027250815",
+ "routePlan": [
+  {
+   "percent": 100,
+   "bps": 10000,
+   "usdValue": 528.7131375519247,
+   "swapInfo": {
+    "ammKey": "G8aFjL58DuVSvFb5TDSDaMo4WAC7Yx1yKvXBMeZoPpg9",
+    "label": "Denali",
+    "inputMint": "taoC6xyv2v8tDLcev4uaGUgV4vdQsWJrGft2kcBRrBY",
+    "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+    "inAmount": "2000000000",
+    "outAmount": "529394763"
+   }
+  }
+ ],
+ "feeMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+ "feeBps": 10,
+ "platformFee": {
+  "feeBps": 10,
+  "feeMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+ },
+ "taker": "FkaLnX17cXZGyeu3kZGdHCNdFMJJzBrPPYVvd18B3MZp",
+ "gasless": false,
+ "jitOptimized": false,
+ "signatureFeeLamports": 5000,
+ "signatureFeePayer": "FkaLnX17cXZGyeu3kZGdHCNdFMJJzBrPPYVvd18B3MZp",
+ "prioritizationFeeLamports": 163,
+ "prioritizationFeePayer": "FkaLnX17cXZGyeu3kZGdHCNdFMJJzBrPPYVvd18B3MZp",
+ "rentFeeLamports": 0,
+ "rentFeePayer": "FkaLnX17cXZGyeu3kZGdHCNdFMJJzBrPPYVvd18B3MZp",
+ "transaction": "AQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAQADB9stSmoFDg/Sr+TLyXsp4sI0f/smEwH8t5uMtu9WTi+PybTo67vNtPQeRZ+Nu2/oonhjNXMoEAQcfaCStfqlfkuOJ9NDx7WqUEoFRMArzHcn4Z8VopxTwZrYoe75551Q/dz/1sP98H0Ox/m+pmJ2ltyKDc41wPF+VprboYiIl7h+KyckNzOiXSsroJYg2+ydfRvPUhoJLvpdfqwPGubag5ADBkZv5SEXMv/srbpyw5vnvIzlu8X3EmssQ5s6QAAAAAR51VvyMcBu7nTFbs5oFQf9sbLeo/SOUQKxzaJWvBOPQyt8hmzPjfWQY7Vz4xaSsamA1Z69SW2LhjA0OF1UdgQDBQAFArzqAAAFAAkDmAoAAAAAAAAGGwADAhIMDg4BCwYHEQAKEgwICQ4OEA8DAgQRDSi7ZPrMMcSvFACUNXcAAAAAWdiFHwAAAABQAAoAAAABAAAAxAEQJwABAim/lQcqT78E33F1k+c4vMwhJygVwkcagNn59VWw1IQlATYEACgCFJIPbvyEqaC7reO4ruLOQKzwd7oYd+lj4U54Ii16EIZfA/L38wT09fHw",
+ "lastValidBlockHeight": "437953820",
+ "inputMint": "taoC6xyv2v8tDLcev4uaGUgV4vdQsWJrGft2kcBRrBY",
+ "outputMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+ "router": "metis",
+ "guaranteedPrice": false,
+ "requestId": "01a1621f-9eaa-73ed-b9a6-8ebe0ee2d4b1",
+ "inUsdValue": 529.1057741969489,
+ "outUsdValue": 528.7131375519247,
+ "swapUsdValue": 528.7131375519247,
+ "priceImpact": -0.07420759027250814,
+ "mode": "manual",
+ "transactionVersion": 0,
+ "totalTime": 129
+}

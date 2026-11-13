@@ -136,6 +136,11 @@ func TestValidatorProducerRuntimeRejectsConsumedChanges(t *testing.T) {
 func TestValidatorProducerRuntimeRejectsForeignProofAndApiDrift(t *testing.T) {
 	t.Parallel()
 	fixture := validatorProducerRuntimeFixture(t)
+	// The drift declares SubnetInfoRuntimeApi version 3, which only reviewed tuples
+	// may declare. The shared fixture's synthetic successor (488) is now a reviewed
+	// tuple, so this test binds 487, which stays outside the reviewed set
+	// (TestRuntime488SelectiveMetagraphApiRejectsForeignIdentity pins its refusal).
+	fixture.identity.Version.SpecVersion = ReviewedRuntimeSpecVersion + 20
 	artifact := fixture.bind(t)
 	if err := fixture.chain.BindValidatorProducerRuntimeArtifactContext(t.Context(), artifact); err != nil {
 		t.Fatal(err)

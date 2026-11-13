@@ -182,8 +182,14 @@ func decodeArtifactHttpObservationV2(ctx context.Context, encoded []byte, maximu
 	if err := decodeAttemptStreamV2JSON(encoded, maximum, &value); err != nil {
 		return value, err
 	}
+	// A payout artifact is one history and one object. A usage statement can have a
+	// history and several objects, and an audit that stops at its ledger reads none.
+	minimumExchanges, maximumExchanges := 1, 2
+	if expected.Schema == releaseUsageHttpObservationSchemaV2 {
+		minimumExchanges, maximumExchanges = 0, maximumUsageExchanges
+	}
 	canonical, err := json.Marshal(value)
-	if err != nil || !bytes.Equal(encoded, canonical) || len(value.Exchanges) == 0 || len(value.Exchanges) > 2 {
+	if err != nil || !bytes.Equal(encoded, canonical) || len(value.Exchanges) < minimumExchanges || len(value.Exchanges) > maximumExchanges {
 		return value, errors.Join(errors.New("artifact HTTP observation is not the exact canonical finite exchange"), err)
 	}
 	if value.Schema != expected.Schema || value.Decision != expected.Decision || value.ValidatorHotkey != expected.ValidatorHotkey || value.NoId != expected.NoId || value.SourceEpoch != expected.SourceEpoch || value.Origin != expected.Origin {
@@ -347,43 +353,91 @@ func (self *releaseArtifactCaptureReaderV2) capture(ctx context.Context, epoch, 
 }
 
 func (self *ReleaseSteerer) gatherPoolsV2(ctx context.Context, snapshot *ReleaseSnapshot, bound map[uint64]map[connect.Id]bool, hotkeys map[[32]byte]uint16, decision *ReleaseMeasurementArtifact) ([]ReleasePoolMeasurement, []DepositAudit, error) {
+	_, pools, audits, err := self.gatherPoolWeightsV2(ctx, snapshot, bound, hotkeys, decision)
+	return pools, audits, err
+}
+
+// gatherPoolWeightsV2 also returns the weights the pass arrived at. A decision's own
+// vector is rebuilt from its sealed artifact, which must reach the same weights.
+func (self *ReleaseSteerer) gatherPoolWeightsV2(ctx context.Context, snapshot *ReleaseSnapshot, bound map[uint64]map[connect.Id]bool, hotkeys map[[32]byte]uint16, decision *ReleaseMeasurementArtifact) ([]ExactWeightInput, []ReleasePoolMeasurement, []DepositAudit, error) {
 	copy := *self
 	copy.contexts = make(map[uint64]*ReleaseMeasurementContext, len(self.contexts))
 	readers := make(map[uint64]*releaseArtifactCaptureReaderV2, len(self.contexts))
+	// Every operator's share of the pass's time for its usage reads, fixed before
+	// any operator is audited.
+	share := depositUsageReadShare(ctx, self.depositUsageReadLimit, len(self.contexts))
 	for noId, measurement := range self.contexts {
 		reader, ok := measurement.Artifacts.(*HTTPArtifactReader)
 		if !ok {
-			return nil, nil, errors.New("V2 pool observation requires actual bounded HTTP transport")
+			return nil, nil, nil, errors.New("V2 pool observation requires actual bounded HTTP transport")
 		}
 		captured := &releaseArtifactCaptureReaderV2{ctx: ctx, cfg: self.cfg, hotkey: self.hotkey, decision: decision, reader: reader}
 		readers[noId] = captured
 		owned := *measurement
 		owned.Artifacts = captured
+		owned.depositUsage = (&releaseDepositUsageCaptureV2{cfg: self.cfg, hotkey: self.hotkey, decision: decision, reader: reader, memo: self.depositUsageMemo, readLimit: share}).audit
 		copy.contexts[noId] = &owned
 	}
 	var pools []ReleasePoolMeasurement
-	_, _, audits, err := copy.gatherPools(ctx, snapshot, bound, hotkeys, &pools)
+	weights, _, audits, err := copy.gatherPools(ctx, snapshot, bound, hotkeys, &pools)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	for index := range audits {
 		reader := readers[audits[index].NoID]
 		if reader.fatal != nil {
-			return nil, nil, reader.fatal
+			return nil, nil, nil, reader.fatal
 		}
-		audits[index].HttpObservationHash = reader.hash
+		// A usage audit's own observation is already on it.
+		if audits[index].UsageEvidence == "" {
+			audits[index].HttpObservationHash = reader.hash
+		}
 	}
-	return pools, audits, ctx.Err()
+	return weights, pools, audits, ctx.Err()
+}
+
+// gatherCaptureTheFlagV2 gives decision the capture the flag entries in force
+// for its epoch and, when the `ctf` setting supports it, the CTF pools they
+// select, resolved at the pass's snapshot as options' independent observation
+// (CAPTURETHEFLAG.md §2.3). With no entry in force the decision has no capture
+// the flag, and theta splits the row; neither then, nor with ctf off, is a CTF
+// contract read, so no CTF fault can stop the pass.
+func (self *ReleaseSteerer) gatherCaptureTheFlagV2(ctx context.Context, snapshot *ReleaseSnapshot, hotkeys map[[32]byte]uint16, decision *ReleaseMeasurementArtifact, options *ReleaseMeasurementV2Options) error {
+	epoch := decision.SettlementEpoch
+	noIDs := make([]uint64, len(decision.Pools))
+	for index, pool := range decision.Pools {
+		noIDs[index] = pool.NoID
+	}
+	entries, err := self.amendments.captureTheFlagAt(noIDs, epoch)
+	if err != nil {
+		return err
+	}
+	var resolved []ReleasePoolMeasurement
+	if len(entries) != 0 && releaseCtfSupported(self.cfg) {
+		resolved, err = self.chain.releaseCtfPoolsContext(ctx, self.settlementV2, snapshot.BlockNumber, snapshot.BlockHash, snapshot.BlockNumber, snapshot.BlockHash, epoch, decision.Pools, hotkeys)
+		if err != nil {
+			return err
+		}
+	}
+	decision.CaptureTheFlag, err = newReleaseCaptureTheFlag(self.cfg, entries, resolved)
+	if err != nil {
+		return err
+	}
+	options.CtfPools = resolved
+	return nil
 }
 
 // The audit's capture is checked with the custody it acquires. Startup shares
 // one custody across every retained intent, and each caller checks its whole
 // custody before using the audit.
 func (self *releaseEvidenceV2StartupHistory) historicalDepositAuditWithCaptureV2(ctx context.Context, observed *releaseDecisionChainV2Observation, operator releaseDecisionChainV2Operator, claimed DepositAudit, decision *ReleaseMeasurementArtifact, custody *releaseEvidenceV2StartupReferences) (DepositAudit, error) {
+	if operator.usageSettled {
+		return self.historicalDepositUsageAuditV2(ctx, observed, operator, claimed, decision, custody)
+	}
 	if claimed.HttpObservationHash == "" {
 		return self.historicalDepositAudit(ctx, observed, operator, claimed.Status)
 	}
-	if operator.commitment.CommitBlock == 0 || observed.boundary.SettlementEpoch < self.cfg.Policy.Deposit.UsageLagEpochs || custody == nil {
+	if claimed.UsageEvidence != "" || operator.commitment.CommitBlock == 0 || observed.boundary.SettlementEpoch < self.cfg.Policy.Deposit.UsageLagEpochs || custody == nil {
 		return DepositAudit{}, errors.New("artifact HTTP capture has no actual committed source request")
 	}
 	auditOwnerIndex := len(custody.owners)
@@ -433,7 +487,7 @@ func (self *releaseEvidenceV2StartupHistory) historicalDepositAuditWithCaptureV2
 		}
 		audit = FailedDepositAudit(epoch, observed.sourceEpoch, operator.noID, operator.deposit, operator.convictionBefore, status, observedErr)
 	} else {
-		audit = EvaluateDepositArtifact(artifact, DepositArtifactExpectation{DeploymentID: self.cfg.DeploymentID, ChainID: self.cfg.ChainID, GenesisHash: self.cfg.GenesisHash, Netuid: self.cfg.Netuid, Coordinator: common.HexToAddress(self.cfg.Coordinator), SettlementVault: common.HexToAddress(self.cfg.SettlementVault), PolicyHash: self.cfg.PolicyHash, Epoch: observed.sourceEpoch, NoID: operator.noID, Signer: common.HexToAddress(config.ArtifactSigner), Start: payoutartifact.Boundary{Number: observed.sourceStart, Hash: releaseHex32(observed.sourceStartHash)}, End: payoutartifact.Boundary{Number: observed.sourceEnd, Hash: releaseHex32(observed.sourceEndHash)}, PayoutRoot: operator.commitment.PayoutRoot, ArtifactHash: operator.commitment.ArtifactHash, Committer: operator.commitment.Committer, RootSigner: operator.sourceVersion.RootSigner, CommitBlock: operator.commitment.CommitBlock}, epoch, operator.deposit, operator.convictionBefore, self.cfg.Policy.Deposit)
+		audit = EvaluateDepositArtifact(artifact, DepositArtifactExpectation{DeploymentID: self.cfg.DeploymentID, ChainID: self.cfg.ChainID, GenesisHash: self.cfg.GenesisHash, Netuid: self.cfg.Netuid, Coordinator: common.HexToAddress(self.cfg.Coordinator), SettlementVault: common.HexToAddress(self.cfg.SettlementVault), PolicyHash: self.cfg.PolicyHash, Epoch: observed.sourceEpoch, NoID: operator.noID, Signer: common.HexToAddress(config.ArtifactSigner), Start: payoutartifact.Boundary{Number: observed.sourceStart, Hash: releaseHex32(observed.sourceStartHash)}, End: payoutartifact.Boundary{Number: observed.sourceEnd, Hash: releaseHex32(observed.sourceEndHash)}, PayoutRoot: operator.commitment.PayoutRoot, ArtifactHash: operator.commitment.ArtifactHash, Committer: operator.commitment.Committer, RootSigner: operator.sourceVersion.RootSigner, CommitBlock: operator.commitment.CommitBlock}, epoch, operator.deposit, operator.convictionBefore, releaseEffectiveDepositPolicy(observed.priceEntry, self.cfg.Policy.Deposit))
 	}
 	audit.ObservedAtBlock, audit.ArtifactDeadlineBlock, audit.HttpObservationHash = observed.boundary.EVMBlock, observed.artifactDeadline, claimed.HttpObservationHash
 	return audit, custody.checkSince(auditOwnerIndex)

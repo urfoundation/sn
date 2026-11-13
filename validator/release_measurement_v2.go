@@ -75,13 +75,21 @@ type ReleaseMeasurementV2OperatorOptions struct {
 // empty provider allocation then verifies with no provider row, which its
 // reserve-only treasury row replaces. Other callers keep the original refusal.
 type ReleaseMeasurementV2Options struct {
-	Expected                ReleaseMeasurementV2Decision
-	Policy                  protocol.Policy
-	ReplayPolicy            *protocol.Policy
-	ControlledNOIDs         []uint64
-	Bindings                []ReleaseBindingMeasurement
-	Pools                   []ReleasePoolMeasurement
-	DepositAudits           []DepositAudit
+	Expected        ReleaseMeasurementV2Decision
+	Policy          protocol.Policy
+	ReplayPolicy    *protocol.Policy
+	ControlledNOIDs []uint64
+	Bindings        []ReleaseBindingMeasurement
+	Pools           []ReleasePoolMeasurement
+	DepositAudits   []DepositAudit
+	// CtfPools are the CTF pools resolved at the decision's snapshot for its
+	// active operators; the artifact's entries and setting select its own from
+	// them (verifyReleaseCtfPools). CtfSupport and AmendmentFallback are the
+	// decision configuration's ctf setting and configured amendment lines, which
+	// its capture the flag must declare and may stand on unsigned.
+	CtfPools                []ReleasePoolMeasurement
+	CtfSupport              bool
+	AmendmentFallback       []string
 	Operators               map[uint64]ReleaseMeasurementV2OperatorOptions
 	Settlement              *AttemptSettlementV2Options
 	MaxOperators            uint64
@@ -255,6 +263,12 @@ func ownReleaseMeasurementV2(ctx context.Context, artifact *ReleaseMeasurementAr
 	if releaseMeasurementV2Decision(artifact) != options.Expected || !reflect.DeepEqual(artifact.Policy, options.Policy) || !slices.Equal(artifact.ControlledNOIDs, options.ControlledNOIDs) || !slices.Equal(artifact.Bindings, options.Bindings) || !slices.Equal(artifact.Pools, options.Pools) || !slices.Equal(artifact.DepositAudits, options.DepositAudits) {
 		return nil, options, errors.New("compact release measurement differs from independently authenticated observations")
 	}
+	if err := verifyReleaseCtfPools(artifact, options.CtfPools); err != nil {
+		return nil, options, err
+	}
+	if err := verifyReleaseCtfConfiguration(artifact, options.CtfSupport, options.AmendmentFallback); err != nil {
+		return nil, options, err
+	}
 	if err := verifyReleaseMeasurementCommonIdentity(artifact); err != nil {
 		return nil, options, err
 	}
@@ -347,6 +361,8 @@ func ownReleaseMeasurementV2(ctx context.Context, artifact *ReleaseMeasurementAr
 	options.Bindings = slices.Clone(owned.Bindings)
 	options.Pools = slices.Clone(owned.Pools)
 	options.DepositAudits = slices.Clone(owned.DepositAudits)
+	options.CtfPools = slices.Clone(options.CtfPools)
+	options.AmendmentFallback = slices.Clone(options.AmendmentFallback)
 	operators := make(map[uint64]ReleaseMeasurementV2OperatorOptions, len(options.Operators))
 	for noID, operator := range options.Operators {
 		operator.Measurement.CurrentBindingKVs = maps.Clone(operator.Measurement.CurrentBindingKVs)
@@ -422,12 +438,7 @@ func verifyOwnedReleaseMeasurementV2(ctx context.Context, artifact *ReleaseMeasu
 	var settlementReplayKVs map[uint64]AttemptCutV2ReplayResult
 	if artifact.SettlementClosureV2 != nil {
 		operation := &attemptSettlementV2Operation{closure: artifact.SettlementClosureV2, options: *options.Settlement}
-		terminal, err := operation.replay(ctx, func(noID uint64, record AttemptRecord) error {
-			if checkpoint := terminalCheckpoints[noID]; checkpoint != nil {
-				return checkpoint.visit(record)
-			}
-			return nil
-		}, false)
+		terminal, err := operation.replayOnce(ctx, terminalCheckpoints)
 		if err != nil {
 			return VerifiedReleaseMeasurementV2{}, fmt.Errorf("compact terminal closure: %w", err)
 		}
@@ -447,15 +458,11 @@ func verifyOwnedReleaseMeasurementV2(ctx context.Context, artifact *ReleaseMeasu
 	replayedKVs := make(map[uint64]AttemptCutV2ReplayResult, len(artifact.Inputs))
 	for _, input := range artifact.Inputs {
 		operator := options.Operators[input.NoID]
-		var visit func(AttemptRecord) error
-		if checkpoint := checkpoints[input.NoID]; checkpoint != nil {
-			visit = checkpoint.visit
-		}
 		replayPolicy, err := releaseMeasurementReplayPolicy(options)
 		if err != nil {
 			return VerifiedReleaseMeasurementV2{}, err
 		}
-		projection, err := verifyReleaseStatsAndHeadWithAttemptCutV2(ctx, input.Stats, *input.AttemptCutV2, operator.Expected, replayPolicy, operator.Bounds, operator.Measurement, visit)
+		projection, err := verifyReleaseStatsAndHeadOnce(ctx, input.Stats, *input.AttemptCutV2, operator.Expected, replayPolicy, operator.Bounds, operator.Measurement, checkpoints[input.NoID])
 		if err != nil {
 			return VerifiedReleaseMeasurementV2{}, fmt.Errorf("compact operator %d: %w", input.NoID, err)
 		}

@@ -39,10 +39,17 @@ contract V2SettlementPhaseCTest is V2StackBase {
         _registerV2Pool(NO1, V2_POOL1, V2_POOL1_UID);
         phaseAImplementation =
             address(uint160(uint256(vm.load(address(settlement), ERC1967Utils.IMPLEMENTATION_SLOT))));
-        STSettlement2PhaseC next = new STSettlement2PhaseC();
+        address next = _newPhaseCImplementation();
         vm.prank(owner);
-        settlement.upgradeToAndCall(address(next), "");
+        settlement.upgradeToAndCall(next, "");
         phaseC = STSettlement2PhaseC(payable(address(settlement)));
+    }
+
+    /// @dev The implementation the proxy upgrades to, phase C's. The suite
+    ///      reruns against the capture the flag upgrade, which keeps every
+    ///      phase C call, by overriding this (V2SettlementCtfRegression.t.sol).
+    function _newPhaseCImplementation() internal virtual returns (address) {
+        return address(new STSettlement2PhaseC());
     }
 
     // ------------------------------------------------------------------

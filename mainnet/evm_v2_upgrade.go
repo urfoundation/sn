@@ -13,7 +13,19 @@
 // identically; and the owner's execTransaction. Once the implementation
 // exists, review requires its exact code and preflights the owner's
 // execTransaction as an eth_call. It neither signs nor sends, and every read is
-// pinned to one head block.
+// pinned to one head block. Since 2026-11-06 a timelock owns the proxy; with
+// --timelock, review schedules the same call through it (evm_v2_timelock.go).
+//
+// The capture the flag upgrade (CAPTURETHEFLAG.md §3.1, §11.2) replaces phase
+// C with STSettlement2Ctf and registers an operator's CTF pool in the same
+// timelock operation: its call is upgradeToAndCall(implementation,
+// registerCtfPool(noId, maximumBurnRao, firstEpoch)) with maximumBurnRao ×
+// 10^9 wei, which the timelock pays from its own balance and vault2's refund
+// of the burn surplus returns to. With that artifact review takes --no-id,
+// --maximum-burn-rao, --first-epoch and --timelock, checks the registration
+// against the chain as registerCtfPool will at execution, and requires the
+// operation to be ready before the first epoch starts and, once its call is
+// preflighted, the timelock to hold the value.
 package main
 
 import (
@@ -26,6 +38,7 @@ import (
 	"io"
 	"math/big"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -39,6 +52,10 @@ import (
 
 const settlement2UpgradeReviewSchema = "urnetwork-mainnet-settlement-v2-upgrade-review-v1"
 
+// The capture the flag upgrade's review adds the ctf section, and its
+// timelock call carries a value, so its schema is a new one.
+const settlement2CtfUpgradeReviewSchema = "urnetwork-mainnet-settlement-v2-ctf-upgrade-review-v1"
+
 // The canonical deterministic deployment proxy, at its keyless address on
 // every chain that has it, and its exact runtime code: called with a 32-byte
 // salt followed by creation code, it CREATE2s that code with the salt and
@@ -50,6 +67,22 @@ const upgradeCreate2FactoryRuntime = "0x7fffffffffffffffffffffffffffffffffffffff
 // The phase C implementation's functions that STSettlement2 lacks. An artifact
 // without all three is not the reviewed upgrade.
 var upgradePhaseCFunctions = []string{"assignSurplus(uint256,uint256,uint256)", "recordV1Sweep(uint256,uint256,bytes32)", "v1Sweep(uint256)"}
+
+// The capture the flag implementation's functions that phase C lacks
+// (CAPTURETHEFLAG.md §3.1). An artifact with phase C's functions and all five
+// of these is STSettlement2Ctf; one with only some of them is neither.
+var upgradeCtfFunctions = []string{"registerCtfPool(uint256,uint64,uint64)", "commitCtfCensus(uint256,uint256,bytes32)", "ctfCensus(uint256,uint256)", "ctfSettlementAt(uint256,uint256)", "ctfPoolId(uint256)"}
+
+// Operator n's CTF pool is vault2 pool 2^32 + n.
+var settlement2CtfPoolBase = new(big.Int).Lsh(common.Big1, 32)
+
+// settlement2BlockSeconds is the measured block time review estimates an
+// epoch's start with (CAPTURETHEFLAG.md §11.2).
+const settlement2BlockSeconds = 12
+
+// How registerCtfPool derives the CTF pool's hotkey, which no one knows
+// before the block that executes the operation.
+const settlement2CtfHotkeyDerivation = "keccak256(abi.encode(proxy, pool_id, block.number, blockhash(block.number - 1))) at execution"
 
 // Reviewed coordinates of a Safe 1.4.1 (SafeL2): its version, the guard slot
 // keccak256("guard_manager.guard.address"), the fallback handler slot
@@ -91,17 +124,27 @@ func upgradeRefusal(reason string) error { return fmt.Errorf("%w: %s", errUpgrad
 
 // upgradeArtifact is the implementation's forge build: its creation code, its
 // runtime code with the UUPS __self immutable left zero, and that immutable's
-// offsets in the runtime code.
+// offsets in the runtime code. ctf marks STSettlement2Ctf's.
 type upgradeArtifact struct {
 	abi      abi.ABI
 	creation []byte
 	runtime  []byte
 	self     []int
+	ctf      bool
 }
 
-// loadUpgradeArtifact reads a forge artifact of STSettlement2PhaseC: it must
-// declare the phase C functions and exactly one immutable, UUPSUpgradeable's
-// __self, a 32-byte word.
+// kind names the implementation the artifact builds.
+func (self upgradeArtifact) kind() string {
+	if self.ctf {
+		return "capture the flag"
+	}
+	return "phase C"
+}
+
+// loadUpgradeArtifact reads a forge artifact of STSettlement2PhaseC or of
+// STSettlement2Ctf: it must declare the phase C functions, and the second
+// also every capture the flag function, and exactly one immutable,
+// UUPSUpgradeable's __self, a 32-byte word.
 func loadUpgradeArtifact(raw []byte) (upgradeArtifact, error) {
 	var result upgradeArtifact
 	var parsed struct {
@@ -132,6 +175,19 @@ func loadUpgradeArtifact(raw []byte) (upgradeArtifact, error) {
 		if !declared[signature] {
 			return result, fmt.Errorf("the artifact lacks %s: it is not the phase C implementation", signature)
 		}
+	}
+	var ctf []string
+	for _, signature := range upgradeCtfFunctions {
+		if declared[signature] {
+			ctf = append(ctf, signature)
+		}
+	}
+	switch len(ctf) {
+	case 0:
+	case len(upgradeCtfFunctions):
+		result.ctf = true
+	default:
+		return result, fmt.Errorf("the artifact declares %s but not all of %s: it is neither the phase C nor the capture the flag implementation", strings.Join(ctf, ", "), strings.Join(upgradeCtfFunctions, ", "))
 	}
 	creation, creationErr := hexutil.Decode(parsed.Bytecode.Object)
 	runtime, runtimeErr := hexutil.Decode(parsed.DeployedBytecode.Object)
@@ -204,24 +260,49 @@ func upgradeOwnerSignature(owner common.Address) []byte {
 	return append(append(common.LeftPadBytes(owner.Bytes(), 32), make([]byte, 32)...), 1)
 }
 
-// One upgrade review request.
+// One upgrade review request. ctf is the CTF pool registration that the
+// capture the flag upgrade's call makes, and nil for phase C's.
 type settlement2Upgrade struct {
 	settlement common.Address
-	safe       common.Address
+	governance settlement2Governance
 	salt       common.Hash
 	artifact   upgradeArtifact
+	ctf        *settlement2CtfRegistration
 }
 
-// The review's result. Every amount is a decimal string; data is hex.
+// settlement2CtfRegistration is registerCtfPool's arguments.
+type settlement2CtfRegistration struct {
+	noId           uint64
+	maximumBurnRao uint64
+	firstEpoch     uint64
+}
+
+// poolId is the CTF pool's vault2 id, 2^32 + noId.
+func (self settlement2CtfRegistration) poolId() *big.Int {
+	return new(big.Int).Add(settlement2CtfPoolBase, new(big.Int).SetUint64(self.noId))
+}
+
+// value is the call's value, maximumBurnRao × 10^9 wei: vault2 burns at most
+// maximumBurnRao from it and refunds the rest.
+func (self settlement2CtfRegistration) value() *big.Int {
+	return new(big.Int).Mul(new(big.Int).SetUint64(self.maximumBurnRao), big.NewInt(1_000_000_000))
+}
+
+// The review's result. Every amount is a decimal string; data is hex. Only a
+// review in timelock mode has the timelock section, only the capture the flag
+// upgrade's has the ctf section, and the execute step of an open executor has
+// no Safe transaction.
 type settlement2UpgradeReview struct {
 	Schema         string                      `json:"schema"`
 	ChainId        uint64                      `json:"chain_id"`
 	HeadBlock      uint64                      `json:"head_block"`
 	Implementation settlement2UpgradeCreation  `json:"implementation"`
 	Settlement2    settlement2UpgradeProxy     `json:"settlement2"`
-	Safe           settlement2UpgradeSafe      `json:"safe"`
-	SafeTx         settlement2UpgradeSafeTx    `json:"safe_transaction"`
-	OwnerTx        settlement2UpgradeOwnerTx   `json:"owner_transaction"`
+	Ctf            *settlement2CtfUpgrade      `json:"ctf,omitempty"`
+	Timelock       *settlement2UpgradeTimelock `json:"timelock,omitempty"`
+	Safe           *settlement2UpgradeSafe     `json:"safe,omitempty"`
+	SafeTx         *settlement2UpgradeSafeTx   `json:"safe_transaction,omitempty"`
+	OwnerTx        *settlement2UpgradeOwnerTx  `json:"owner_transaction,omitempty"`
 	Preflight      settlement2UpgradePreflight `json:"preflight"`
 }
 
@@ -244,6 +325,25 @@ type settlement2UpgradeProxy struct {
 	Proxy                 string `json:"proxy"`
 	Owner                 string `json:"owner"`
 	CurrentImplementation string `json:"current_implementation"`
+}
+
+// The ctf section: registerCtfPool's arguments, the call's value and what
+// review checked them against at the head, through the proxy's vault() and
+// v1Coordinator(). The pool's hotkey is derived only at execution.
+type settlement2CtfUpgrade struct {
+	NoId                 uint64 `json:"no_id"`
+	PoolId               string `json:"pool_id"`
+	MaximumBurnRao       string `json:"maximum_burn_rao"`
+	ValueWei             string `json:"value_wei"`
+	FirstEpoch           uint64 `json:"first_epoch"`
+	FirstEpochStartBlock uint64 `json:"first_epoch_start_block"`
+	BlocksRemaining      uint64 `json:"blocks_remaining"`
+	CurrentEpoch         uint64 `json:"current_epoch"`
+	Vault2               string `json:"vault2"`
+	V1Coordinator        string `json:"v1_coordinator"`
+	ProviderPoolHotkey   string `json:"provider_pool_hotkey"`
+	TimelockBalanceWei   string `json:"timelock_balance_wei"`
+	HotkeyDerivation     string `json:"hotkey_derivation"`
 }
 
 type settlement2UpgradeSafe struct {
@@ -292,31 +392,47 @@ type settlement2UpgradePreflight struct {
 
 // review builds the creation call and the Safe transaction, refuses what is
 // wrong, and preflights the owner's execTransaction once the implementation
-// exists.
+// exists. The capture the flag artifact's upgrade takes the registration's
+// three flags and goes only through the timelock.
 func runUpgradeSettlement2Command(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	const usage = "usage: upgrade-settlement2 review --rpc URL --settlement2 ADDRESS --safe ADDRESS --artifact FORGE-ARTIFACT.json --salt 0xSALT [--timelock ADDRESS [--timelock-salt 0xSALT] [--execute] [--no-id N --maximum-burn-rao RAO --first-epoch E]]"
 	if len(args) == 0 || args[0] != "review" {
-		fmt.Fprintln(stderr, "usage: upgrade-settlement2 review --rpc URL --settlement2 ADDRESS --safe ADDRESS --artifact FORGE-ARTIFACT.json --salt 0xSALT")
+		fmt.Fprintln(stderr, usage)
 		return 2
 	}
 	flags := flag.NewFlagSet("upgrade-settlement2 review", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	var settlement, safe, artifactPath, salt string
+	var registration settlement2CtfRegistration
 	rpcUrl := flags.String("rpc", "", "explicit owned HTTP(S) EVM JSON-RPC URL")
 	flags.StringVar(&settlement, "settlement2", "", "the STSettlement2 proxy")
-	flags.StringVar(&safe, "safe", "", "the governance Safe, which owns STSettlement2")
-	flags.StringVar(&artifactPath, "artifact", "", "the forge artifact of STSettlement2PhaseC (evm/out/STSettlement2PhaseC.sol/STSettlement2PhaseC.json)")
+	flags.StringVar(&safe, "safe", "", "the governance Safe, which owns STSettlement2 or proposes to the timelock that does")
+	flags.StringVar(&artifactPath, "artifact", "", "the forge artifact of STSettlement2PhaseC (evm/out/STSettlement2PhaseC.sol/STSettlement2PhaseC.json) or of STSettlement2Ctf, whose upgrade also registers a CTF pool")
 	flags.StringVar(&salt, "salt", "", "the CREATE2 salt: 0x and 32 bytes of hex")
+	flags.Uint64Var(&registration.noId, "no-id", 0, "STSettlement2Ctf only: the v1 operator, 1 to 2^32 - 1, whose CTF pool 2^32 + N the upgrade's call registers")
+	flags.Uint64Var(&registration.maximumBurnRao, "maximum-burn-rao", 0, "STSettlement2Ctf only: registerCtfPool's burn ceiling in rao; the call's value is this × 10^9 wei")
+	flags.Uint64Var(&registration.firstEpoch, "first-epoch", 0, "STSettlement2Ctf only: the CTF pool's first epoch")
+	timelocked := settlement2TimelockFlags(flags)
 	complete := flags.Parse(args[1:]) == nil && flags.NArg() == 0
 	set := map[string]bool{}
 	flags.Visit(func(given *flag.Flag) { set[given.Name] = true })
-	flags.VisitAll(func(defined *flag.Flag) { complete = complete && set[defined.Name] })
+	for _, required := range []string{"rpc", "settlement2", "safe", "artifact", "salt"} {
+		complete = complete && set[required]
+	}
 	var upgrade settlement2Upgrade
 	var settlementOk, safeOk bool
 	upgrade.settlement, settlementOk = poolAddress(settlement)
-	upgrade.safe, safeOk = poolAddress(safe)
+	upgrade.governance.safe, safeOk = poolAddress(safe)
 	upgrade.salt = common.HexToHash(salt)
-	if !complete || !settlementOk || !safeOk || !validHash(salt) {
-		fmt.Fprintln(stderr, "upgrade-settlement2 review requires every flag: nonzero 0x addresses, an artifact path and a 0x 32-byte salt")
+	if !complete || !settlementOk || !safeOk || !validHash(salt) || !timelocked(set, &upgrade.governance) {
+		fmt.Fprintln(stderr, "upgrade-settlement2 review requires --rpc, --settlement2, --safe, --artifact and --salt: nonzero 0x addresses, an artifact path and a 0x 32-byte salt; --timelock-salt (0x and 32 bytes) and --execute only with --timelock, another nonzero 0x address")
+		fmt.Fprintln(stderr, usage)
+		return 2
+	}
+	registers := set["no-id"] || set["maximum-burn-rao"] || set["first-epoch"]
+	if set["no-id"] && (registration.noId == 0 || registration.noId >= 1<<32) || set["maximum-burn-rao"] && registration.maximumBurnRao == 0 || set["first-epoch"] && registration.firstEpoch == 0 {
+		fmt.Fprintln(stderr, "upgrade-settlement2 review: --no-id is 1 to 2^32 - 1, and --maximum-burn-rao and --first-epoch are positive decimal integers")
+		fmt.Fprintln(stderr, usage)
 		return 2
 	}
 	raw, err := os.ReadFile(artifactPath)
@@ -326,6 +442,18 @@ func runUpgradeSettlement2Command(ctx context.Context, args []string, stdout, st
 	if err != nil {
 		fmt.Fprintln(stderr, "upgrade-settlement2 review: artifact:", err)
 		return 2
+	}
+	switch {
+	case upgrade.artifact.ctf && !(set["no-id"] && set["maximum-burn-rao"] && set["first-epoch"] && upgrade.governance.timelocked()):
+		fmt.Fprintln(stderr, "upgrade-settlement2 review: the STSettlement2Ctf artifact's upgrade registers a CTF pool in the same timelock operation: it requires --no-id, --maximum-burn-rao, --first-epoch and --timelock")
+		fmt.Fprintln(stderr, usage)
+		return 2
+	case !upgrade.artifact.ctf && registers:
+		fmt.Fprintln(stderr, "upgrade-settlement2 review: --no-id, --maximum-burn-rao and --first-epoch go only with the STSettlement2Ctf artifact")
+		fmt.Fprintln(stderr, usage)
+		return 2
+	case upgrade.artifact.ctf:
+		upgrade.ctf = &registration
 	}
 	client, err := newRpcClient(*rpcUrl, 60*time.Second)
 	if err != nil {
@@ -350,7 +478,7 @@ func runUpgradeSettlement2Command(ctx context.Context, args []string, stdout, st
 // The upgrade review reads only these methods; it cannot send.
 func (self *rpcClient) callUpgradeRead(ctx context.Context, method string, params []any, result any) error {
 	switch method {
-	case "eth_chainId", "eth_blockNumber", "eth_call", "eth_getCode", "eth_getStorageAt", "eth_getLogs":
+	case "eth_chainId", "eth_blockNumber", "eth_getBlockByNumber", "eth_call", "eth_getCode", "eth_getStorageAt", "eth_getLogs", "eth_getBalance":
 		return self.callAdmittedRead(ctx, method, params, result, false, maxRpcReplyBytes)
 	}
 	return errors.New("method is outside the settlement2 upgrade read profile")
@@ -379,12 +507,17 @@ func (self *upgradeChain) word(ctx context.Context, address common.Address, slot
 	return common.BytesToHash(value), nil
 }
 
-// call runs one eth_call at the head, from `from` when it is set. A call the
-// chain ran and failed is a refusal, never a failed read.
-func (self *upgradeChain) call(ctx context.Context, from *common.Address, to common.Address, data []byte) ([]byte, error) {
+// call runs one eth_call at the head, from `from` when it is set and with
+// value when it is nonzero: the node then checks that the sender holds it. A
+// call the chain ran and failed is a refusal, never a failed read.
+func (self *upgradeChain) call(ctx context.Context, from *common.Address, value *big.Int, to common.Address, data []byte) ([]byte, error) {
 	message := map[string]any{"to": to.Hex(), "data": hexutil.Encode(data)}
 	if from != nil {
 		message["from"] = from.Hex()
+	}
+	valued := ""
+	if value != nil && value.Sign() != 0 {
+		message["value"], valued = hexutil.EncodeBig(value), fmt.Sprintf(" with %s wei", value)
 	}
 	var output hexutil.Bytes
 	err := self.client.callUpgradeRead(ctx, "eth_call", []any{message, self.head}, &output)
@@ -394,7 +527,7 @@ func (self *upgradeChain) call(ctx context.Context, from *common.Address, to com
 		_ = json.Unmarshal(failure.data, &encoded)
 		revert, decodeErr := hexutil.Decode(encoded)
 		if failure.code == 3 || decodeErr == nil || strings.Contains(failure.message, "revert") || strings.Contains(failure.message, "evm error") {
-			return nil, upgradeRefusal(fmt.Sprintf("call 0x%x to %s failed with %q and data 0x%x%s", data[:4], to.Hex(), failure.message, revert, upgradeRevertReason(revert)))
+			return nil, upgradeRefusal(fmt.Sprintf("call 0x%x to %s%s failed with %q and data 0x%x%s", data[:4], to.Hex(), valued, failure.message, revert, upgradeRevertReason(revert)))
 		}
 	}
 	return output, err
@@ -419,7 +552,7 @@ func upgradeView(ctx context.Context, chain *upgradeChain, to common.Address, co
 	if err != nil {
 		return nil, err
 	}
-	output, err := chain.call(ctx, nil, to, data)
+	output, err := chain.call(ctx, nil, nil, to, data)
 	if err != nil {
 		return nil, fmt.Errorf("%s of %s: %w", method, to.Hex(), err)
 	}
@@ -446,11 +579,13 @@ func openUpgradeChain(ctx context.Context, client *rpcClient) (*upgradeChain, ui
 	return &upgradeChain{client: client, head: hexutil.EncodeUint64(uint64(head))}, uint64(head), nil
 }
 
-// readSettlement2Proxy requires the Safe to own the proxy and returns the
-// proxy's current implementation, which must exist.
-func readSettlement2Proxy(ctx context.Context, chain *upgradeChain, settlement, safe common.Address) (common.Address, error) {
+// readSettlement2Proxy requires the Safe, or with --timelock the timelock, to
+// own the proxy and returns the proxy's current implementation, which must
+// exist. Another owner that answers getMinDelay() is named as a timelock to
+// review through.
+func readSettlement2Proxy(ctx context.Context, chain *upgradeChain, settlement common.Address, governance settlement2Governance) (common.Address, error) {
 	settlementAbi := stabi.NewSTSettlement2()
-	ownerOutput, err := chain.call(ctx, nil, settlement, settlementAbi.PackOwner())
+	ownerOutput, err := chain.call(ctx, nil, nil, settlement, settlementAbi.PackOwner())
 	if err != nil {
 		return common.Address{}, err
 	}
@@ -458,7 +593,13 @@ func readSettlement2Proxy(ctx context.Context, chain *upgradeChain, settlement, 
 	if err != nil {
 		return common.Address{}, upgradeRefusal(fmt.Sprintf("owner() of %s answered 0x%x", settlement.Hex(), ownerOutput))
 	}
-	if owner != safe {
+	if owner != governance.owner() {
+		switch {
+		case governance.timelocked():
+			return common.Address{}, upgradeRefusal(fmt.Sprintf("STSettlement2's owner is %s, not the timelock %s", owner.Hex(), governance.timelock.Hex()))
+		case settlement2LooksLikeTimelock(ctx, chain, owner):
+			return common.Address{}, upgradeRefusal(fmt.Sprintf("STSettlement2's owner is %s, not the Safe; it answers getMinDelay() as a TimelockController does: review the call through it with --timelock %s", owner.Hex(), owner.Hex()))
+		}
 		return common.Address{}, upgradeRefusal(fmt.Sprintf("STSettlement2's owner is %s, not the Safe", owner.Hex()))
 	}
 	slot, err := chain.word(ctx, settlement, common.HexToHash(contractImplementationSlot))
@@ -556,7 +697,7 @@ func buildOwnerSafeCall(ctx context.Context, chain *upgradeChain, safe, owner co
 // preflightOwnerCall runs the owner's execTransaction as an eth_call from the
 // owner; it must return true.
 func preflightOwnerCall(ctx context.Context, chain *upgradeChain, owner, safe common.Address, execData []byte) error {
-	output, err := chain.call(ctx, &owner, safe, execData)
+	output, err := chain.call(ctx, &owner, nil, safe, execData)
 	if err != nil {
 		return err
 	}
@@ -593,38 +734,28 @@ func reviewSettlement2Upgrade(ctx context.Context, client *rpcClient, upgrade se
 	}
 	createData := append(upgrade.salt.Bytes(), upgrade.artifact.creation...)
 
-	// The proxy: owned by the Safe, not yet on the implementation.
-	current, err := readSettlement2Proxy(ctx, chain, upgrade.settlement, upgrade.safe)
+	// The proxy: owned by the Safe or the timelock, not yet on the
+	// implementation.
+	current, err := readSettlement2Proxy(ctx, chain, upgrade.settlement, upgrade.governance)
 	if err != nil {
 		return result, err
 	}
 	if current == implementation {
-		return result, upgradeRefusal("the proxy already runs the phase C implementation")
+		return result, upgradeRefusal(fmt.Sprintf("the proxy already runs the %s implementation", upgrade.artifact.kind()))
 	}
-	safe, owner, nonce, err := readUpgradeSafe(ctx, chain, upgrade.safe)
-	if err != nil {
-		return result, err
-	}
-
-	// The Safe transaction: a call of upgradeToAndCall(implementation, 0x) on
-	// the proxy, at the Safe's nonce, with no refund.
-	upgradeData := stabi.NewSTSettlement2().PackUpgradeToAndCall(implementation, []byte{})
-	safeTx, ownerTx, execData, err := buildOwnerSafeCall(ctx, chain, upgrade.safe, owner, nonce, upgrade.settlement, upgradeData,
-		"upgradeToAndCall(address,bytes)", map[string]string{"newImplementation": implementation.Hex(), "data": "0x"})
-	if err != nil {
-		return result, err
-	}
-
-	// Once the implementation exists, the owner's execTransaction must succeed.
-	preflight := settlement2UpgradePreflight{Result: "not run: the implementation does not exist yet; create it, then review again before signing"}
-	if len(created) != 0 {
-		if err := preflightOwnerCall(ctx, chain, owner, upgrade.safe, execData); err != nil {
+	// The phase C artifact must not replace the capture the flag
+	// implementation, which keeps every phase C call: its ctfPoolId answers.
+	if !upgrade.artifact.ctf {
+		settlementAbi := stabi.NewSTSettlement2()
+		_, err := ownerCallView(ctx, chain, upgrade.settlement, settlementAbi.PackCtfPoolId(common.Big1), settlementAbi.UnpackCtfPoolId)
+		switch {
+		case err == nil:
+			return result, upgradeRefusal(fmt.Sprintf("the proxy runs the capture the flag implementation %s: the phase C artifact's upgrade would replace it and drop its CTF calls", current.Hex()))
+		case !errors.Is(err, errUpgradeRefused):
 			return result, err
 		}
-		preflight = settlement2UpgradePreflight{Ran: true, Result: "execTransaction from the owner returns true at the head"}
 	}
-
-	result = settlement2UpgradeReview{
+	review := settlement2UpgradeReview{
 		Schema:    settlement2UpgradeReviewSchema,
 		ChainId:   mainnetEvmChainId,
 		HeadBlock: head,
@@ -634,11 +765,201 @@ func reviewSettlement2Upgrade(ctx context.Context, client *rpcClient, upgrade se
 			RuntimeBytes: len(expected), RuntimeCodeHash: crypto.Keccak256Hash(expected).Hex(), Created: len(created) != 0,
 			CreateTo: upgradeCreate2Factory.Hex(), CreateValueWei: "0", CreateData: hexutil.Encode(createData), CreateDataKeccak: crypto.Keccak256Hash(createData).Hex(),
 		},
-		Settlement2: settlement2UpgradeProxy{Proxy: upgrade.settlement.Hex(), Owner: upgrade.safe.Hex(), CurrentImplementation: current.Hex()},
-		Safe:        safe,
-		SafeTx:      safeTx,
-		OwnerTx:     ownerTx,
-		Preflight:   preflight,
+		Settlement2: settlement2UpgradeProxy{Proxy: upgrade.settlement.Hex(), Owner: upgrade.governance.owner().Hex(), CurrentImplementation: current.Hex()},
 	}
-	return result, ctx.Err()
+
+	// The owner call: upgradeToAndCall(implementation, 0x) on the proxy. The
+	// capture the flag upgrade's is upgradeToAndCall(implementation,
+	// registerCtfPool(noId, maximumBurnRao, firstEpoch)) with its value, once
+	// the registration passes its checks at the head.
+	settlementAbi := stabi.NewSTSettlement2()
+	callData, value := []byte{}, new(big.Int)
+	notCreated := "not run: the implementation does not exist yet; create it, then review again before signing"
+	var schedulable func(uint64, *big.Int) error
+	if upgrade.ctf != nil {
+		if !upgrade.governance.timelocked() {
+			return result, errors.New("the capture the flag upgrade goes only through the timelock")
+		}
+		ctf, balance, ready, err := reviewSettlement2CtfRegistration(ctx, chain, head, upgrade)
+		if err != nil {
+			return result, err
+		}
+		callData = settlementAbi.PackRegisterCtfPool(new(big.Int).SetUint64(upgrade.ctf.noId), upgrade.ctf.maximumBurnRao, upgrade.ctf.firstEpoch)
+		value, schedulable = upgrade.ctf.value(), ready
+		review.Schema, review.Ctf = settlement2CtfUpgradeReviewSchema, &ctf
+		if balance.Cmp(value) < 0 {
+			notCreated = fmt.Sprintf("not run: the implementation does not exist yet and the timelock holds less than the call's value; create it, send the timelock at least %s wei, then review again before signing", new(big.Int).Sub(value, balance))
+		}
+	}
+	upgradeData := settlementAbi.PackUpgradeToAndCall(implementation, callData)
+	function, args := "upgradeToAndCall(address,bytes)", map[string]string{"newImplementation": implementation.Hex(), "data": hexutil.Encode(callData)}
+
+	// Through the timelock, the Safe schedules the call. Its preflights wait
+	// for the implementation, except the execute step's, which then refuse.
+	if upgrade.governance.timelocked() {
+		call := settlement2TimelockCall{Target: upgrade.settlement.Hex(), ValueWei: value.String(), Data: hexutil.Encode(upgradeData), Function: function, Args: args}
+		timelocked, err := reviewSettlement2Timelock(ctx, chain, upgrade.governance, upgrade.settlement, call, upgradeData, value, len(created) != 0 || upgrade.governance.execute, schedulable)
+		if err != nil {
+			return result, err
+		}
+		if !timelocked.preflight.Ran {
+			timelocked.preflight.Result, timelocked.timelock.CallPreflight.Result = notCreated, notCreated
+		}
+		if review.Ctf == nil {
+			review.Schema = settlement2UpgradeTimelockReviewSchema
+		}
+		review.Timelock, review.Preflight = &timelocked.timelock, timelocked.preflight
+		review.Safe, review.SafeTx, review.OwnerTx = timelocked.safe, timelocked.safeTx, timelocked.ownerTx
+		return review, ctx.Err()
+	}
+
+	// The Safe transaction: the call on the proxy, at the Safe's nonce, with
+	// no refund.
+	safe, owner, nonce, err := readUpgradeSafe(ctx, chain, upgrade.governance.safe)
+	if err != nil {
+		return result, err
+	}
+	safeTx, ownerTx, execData, err := buildOwnerSafeCall(ctx, chain, upgrade.governance.safe, owner, nonce, upgrade.settlement, upgradeData, function, args)
+	if err != nil {
+		return result, err
+	}
+
+	// Once the implementation exists, the owner's execTransaction must succeed.
+	review.Preflight = settlement2UpgradePreflight{Result: notCreated}
+	if len(created) != 0 {
+		if err := preflightOwnerCall(ctx, chain, owner, upgrade.governance.safe, execData); err != nil {
+			return result, err
+		}
+		review.Preflight = settlement2UpgradePreflight{Ran: true, Result: "execTransaction from the owner returns true at the head"}
+	}
+	review.Safe, review.SafeTx, review.OwnerTx = &safe, &safeTx, &ownerTx
+	return review, ctx.Err()
+}
+
+// reviewSettlement2CtfRegistration checks the capture the flag upgrade's
+// registerCtfPool call against the chain at the head, through the proxy's
+// vault() and v1Coordinator(), as registerCtfPool checks it at execution: the
+// proxy runs phase C, on which the upgrade is built; vault2 holds the
+// operator's provider pool and not yet its CTF pool; the v1 operator is active
+// in the current epoch; the first epoch has not started, nor starts at the
+// next block, the earliest any execution lands in; and the first epoch's
+// policy leaves a root committed at the end of its window time to clear
+// vault2's challenge window. It returns the ctf section, the timelock's
+// balance, and the schedule step's check that the operation is ready before
+// the first epoch's estimated start.
+func reviewSettlement2CtfRegistration(ctx context.Context, chain *upgradeChain, head uint64, upgrade settlement2Upgrade) (settlement2CtfUpgrade, *big.Int, func(uint64, *big.Int) error, error) {
+	registration := *upgrade.ctf
+	noId, poolId, firstEpoch := new(big.Int).SetUint64(registration.noId), registration.poolId(), new(big.Int).SetUint64(registration.firstEpoch)
+	section := settlement2CtfUpgrade{NoId: registration.noId, PoolId: poolId.String(), MaximumBurnRao: strconv.FormatUint(registration.maximumBurnRao, 10),
+		ValueWei: registration.value().String(), FirstEpoch: registration.firstEpoch, HotkeyDerivation: settlement2CtfHotkeyDerivation}
+	fail := func(err error) (settlement2CtfUpgrade, *big.Int, func(uint64, *big.Int) error, error) {
+		return section, nil, nil, err
+	}
+	refuse := func(reason string) (settlement2CtfUpgrade, *big.Int, func(uint64, *big.Int) error, error) {
+		return fail(upgradeRefusal(reason))
+	}
+
+	// The proxy runs phase C: v1Sweep answers.
+	if _, err := upgradeView(ctx, chain, upgrade.settlement, settlement2PhaseCAbi, "v1Sweep", noId); err != nil {
+		if !errors.Is(err, errUpgradeRefused) {
+			return fail(err)
+		}
+		return refuse(fmt.Sprintf("the proxy does not run the phase C implementation, on which the capture the flag upgrade is built: %v", err))
+	}
+	settlementAbi, vaultAbi, coordinator := stabi.NewSTSettlement2(), stabi.NewSTSettlementVault2(), stabi.NewSTCoordinator()
+	vault2, err := ownerCallView(ctx, chain, upgrade.settlement, settlementAbi.PackVault(), settlementAbi.UnpackVault)
+	if err != nil {
+		return fail(err)
+	}
+	v1, err := ownerCallView(ctx, chain, upgrade.settlement, settlementAbi.PackV1Coordinator(), settlementAbi.UnpackV1Coordinator)
+	if err != nil {
+		return fail(err)
+	}
+	section.Vault2, section.V1Coordinator = vault2.Hex(), v1.Hex()
+
+	// vault2 holds the operator's provider pool, and no CTF pool of it yet.
+	provider, err := ownerCallView(ctx, chain, vault2, vaultAbi.PackPools(noId), vaultAbi.UnpackPools)
+	if err != nil {
+		return fail(err)
+	}
+	if !provider.Registered {
+		return refuse(fmt.Sprintf("vault2 has no provider pool %d, which registerCtfPool requires (UnknownPool)", registration.noId))
+	}
+	section.ProviderPoolHotkey = common.Hash(provider.Hotkey).Hex()
+	held, err := ownerCallView(ctx, chain, vault2, vaultAbi.PackPools(poolId), vaultAbi.UnpackPools)
+	if err != nil {
+		return fail(err)
+	}
+	if held.Registered {
+		return refuse(fmt.Sprintf("vault2 already holds the CTF pool %s, 2^32 + %d, from epoch %d under hotkey %s", poolId, registration.noId, held.FirstEpoch, common.Hash(held.Hotkey).Hex()))
+	}
+
+	// The v1 operator is active now, and the first epoch is still to come.
+	current, err := ownerCallView(ctx, chain, v1, coordinator.PackCurrentEpoch(), coordinator.UnpackCurrentEpoch)
+	if err != nil {
+		return fail(err)
+	}
+	if !current.IsUint64() {
+		return refuse(fmt.Sprintf("currentEpoch() of %s answered %s", v1.Hex(), current))
+	}
+	section.CurrentEpoch = current.Uint64()
+	operator, err := ownerCallView(ctx, chain, v1, coordinator.PackOperatorAt(noId, current), coordinator.UnpackOperatorAt)
+	if err != nil {
+		return fail(err)
+	}
+	if !operator.Active {
+		return refuse(fmt.Sprintf("the v1 operator %d is not active in the current epoch %d (InactiveOperator)", registration.noId, section.CurrentEpoch))
+	}
+	start, err := ownerCallView(ctx, chain, v1, coordinator.PackEpochStartBlock(firstEpoch), coordinator.UnpackEpochStartBlock)
+	if err != nil {
+		return fail(err)
+	}
+	if !start.IsUint64() {
+		return refuse(fmt.Sprintf("epochStartBlock(%d) of %s answered %s", registration.firstEpoch, v1.Hex(), start))
+	}
+	section.FirstEpochStartBlock = start.Uint64()
+	switch {
+	case section.CurrentEpoch >= registration.firstEpoch || section.FirstEpochStartBlock <= head:
+		return refuse(fmt.Sprintf("the first epoch %d has started: the current epoch is %d, and registerCtfPool requires a later first epoch (InvalidEpoch)", registration.firstEpoch, section.CurrentEpoch))
+	case section.FirstEpochStartBlock == head+1:
+		return refuse(fmt.Sprintf("the first epoch %d starts at block %d, the next block: no execution lands before it, and registerCtfPool would revert InvalidEpoch", registration.firstEpoch, section.FirstEpochStartBlock))
+	}
+	section.BlocksRemaining = section.FirstEpochStartBlock - head
+
+	// The first epoch's cadence, which registerCtfPool checks as
+	// registerOperatorPool does.
+	policy, err := ownerCallView(ctx, chain, v1, coordinator.PackPolicyAt(firstEpoch), coordinator.UnpackPolicyAt)
+	if err != nil {
+		return fail(err)
+	}
+	challenge, err := ownerCallView(ctx, chain, vault2, vaultAbi.PackCHALLENGEBLOCKS(), vaultAbi.UnpackCHALLENGEBLOCKS)
+	if err != nil {
+		return fail(err)
+	}
+	if new(big.Int).SetUint64(policy.EpochBlocks).Cmp(new(big.Int).Add(new(big.Int).SetUint64(policy.RootCommitWindowBlocks), new(big.Int).SetUint64(challenge))) < 0 {
+		return refuse(fmt.Sprintf("the first epoch's v1 policy has %d-block epochs, shorter than its %d-block commit window plus vault2's %d-block challenge window (CadenceTooShort)", policy.EpochBlocks, policy.RootCommitWindowBlocks, challenge))
+	}
+
+	// The timelock pays the call's value; reviewSettlement2Timelock requires
+	// it once the call's preflight runs.
+	balance, err := chain.balance(ctx, upgrade.governance.timelock)
+	if err != nil {
+		return fail(err)
+	}
+	section.TimelockBalanceWei = balance.String()
+
+	// A schedule must make the operation ready before the first epoch's
+	// estimated start, the head's time plus its remaining blocks at the
+	// measured block time: executed from then on, registerCtfPool reverts
+	// InvalidEpoch.
+	schedulable := func(now uint64, earliest *big.Int) error {
+		starts := new(big.Int).Mul(new(big.Int).SetUint64(section.BlocksRemaining), big.NewInt(settlement2BlockSeconds))
+		starts.Add(starts, new(big.Int).SetUint64(now))
+		if earliest.Cmp(starts) < 0 {
+			return nil
+		}
+		return upgradeRefusal(fmt.Sprintf("the operation is ready at %s at the earliest, at or after the first epoch %d's estimated start at %s (block %d, %d blocks after the head at %d s each), when registerCtfPool reverts InvalidEpoch: schedule it sooner or choose a later first epoch",
+			settlement2TimelockTime(earliest), registration.firstEpoch, settlement2TimelockTime(starts), section.FirstEpochStartBlock, section.BlocksRemaining, settlement2BlockSeconds))
+	}
+	return section, balance, schedulable, nil
 }

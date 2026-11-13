@@ -95,11 +95,13 @@ func TestReleaseMainnetSteadyCadenceRejectsChangedActualSnapshot(t *testing.T) {
 		{name: "claim-ttl", change: func(policy *stabi.STCoordinatorPolicySnapshot) { policy.ClaimTTLEpochs++ }},
 		{name: "claim-grace", change: func(policy *stabi.STCoordinatorPolicySnapshot) { policy.ClaimGraceEpochs++ }},
 		{name: "binding-horizon", change: func(policy *stabi.STCoordinatorPolicySnapshot) { policy.MaximumBindingValidityEpochs++ }},
+		// A cap below the document's is a fault. A raise is not: it may take effect
+		// before the signed price that needs it (TestDepositPriceCapsAgainstLiveSteering).
 		{name: "epoch-cap", change: func(policy *stabi.STCoordinatorPolicySnapshot) {
-			policy.EpochDepositCapRao.Add(policy.EpochDepositCapRao, big.NewInt(1))
+			policy.EpochDepositCapRao.Sub(policy.EpochDepositCapRao, big.NewInt(1))
 		}},
 		{name: "campaign-cap", change: func(policy *stabi.STCoordinatorPolicySnapshot) {
-			policy.CampaignDepositCapRao.Add(policy.CampaignDepositCapRao, big.NewInt(1))
+			policy.CampaignDepositCapRao.Sub(policy.CampaignDepositCapRao, big.NewInt(1))
 		}},
 	} {
 		changed := releaseRateAmendmentTestSnapshot(t, authority.cfg.Policy, 0, 10)
