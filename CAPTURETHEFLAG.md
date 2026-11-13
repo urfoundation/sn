@@ -1234,7 +1234,7 @@ vault2, the provider pool's ledger and the extender pool did not change. Some of
 - **The apps** ran the unit tests that cover the change. The Android app was built with gradle at android
   `130ed4526` against an SDK library from sdk `dce4ab69`: it compiles, Hilt's graph validates, and the wallet
   tests pass. Apple's ran on an iOS simulator and macOS. The Windows app was not built here. No release was made.
-- **Deployed:** the site, ur.xyz, from web `e52d78a7` on 2026‑11‑12. On mainnet, the guardian's association of
+- **Deployed:** the site, ur.xyz, from web `fdf20a4d` on 2026‑11‑13. On mainnet, the guardian's association of
   vault2's coldkey (§3.1), finalized at block 9,492,297. Every server part stays off until ctf.yml and st.yml turn
   it on; the server, the apps, ur.io and the validator release ship with the owner's next release.
 
