@@ -23,7 +23,7 @@ import (
 	"crypto/sha256"
 	"encoding/binary"
 	"errors"
-	mathrand "math/rand"
+	mathrand "math/rand/v2"
 	"net/http"
 	"time"
 
@@ -190,7 +190,7 @@ func networkTokenRenewalJitter(interval time.Duration) time.Duration {
 	if interval <= 0 {
 		return 0
 	}
-	return time.Duration(mathrand.Int63n(int64(interval)))
+	return time.Duration(mathrand.Int64N(int64(interval)))
 }
 
 // networkTokenRenewalRefused is a 4xx other than a confirmed rejection (401)
