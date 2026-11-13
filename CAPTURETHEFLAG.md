@@ -1184,7 +1184,7 @@ needed was on the server and in the presentation:
 
 ### 11.1 Components
 
-Every part landed on 2026‑11‑11 and 2026‑11‑12, each merged to its repository's main:
+Every part landed between 2026‑11‑11 and 2026‑11‑13, each merged to its repository's main:
 
 | Part | What landed | Merge on main |
 |---|---|---|
@@ -1222,6 +1222,8 @@ Every part landed on 2026‑11‑11 and 2026‑11‑12, each merged to its repos
 | web: the note and countdown | The note that capture the flag starts with epoch 8, with a countdown, on the hub and the 249 country pages; the flags wave out of step as in the design | web `12a6cbfe`, `de80c2d8`; sn `bdfcec46`, `24d80e90` |
 | web: every operator | `/ctf` combines every operator in `operators.yml` (§9.2); "Start mining" opens the miner docs | web `9c556a43`, sn `fffc4598` |
 | web: wording and /mainnet | The draw as a random selection in every language, never drawing lots; the /mainnet notices collapsed, epoch 8 and capture the flag on its timeline | web `53d2c034`, `9463f2cb`, `4b6842d5` |
+| apps, fourth pass | The claim reads in the order they started: an answer from before a claim's Done never replaces the read after it; Claim of a kind waits for a read that started after that kind's last Done, and nothing starts a claim from an older read; a sheet left open across its own claim's end offers no Claim from the rows it opened with | android `826deb13e`, apple `5ce25e9f`, windows `46cb24f2`, linux `dd0be47` |
+| web: Gamma and the loop gate | /mainnet's Gamma milestone links ur.io's page on paying with Gamma; the redirect‑loops gate still fails a loop at once, runs a case that only ran out of time again, alone, and runs fewer cases at a time under load | web `8dbb3a97` |
 
 vault2, the provider pool's ledger and the extender pool did not change. Some of it has run only in tests:
 
