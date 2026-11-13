@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"maps"
 	"math/big"
-	mrand "math/rand"
+	mrand "math/rand/v2"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -953,12 +953,13 @@ func TestVerifyRecoveryWatcherMode(t *testing.T) {
 // rao go to the largest remainders with ties to the ascending coldkey, and
 // the deltas sum to the amount (reviewer's property test).
 func TestRecoveryAllocationExact(t *testing.T) {
-	rng := mrand.New(mrand.NewSource(7))
+	// a fixed seed, so a failing population replays
+	rng := mrand.New(mrand.NewPCG(7, 0))
 	n := 300_000
 	rows := make([]protocol.LedgerUsageRow, n)
 	for i := range rows {
-		rows[i] = protocol.LedgerUsageRow{ClientID: exactClient(i + 1), Coldkey: exactColdkey(rng.Intn(60_000)), UsageBytes: uint64(rng.Int63n(1<<40)) + 1, HeadExcluded: rng.Intn(50) == 0}
-		if rng.Intn(40) == 0 {
+		rows[i] = protocol.LedgerUsageRow{ClientID: exactClient(i + 1), Coldkey: exactColdkey(rng.IntN(60_000)), UsageBytes: uint64(rng.Int64N(1<<40)) + 1, HeadExcluded: rng.IntN(50) == 0}
+		if rng.IntN(40) == 0 {
 			rows[i].Coldkey = [32]byte{}
 		}
 	}

@@ -32,7 +32,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	mathrand "math/rand"
+	mathrand "math/rand/v2"
 	"net"
 	"net/http"
 	"net/netip"
@@ -525,7 +525,7 @@ func NewFindProvidersSeedPicker(api *sdk.Api, selfClientId connect.Id) SeedPicke
 		if len(candidates) == 0 {
 			return connect.Id{}, fmt.Errorf("no seed providers available")
 		}
-		return candidates[mathrand.Intn(len(candidates))], nil
+		return candidates[mathrand.IntN(len(candidates))], nil
 	}
 }
 
