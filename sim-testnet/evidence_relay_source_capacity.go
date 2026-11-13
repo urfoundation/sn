@@ -9,7 +9,7 @@ import (
 	"reflect"
 	"slices"
 
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // V6 authorizes one exact doubling of the original source lifetime. The

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urnetwork/server"
+	"github.com/urnetwork/server/v2026"
 )
 
 // Observe real staged bytes and original descriptor ownership. The first-put
