@@ -2513,35 +2513,50 @@ components:
         - authorized_at
         - execution_timeout_seconds
       oneOf:
-        - not: {required: [incident_class]}
+        - not: {anyOf: [{required: [incident_class]}, {required: [distributed]}]}
           properties:
+            schema: {const: 1}
             previous_failure:
               properties:
                 kind: {const: infrastructure}
                 code: {enum: [artifact_archive_failed, evaluation_time_budget_exhausted]}
         - required: [incident_class]
+          not: {required: [distributed]}
           properties:
+            schema: {const: 1}
             incident_class: {const: operator_authorized_heartbeat_budget_v1}
             previous_failure:
               properties:
                 kind: {const: infrastructure}
                 code: {const: evaluation_time_budget_exhausted}
         - required: [incident_class]
+          not: {required: [distributed]}
           properties:
+            schema: {const: 1}
             incident_class: {const: operator_authorized_backing_service_v1}
             previous_failure:
               properties:
                 kind: {const: submission}
                 code: {const: run_unstable}
         - required: [incident_class]
+          not: {required: [distributed]}
           properties:
+            schema: {const: 1}
             incident_class: {const: operator_authorized_interrupted_budget_v1}
             previous_failure:
               properties:
                 kind: {const: infrastructure}
                 code: {const: evaluation_time_budget_exhausted}
+        - required: [incident_class, distributed]
+          properties:
+            schema: {const: 2}
+            incident_class: {const: operator_authorized_distributed_infrastructure_v1}
+            previous_failure:
+              properties:
+                kind: {const: infrastructure}
+                code: {const: evaluation_time_budget_exhausted}
       properties:
-        schema: {type: integer, const: 1}
+        schema: {type: integer, enum: [1, 2]}
         environment:
           type: string
           pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
@@ -2566,11 +2581,13 @@ components:
         previous_terminal_sha256: {$ref: "#/components/schemas/Sha256"}
         incident_class:
           type: string
-          enum: [operator_authorized_heartbeat_budget_v1, operator_authorized_backing_service_v1, operator_authorized_interrupted_budget_v1]
+          enum: [operator_authorized_heartbeat_budget_v1, operator_authorized_backing_service_v1, operator_authorized_interrupted_budget_v1, operator_authorized_distributed_infrastructure_v1]
           description: Optional explicit operator incident exception. Older archive recoveries omit it. A backing-service exception retains the original submission/run_unstable failure. An interrupted-budget exception binds separately retained operator-stop evidence and real claim/terminal history, not a fabricated heartbeat diagnosis. No exception reclassifies the old result or makes all unstable or expired runs eligible.
         previous_failure:
           $ref: "#/components/schemas/CompetitionEvaluationFailure"
           description: Exact original message-free failure, constrained by incident_class above and bound by backend-verified operator authority. Neither a terminal code nor candidate-produced log content alone proves eligibility or authorizes another evaluation.
+        distributed:
+          $ref: "#/components/schemas/CompetitionDistributedJobReevaluationCycle"
         runtime_qualification_sha256: {$ref: "#/components/schemas/Sha256"}
         fixed_source_commit:
           type: string
@@ -2589,6 +2606,35 @@ components:
         execution_timeout_seconds:
           type: integer
           const: 10800
+
+    CompetitionDistributedJobReevaluationCycle:
+      type: object
+      additionalProperties: false
+      description: |
+        Separate schema-2 authority for an explicitly approved distributed
+        terminal-infrastructure incident. Before queuing the cycle, the backend
+        requires the evaluation hold, all frozen hosts and database slots idle,
+        unchanged supervisor/host fences, and authenticated closure of the exact
+        original run. Native inventories remain private; only their digest is
+        public. Original admission ordering, paid entitlement, source, baseline,
+        evaluator image and old clocks/failure are not rewritten. The new
+        three-hour clock starts only at the first fenced database claim. This
+        marker neither reopens intake nor grants another cycle or publication.
+      required: [schema, reason, original_host_id, original_slot_id, original_fencing_token, original_run_id, original_started_at, original_deadline_at, source_lock_sha256, evaluator_image_digest, policy_approval_sha256, closure_evidence_sha256, native_proof_sha256]
+      properties:
+        schema: {type: integer, const: 1}
+        reason: {type: string, enum: [retention_budget_exhausted, closed_legacy_prelaunch]}
+        original_host_id: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"}
+        original_slot_id: {type: integer, minimum: 1}
+        original_fencing_token: {type: integer, minimum: 1}
+        original_run_id: {$ref: "#/components/schemas/Sha256"}
+        original_started_at: {type: string, format: date-time}
+        original_deadline_at: {type: string, format: date-time}
+        source_lock_sha256: {$ref: "#/components/schemas/Sha256"}
+        evaluator_image_digest: {$ref: "#/components/schemas/ImageDigest"}
+        policy_approval_sha256: {$ref: "#/components/schemas/Sha256"}
+        closure_evidence_sha256: {$ref: "#/components/schemas/Sha256"}
+        native_proof_sha256: {$ref: "#/components/schemas/Sha256"}
 
     CompetitionEvaluationStatus:
       type: string
