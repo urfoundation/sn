@@ -207,21 +207,24 @@ type depositUsageTestOperator struct {
 	runID    string
 	requests atomic.Int64
 
-	lock           sync.Mutex
-	objects        map[string][]byte
-	envelopes      map[string][]byte
-	historyRequest int
-	historyStatus  int
-	objectStatus   int
-	stalled        map[string]bool
-	contentType    string
-	before         map[string]func()
-	payoutHistory  []byte
-	payoutBody     []byte
+	lock      sync.Mutex
+	objects   map[string][]byte
+	envelopes map[string][]byte
+	// Each envelope's evidence kind; history lists those of the kind asked.
+	contentHashKinds map[string]string
+	historyKinds     []string
+	historyRequest   int
+	historyStatus    int
+	objectStatus     int
+	stalled          map[string]bool
+	contentType      string
+	before           map[string]func()
+	payoutHistory    []byte
+	payoutBody       []byte
 }
 
 func newDepositUsageTestOperator(deploymentID string, netuid uint16) *depositUsageTestOperator {
-	return &depositUsageTestOperator{deploymentID: deploymentID, netuid: netuid, objects: map[string][]byte{}, envelopes: map[string][]byte{}}
+	return &depositUsageTestOperator{deploymentID: deploymentID, netuid: netuid, objects: map[string][]byte{}, envelopes: map[string][]byte{}, contentHashKinds: map[string]string{}}
 }
 
 func (self *depositUsageTestOperator) serve(writer http.ResponseWriter, request *http.Request) bool {
@@ -267,13 +270,17 @@ func (self *depositUsageTestOperator) serve(writer http.ResponseWriter, request 
 			http.Error(writer, "History unavailable.", self.historyStatus)
 			return true
 		}
-		if query.Get("deployment_id") != self.deploymentID || query.Get("netuid") != fmt.Sprint(self.netuid) || query.Get("kind") != usage.EvidenceKind || query.Get("run_id") == "" {
+		kind := query.Get("kind")
+		if query.Get("deployment_id") != self.deploymentID || query.Get("netuid") != fmt.Sprint(self.netuid) || (kind != usage.EvidenceKind && kind != usage.EvidenceKindV2) || query.Get("run_id") == "" {
 			http.Error(writer, "Bad evidence history identity.", http.StatusBadRequest)
 			return true
 		}
+		self.historyKinds = append(self.historyKinds, kind)
 		names := make([]string, 0, len(self.envelopes))
 		for hash := range self.envelopes {
-			names = append(names, hash)
+			if self.contentHashKinds[hash] == kind {
+				names = append(names, hash)
+			}
 		}
 		sort.Strings(names)
 		limit := len(names)
@@ -285,7 +292,7 @@ func (self *depositUsageTestOperator) serve(writer http.ResponseWriter, request 
 		objects := make([]map[string]any, 0, len(names))
 		for _, hash := range names {
 			// The real store's object spells its fields with capitals.
-			objects = append(objects, map[string]any{"Key": fmt.Sprintf("store/st/v1/evidence/history/%s/%d/%s/%s/%s.json", self.deploymentID, self.netuid, usage.EvidenceKind, query.Get("run_id"), strings.TrimPrefix(hash, "sha256:")), "Size": len(self.envelopes[hash])})
+			objects = append(objects, map[string]any{"Key": fmt.Sprintf("store/st/v1/evidence/history/%s/%d/%s/%s/%s.json", self.deploymentID, self.netuid, kind, query.Get("run_id"), strings.TrimPrefix(hash, "sha256:")), "Size": len(self.envelopes[hash])})
 		}
 		writer.Header().Set("Content-Type", contentType)
 		_ = json.NewEncoder(writer).Encode(map[string]any{"schema": releaseUsageHistorySchema, "objects": objects, "more": more, "next_after": ""})
@@ -336,9 +343,15 @@ func (self *depositUsageTestOperator) dropObject(ref ledger.Ref) {
 	delete(self.objects, ref.String())
 }
 
-// The signed statement as the JSON payload of an evidence envelope. identity
-// separates envelopes that hold equal statements.
+// The signed statement as the JSON payload of an evidence envelope, under the kind
+// of its version. identity separates envelopes that hold equal statements.
 func (self *depositUsageTestOperator) publish(t *testing.T, statement *usage.Statement, identity string) string {
+	t.Helper()
+	return self.publishAs(t, statement, identity, statement.Kind())
+}
+
+// Publishes a statement under any evidence kind.
+func (self *depositUsageTestOperator) publishAs(t *testing.T, statement *usage.Statement, identity, kind string) string {
 	t.Helper()
 	payload, err := statement.Bytes()
 	if err != nil {
@@ -350,13 +363,14 @@ func (self *depositUsageTestOperator) publish(t *testing.T, statement *usage.Sta
 	if runID == "" {
 		runID = usage.RunID(statement.NoID, statement.Epoch)
 	}
-	envelope, err := json.Marshal(depositUsageEnvelope{Schema: releaseUsageEnvelopeSchema, DeploymentID: self.deploymentID, ChainID: statement.ChainID, GenesisHash: statement.GenesisHash, Netuid: self.netuid, Kind: usage.EvidenceKind, RunID: runID, CreatedAt: "2026-11-06T18:25:00Z", Payload: payload, Signer: statement.Signer, ContentHash: contentHash, Signature: "0x00"})
+	envelope, err := json.Marshal(depositUsageEnvelope{Schema: releaseUsageEnvelopeSchema, DeploymentID: self.deploymentID, ChainID: statement.ChainID, GenesisHash: statement.GenesisHash, Netuid: self.netuid, Kind: kind, RunID: runID, CreatedAt: "2026-11-06T18:25:00Z", Payload: payload, Signer: statement.Signer, ContentHash: contentHash, Signature: "0x00"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	self.lock.Lock()
 	defer self.lock.Unlock()
 	self.envelopes[contentHash] = envelope
+	self.contentHashKinds[contentHash] = kind
 	return contentHash
 }
 

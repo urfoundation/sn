@@ -14,7 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	mathrand "math/rand"
+	mathrand "math/rand/v2"
 	"os"
 	"path/filepath"
 	"sync"
@@ -193,7 +193,7 @@ func (self *mockVerifyServer) sampleNext(trail []connect.Id) (connect.Id, error)
 	if len(eligible) == 0 {
 		return connect.Id{}, fmt.Errorf("no eligible providers")
 	}
-	return eligible[mathrand.Intn(len(eligible))], nil
+	return eligible[mathrand.IntN(len(eligible))], nil
 }
 
 func (self *mockVerifyServer) signAssign(state *mockTrailState) ([]byte, error) {

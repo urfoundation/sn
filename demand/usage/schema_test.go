@@ -17,12 +17,20 @@ import (
 )
 
 // jsonNames lists the names a struct's fields take in JSON, in field order, which is
-// the order the statement's signature covers them in.
-func jsonNames(t reflect.Type) []string {
+// the order the statement's signature covers them in. An embedded struct's fields
+// take its place when expand is set, as a version 2 statement writes its extender
+// pool, and are left out otherwise, as a version 1 statement writes none.
+func jsonNames(t reflect.Type, expand bool) []string {
 	var names []string
 	for i := range t.NumField() {
 		field := t.Field(i)
 		name, _, _ := strings.Cut(field.Tag.Get("json"), ",")
+		if field.Anonymous {
+			if expand {
+				names = append(names, jsonNames(field.Type.Elem(), false)...)
+			}
+			continue
+		}
 		if !field.IsExported() || name == "-" {
 			continue
 		}
@@ -59,11 +67,22 @@ func objectKeys(raw []byte) ([]string, error) {
 	return keys, nil
 }
 
-// The published schema, docs/spec/epoch-usage-v1.schema.json, must name a
-// statement's fields in the order Statement writes them, and require exactly the
-// fields every sealed statement writes.
+// The published schemas, docs/spec/epoch-usage-v1.schema.json and
+// epoch-usage-v2.schema.json, must name a statement's fields in the order Statement
+// writes them, and require exactly the fields every sealed statement of their
+// version writes.
 func TestSchemaMatchesStatement(t *testing.T) {
-	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "spec", "epoch-usage-v1.schema.json"))
+	t.Run("v1", func(t *testing.T) { checkSchemaMatchesStatement(t, "epoch-usage-v1.schema.json", nil) })
+	t.Run("v2", func(t *testing.T) {
+		checkSchemaMatchesStatement(t, "epoch-usage-v2.schema.json", &ExtenderPool{ExtenderCensus: []string{}, ExtenderChunks: []string{}})
+	})
+}
+
+// Checks that the JSON schema docs/spec/file refuses the fields Decode
+// refuses and describes exactly the fields of a statement with pool, nil for
+// version 1.
+func checkSchemaMatchesStatement(t *testing.T, file string, pool *ExtenderPool) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "spec", file))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,17 +122,21 @@ func TestSchemaMatchesStatement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := jsonNames(reflect.TypeFor[Statement]()); !slices.Equal(names, want) {
+	if want := jsonNames(reflect.TypeFor[Statement](), pool != nil); !slices.Equal(names, want) {
 		t.Fatalf("the schema lists %v, but Statement writes %v", names, want)
 	}
-	if properties["schema"].Const != Schema {
-		t.Fatalf("the schema names %q, not %q", properties["schema"].Const, Schema)
+	wantSchema := Schema
+	if pool != nil {
+		wantSchema = SchemaV2
+	}
+	if properties["schema"].Const != wantSchema {
+		t.Fatalf("the schema names %q, not %q", properties["schema"].Const, wantSchema)
 	}
 	blockNames, err := objectKeys(block.Properties)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := jsonNames(reflect.TypeFor[Boundary]()); !slices.Equal(blockNames, want) {
+	if want := jsonNames(reflect.TypeFor[Boundary](), false); !slices.Equal(blockNames, want) {
 		t.Fatalf("the schema's block lists %v, but Boundary writes %v", blockNames, want)
 	}
 	statementType := reflect.TypeFor[Statement]()
@@ -135,7 +158,7 @@ func TestSchemaMatchesStatement(t *testing.T) {
 	minimal := &Statement{
 		DeploymentID: "d", ChainID: 1, GenesisHash: "g", Netuid: 1,
 		Coordinator: common.HexToAddress("0x1"), VaultV2: common.HexToAddress("0x2"), PolicyHash: "p",
-		NoID: 1, Start: Boundary{Hash: "a"}, End: Boundary{Number: 1, Hash: "b"},
+		NoID: 1, Start: Boundary{Hash: "a"}, End: Boundary{Number: 1, Hash: "b"}, ExtenderPool: pool,
 	}
 	if err := minimal.Seal(key); err != nil {
 		t.Fatal(err)
@@ -173,5 +196,22 @@ func TestSchemaMatchesStatement(t *testing.T) {
 		if pattern == "" || !regexp.MustCompile(pattern).MatchString(value) {
 			t.Fatalf("a sealed statement writes %s as %q, which the schema's pattern %q refuses", name, value, pattern)
 		}
+	}
+	if pool == nil {
+		return
+	}
+	// A version 2 statement writes its chunk lists as arrays, [] when empty, never
+	// null, and each of its references in the form the schema's chunk pattern takes.
+	chunk, ok := schema.Definitions["chunk"]
+	if !ok || chunk.Pattern == "" {
+		t.Fatal("the v2 schema defines no chunk pattern")
+	}
+	for _, name := range []string{"extender_census", "extender_chunks"} {
+		if string(fields[name]) != "[]" {
+			t.Fatalf("an empty %s is written as %s, not []", name, fields[name])
+		}
+	}
+	if !regexp.MustCompile(chunk.Pattern).MatchString("sha256:" + strings.Repeat("ab", 32)) {
+		t.Fatalf("the v2 schema's chunk pattern %q refuses a reference", chunk.Pattern)
 	}
 }

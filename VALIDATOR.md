@@ -1039,6 +1039,9 @@ apply signed-policy max_weight_limit_u16   # v453 native getter remains 65535/no
 commit / reveal w                          # commit-reveal ON: the score / θ signal is subjective, anti-copy
 ```
 
+From capture the flag's start epoch `E_c` (epoch 8 on SN25) a third channel joins these
+two, and capture the flag's shares replace θ (§11.5).
+
 Runtime v453 retains `MaxWeightsLimit` storage but its effective getter is
 hard-coded to `65535`, so changing that storage does not impose a native cap.
 Release 1.0 validators therefore load the cap from the exact signed policy,
@@ -1070,7 +1073,21 @@ from the epoch's end block to `rootCommitWindowBlocks` after it under `policyAt`
 refused, deleted or later root does not change that choice. Of the
 operator's statements for the epoch it uses the one whose provider chunks are those that root's
 header lists, and its rows must match its `provider_rows` and sum to its `total_usage_bytes`.
-`total_users` remains an operator attestation. The validator reads the two‑component
+`total_users` remains an operator attestation. An epoch whose committed header gives it an extender
+component (from `E_x`, §11.6) has a version 2 statement instead, kind `epoch-usage-v2`
+(`docs/spec/epoch-usage-v2.schema.json`), and the validator reads only that kind for it; every
+other epoch is read exactly as before, under `epoch-usage-v1` only. The validator also reads the
+component's census and share-row chunks, within the same per-root byte budget and retained for
+replay like provider chunks, and they must pass the ledger's rules. It chooses the statement whose
+provider, census and share-row chunks are the header's. Its `extender_pool_bytes` must be the
+header's `Z`, its `extender_census` and `extender_chunks` the header's chunk lists in order, its
+`eligible_extenders` and `extender_units` the census's `N` and `M`, and its
+`extender_pool_weight_bytes` the share rows' sum, which must itself be `Z' = min(Z, W_k)` (`W_k` the
+eligible provider rows' usage), or 0 with no eligible extender. Its `total_usage_bytes` is the
+provider rows' usage plus all of `Z`, not only `Z'`, and that is what the deposit prices
+(`WHITEPAPER.md` §8.6.4). `intra_platform_bytes` and `intra_network_bytes`, which sum to `Z`, and
+`extender_pool_contracts` and `extender_pool_payers` are the operator's attestation. A measurement
+artifact's audit names the kind it read in `usage_evidence`. The validator reads the two‑component
 `rate(tier_n)` and the cap in force for this epoch from the **signed price sheet** at
 `https://ur.xyz/price.yml`, or from the signed policy's tier→rate schedule while no signed entry is
 in force (`WHITEPAPER.md` §7.1, §7.3). It reads the sheet at most every five minutes, waits at most
@@ -1089,8 +1106,10 @@ after it, as does a root whose ledger objects pass the per-root byte budget (`--
 or a read cut short by the audit's time budget: one per audit for all its reads of the operator's
 answers, three minutes and never more than half of what the pass has left. A header, chunk, history
 or statement that fails its checks, or an object already held that exceeds its size bound, is
-`artifact_invalid`. Two statements that verify for the same chunks with different totals, or a
-history of more than eight, are `artifact_equivocation`. Each of these costs only that pool its
+`artifact_invalid`, as is a census or share-row chunk that fails them, share rows that do not sum
+to `Z'`, a statement whose extender pool differs from the committed component, or a statement
+published under the other version's kind. Two statements that verify for the same chunks with
+different totals or extender pools, or a history of more than eight, are `artifact_equivocation`. Each of these costs only that pool its
 weight on that pass: nothing an operator controls can stop steering. From the start of each priced
 epoch until the source epoch's usage is committed on chain, its totals are published and the deposit
 has landed, the pool carries no weight. The weight prices the same usage at the conviction‑zero tier,
@@ -1139,6 +1158,162 @@ routable egress-IP-hashes (§11.1). Four rules keep the count honest:
   **provisional** until the §10 structural defenses land; the `WHITEPAPER.md` §8.4
   score-dip protections (high `immunity_period`, the `score` EMA of §11.1, θ headroom)
   keep native deregistration churn from evicting a good top miner on one thin stretch.
+
+### 11.5 Capture the flag: the third channel and its audit
+
+From `E_c` each network operator `n` has a second vault2 pool, its **CTF pool**
+`2^32 + n` (`CAPTURETHEFLAG.md`). The validator never probes it. Its one decision
+is whether to weight it, and as an auditor it approves its roots after recomputing
+them.
+
+**The split.** From `E_c` the providers' row splits three ways (`CAPTURETHEFLAG.md`
+§2.1). The shares replace θ:
+
+```
+# CTF — each NO's CTF pool takes its own pool's weight (§2.2)
+for each NO n whose CTF pool resolves:
+    ctf[n] = pool[n]                       # masked with n's pool UID; 0 when the audit zero-weighted pool[n]
+
+# the cede rules, in order
+1. a non-empty CTF channel takes exactly s_ctf = 1/10
+2. pool and head share the rest 4 : 5 (s_pool = 4/10, s_head = 5/10), or all of the row when
+   CTF is empty; an empty one cedes to the other, so with no head fleet the pools take 9/10
+3. CTF is empty with ctf: off, with no CTF pool resolved, or with no pool weight; its share joins 2
+4. with no pool or head weight there is no provider row (the treasury's row is reserve-only)
+```
+
+On mainnet's treasury row, where the providers' row is 1/10 and each of the two
+`ur-reserve` recipients 9/20, that is pool 9/100, CTF 1/100 and 9/20 each with no head
+fleet, u16 `[13107, 1456, 65535, 65535]`, and pool 4/100, CTF 1/100 and head 5/100 once
+fleets are weighted. Every entry stays under the 32768 cap. Before `E_c` the row is
+θ's, `[14563, 65535, 65535]`. `weights_version_key` does not change: support is each
+validator's choice, and Yuma clips a dissenting row by about 1/100.
+
+**`E_c` and the shares** come from the signed settlement amendment entry v2 in force
+for each operator and decision epoch (`CAPTURETHEFLAG.md` §2.4), read like the price
+sheet:
+
+- from `https://ur.xyz/amendments.yml`, verified against the price sheet's pinned key,
+  at most every five minutes and for at most ten seconds;
+- the last verified file is kept in `<state_dir>/amendments/amendments.yml` and stays in
+  force through an outage; a file that drops or changes an entry is refused;
+- with no file ever verified, what is in force is unknown, and the pass steers by θ;
+- `amendment_fallback` in the configuration holds configured lines in the exact line
+  grammar. They stand in only where no signed entry of their kind is in force for their
+  operator, never for an unknown file (`WHITEPAPER.md` §8.6.7). Remove one once a signed
+  entry covers its epochs: on a production configuration that is a re-signed successor,
+  and each earlier decision replays under the configuration it was made with.
+
+**The setting.** `ctf: support | off` in the release configuration. The sample
+configuration sets `support`, and an absent setting is `support`, so a signed
+configuration need not change to support capture the flag. `off` treats the CTF channel
+as empty (rule 3), keeps the 4 : 5 split from `E_c`, and audits no CTF pool. Neither key
+changes the hash of a configuration without it. Replay finds a decision's setting and
+configured lines in its configuration, as it finds `controlled_no_ids` there. So on a
+configuration whose retained history replays under the running document (schema 1),
+both are fixed for that history, as `controlled_no_ids` is: changing either refuses the
+replay of decisions made with capture the flag.
+
+**Resolving a CTF pool,** as the provider pool's v2 destination is resolved (§13 of
+`VERSION2-FINAL.md`): vault2's `pools(2^32 + n)` at the finalized head decides, and
+`STSettlement2.ctfSettlementAt(n, epoch)` at the decision's block must name exactly
+that pool (vault, hotkey and first epoch), or the pass stops. A CTF pool that vault2
+does not hold, that starts after the epoch, or whose hotkey holds no UID (pruned) leaves
+that operator's CTF channel empty. `ctfSettlementAt` is never asked before vault2 holds
+the pool, so a contract without the upgrade is never called.
+
+**The decision record.** A v2 measurement artifact from `E_c` carries
+`capture_the_flag`: the entries in force (each line with its signature, or none for a
+configured line), the setting, and the CTF pools it weighted. Live steering reads the
+CTF contracts only for a decision with an entry in force under `ctf: support`. Replay
+authenticates the signed entries, finds the setting and every unsigned line in the
+decision's own configuration, resolves the CTF pools again at the decision's block, and
+must reach the same row; the treasury row checks each CTF pool's UID and hotkey against
+the native census as it checks a provider pool's. An artifact without it was steered by
+θ and keeps its bytes. The legacy v1 transcript refuses capture the flag.
+
+**The CTF audit** (`CAPTURETHEFLAG.md` §8). The settlement v2 audit audits each
+operator's CTF pool beside its provider pool, with the same custody, objects, head
+bindings, decisions and auditor key, and runs `ctf.Verify` in place of `ledger.Verify`.
+At its pinned finalized block it reads:
+
+- the entry in force at the pending root's epoch, which names the carry contract; every
+  entry in force at a covered epoch must name the same one. The carry contract must
+  serve vault2's pool `2^32 + n`, and gives its coldkey and `recycledFor(k)`;
+- each covered epoch's `ctfCensus(n, k)` and, for a committed census, the EVM timestamp
+  of its block and the quicknet pulse of its draw round from `--drand_url` (default
+  `https://api.drand.sh`). The relay is trusted for nothing: the pulse must verify
+  against quicknet's key. Every committed census is drawn as committed, an epoch
+  before `E_c`'s too.
+
+It approves only a root whose census, draw, slot amounts, pots, pending awards and
+accounts reproduce exactly, and challenges, demands or refuses as for the provider
+pool (`VERSION2-FINAL.md` §9.3), as UR's watcher and `snclaim v2 check` do. A pulse that no
+relay serves or that does not verify, or no entry in force, decides nothing and is
+tried again. The draw leaves out the census's head-bound candidates, as the operator's
+must, so no winner holds a fleet binding. A census that lists one breaks P5: the audit
+reports it (`ledger_audit_ctf_census_bound`) but judges the root as built, since a
+committed census cannot be rebuilt and refusing it would refuse every later root of the
+pool. The watcher, `snclaim v2 check`, reads the same bindings from an archive RPC and
+reaches the same draw: it approves such a root and names the client it left out. Through
+an outage of the published amendments the audit keeps the last verified file, as steering
+does; a later entry it misses can only name another carry contract, which the root's
+header then fails.
+
+### 11.6 The extender pool: `E_x`, the ledger audit and `--amendments-fallback`
+
+From `E_x`, the first epoch of the extender pool amendment (`WHITEPAPER.md` §8.6, epoch 8 on
+SN25), a covered epoch's root carries an extender component, and its header names the schema
+`urnetwork-payout-ledger-v3`: `Z`, the census chunks and the share-row chunks of the even split of
+`Z' = min(Z, W_k)` over the census's eligible extenders, which are allocated with the provider rows.
+A root that covers no such epoch keeps the v2 header byte for byte.
+
+**`E_x`** comes from the signed settlement amendment entry v1 in force for each operator, read from
+`https://ur.xyz/amendments.yml` by the settlement v2 audit:
+
+- every entry verified against the price sheet's pinned key, at most every ten minutes;
+- the last verified file is kept in `<state_dir>/settlement-v2-amendments/amendments.yml` and
+  stays in force through an outage; a file that drops or changes an entry, or adds one before an
+  entry it holds, is refused;
+- that copy is the audit's own. Capture the flag's steering keeps its verified copy of the same
+  file in `<state_dir>/amendments/amendments.yml` (§11.5), and each reads and writes only its own,
+  so neither can walk the other back;
+- with no file ever verified, what is in force is unknown: the audit decides nothing and retries,
+  and no configured line stands in for the file.
+
+**The ledger audit** (`ledger.Verify` check 11, `WHITEPAPER.md` §8.6.4) refuses a root unless
+exactly its covered epochs from `E_x` that are not declared unrecoverable carry a component, each
+census is well formed (chunk hashes, sorted and unique rows, flags that agree with each other, one
+counted record per provider client) with head-bound flags that agree with the chain's bindings at
+both boundaries, and the share rows are exactly the census's two-level even split of `Z'`: over the
+units by unit hash, then over each unit's eligible extenders by client id, the remainder bytes to
+the lowest. An epoch's component, once found valid, is a fixed input like its provider rows. The
+census itself, which extenders are active, gated or declared, and their wallets, are the operator's
+attestation; the validator recomputes the arithmetic only. `snclaim v2 check` runs the same check
+on each component as declared, without the amendments file.
+
+**`--amendments-fallback=<path>`** is the fallback the owner chose for an entry whose signing cannot
+happen before its first epoch starts (`WHITEPAPER.md` §8.6.7). It is a run flag of `validator run`,
+not part of the signed release configuration, so adding or removing it changes no configuration
+hash and needs no re-signed successor:
+
+- the file holds configured amendment lines, one per line, each exactly as the line grammar writes
+  it, for example
+  `UR settlement amendment v1: chain 964, sn 25, no 1, from epoch 8, intra-platform and intra-network extenders, units egress prefix, free and paid, zeta 1`.
+  Blank lines and lines starting with `#` are passed over; any other line that is not a valid line
+  for the deployment stops `validator run` at startup;
+- a configured line stands in only for a kind and operator with no signed entry in force at an
+  epoch, never for an unknown file;
+- every reader must configure the same lines: the network operator's server in its st.yml
+  `amendments:` block and every validator through this flag. A reader without them builds or audits
+  those epochs without the component, so the roots of a mismatched pair are refused;
+- remove the line from every reader once a signed entry covers its epochs. Left in place it still
+  stands in for every epoch before a later signed start, so postponing a start means removing it
+  everywhere;
+- capture the flag's configured lines are `amendment_fallback` in the release configuration
+  (§11.5), not this flag.
+
+Without the flag no line is configured, which is the normal case once the entry is signed.
 
 ---
 

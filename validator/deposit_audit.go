@@ -72,8 +72,10 @@ type DepositAudit struct {
 	Disposition             string `json:"disposition"`
 	Error                   string `json:"error,omitempty"`
 	// UsageEvidence names the operator's usage statement format when the source
-	// epoch settled under settlement v2, whose ledger has no payout artifact. An
-	// audit of a payout artifact omits it, so its bytes stay as they were.
+	// epoch settled under settlement v2, whose ledger has no payout artifact:
+	// usage.EvidenceKindV2 once the committed header gives the epoch an extender
+	// component (WHITEPAPER.md §8.6.4), else usage.EvidenceKind. An audit of a
+	// payout artifact omits it, so its bytes stay as they were.
 	UsageEvidence string `json:"usage_evidence,omitempty"`
 }
 
@@ -244,17 +246,22 @@ type DepositUsageExpectation struct {
 	End          payoutartifact.Boundary
 	// ProviderChunks is the committed header's chunk list for Epoch.
 	ProviderChunks []string
-	Root           [32]byte
-	LedgerHash     [32]byte
-	RootSigner     common.Address
-	CommitBlock    uint64
+	// Epoch's committed extender component as its statement must carry it, read
+	// from the header and its census and share-row chunks
+	// (usage.CommittedExtenders); nil for an epoch without one, whose statement
+	// is version 1.
+	Extenders   *usage.Extenders
+	Root        [32]byte
+	LedgerHash  [32]byte
+	RootSigner  common.Address
+	CommitBlock uint64
 }
 
 // usageDepositAudit is the audit of a v2 source epoch before any statement is
 // judged: the commit it found, if any, and zero weight.
 func usageDepositAudit(epoch uint64, expectation *DepositUsageExpectation, observed, conviction *big.Int) DepositAudit {
 	audit := baseDepositAudit(epoch, expectation.Epoch, expectation.NoID, observed, conviction)
-	audit.UsageEvidence = usage.EvidenceKind
+	audit.UsageEvidence = usage.KindOf(expectation.Extenders != nil)
 	audit.CommittedArtifactHash = "0x" + hex.EncodeToString(expectation.LedgerHash[:])
 	audit.PayoutRoot = "0x" + hex.EncodeToString(expectation.Root[:])
 	audit.RootCommitter = strings.ToLower(expectation.RootSigner.Hex())
@@ -279,16 +286,17 @@ func verifyDepositUsageStatement(statement *usage.Statement, expectation *Deposi
 }
 
 // selectDepositUsageStatement chooses the statement of the committed root by its
-// chunk list, because a rebuild can publish a second statement for other chunks.
-// Only a statement that verifies speaks for the operator, so one that does not can
-// neither be chosen nor cause equivocation. Two that verify with different totals
-// for the same chunks are equivocation, whichever came first. status is empty for
-// a chosen statement, and otherwise says why there is none; nil, "" and a nil
-// error mean no statement names these chunks.
+// chunk lists, because a rebuild can publish a second statement for other chunks:
+// its provider chunks and, for an epoch with an extender component, its census and
+// share-row chunks. Only a statement that verifies speaks for the operator, so one
+// that does not can neither be chosen nor cause equivocation. Two that verify with
+// different totals or extender pools for the same chunks are equivocation,
+// whichever came first. status is empty for a chosen statement, and otherwise says
+// why there is none; nil, "" and a nil error mean no statement names these chunks.
 func selectDepositUsageStatement(statements []*usage.Statement, expectation *DepositUsageExpectation) (selected *usage.Statement, status string, err error) {
 	var refused error
 	for _, statement := range statements {
-		if !slices.Equal(statement.ProviderChunks, expectation.ProviderChunks) {
+		if !slices.Equal(statement.ProviderChunks, expectation.ProviderChunks) || !depositUsageNamesExtenders(statement, expectation.Extenders) {
 			continue
 		}
 		if err := verifyDepositUsageStatement(statement, expectation); err != nil {
@@ -299,12 +307,34 @@ func selectDepositUsageStatement(statements []*usage.Statement, expectation *Dep
 			selected = statement
 		} else if statement.TotalUsageBytes != selected.TotalUsageBytes || statement.TotalUsers != selected.TotalUsers || statement.ProviderRows != selected.ProviderRows {
 			return nil, DepositAuditEquivocation, fmt.Errorf("usage statements for the committed chunks disagree: %d bytes and %d users, or %d bytes and %d users", selected.TotalUsageBytes, selected.TotalUsers, statement.TotalUsageBytes, statement.TotalUsers)
+		} else if !sameDepositUsageExtenderPool(statement.ExtenderPool, selected.ExtenderPool) {
+			return nil, DepositAuditEquivocation, errors.New("usage statements for the committed chunks disagree on the extender pool")
 		}
 	}
 	if selected == nil && refused != nil {
 		return nil, DepositAuditInvalid, refused
 	}
 	return selected, "", nil
+}
+
+// Reports whether a statement names an epoch's committed extender chunks: its
+// census and share-row chunks, in order. Without a committed component every
+// statement does: the version is checked as it is judged.
+func depositUsageNamesExtenders(statement *usage.Statement, committed *usage.Extenders) bool {
+	if committed == nil {
+		return true
+	}
+	return statement.ExtenderPool != nil && slices.Equal(statement.ExtenderCensus, committed.Census) && slices.Equal(statement.ExtenderChunks, committed.Chunks)
+}
+
+// Reports two equal extender pools, both nil included.
+func sameDepositUsageExtenderPool(a, b *usage.ExtenderPool) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.IntraPlatformBytes == b.IntraPlatformBytes && a.IntraNetworkBytes == b.IntraNetworkBytes && a.ExtenderPoolBytes == b.ExtenderPoolBytes &&
+		a.ExtenderPoolWeightBytes == b.ExtenderPoolWeightBytes && a.ExtenderPoolContracts == b.ExtenderPoolContracts && a.ExtenderPoolPayers == b.ExtenderPoolPayers &&
+		slices.Equal(a.ExtenderCensus, b.ExtenderCensus) && a.ExtenderUnits == b.ExtenderUnits && a.EligibleExtenders == b.EligibleExtenders && slices.Equal(a.ExtenderChunks, b.ExtenderChunks)
 }
 
 // DepositUsageRows is what a source epoch's committed rows hold once the rules a
@@ -318,6 +348,10 @@ type DepositUsageRows struct {
 // rows of a source epoch settled under settlement v2 hold, then applies the same
 // exact formula as a payout artifact. Bytes and the row count are checked against
 // the rows. Users are the operator's attestation, as they are in a payout artifact.
+// For an epoch with an extender component (expectation.Extenders), the statement
+// must be version 2 and carry exactly what the component holds, and its bytes are
+// the rows' usage plus all of Z, which the formula prices (WHITEPAPER.md §8.6.4);
+// Z's parts and the contracts and payers behind it are the operator's attestation.
 func EvaluateDepositUsage(statement *usage.Statement, rows DepositUsageRows, expectation *DepositUsageExpectation, epoch uint64, observedDeposit, convictionBefore *big.Int, depositPolicy protocol.DepositPolicy) DepositAudit {
 	audit := usageDepositAudit(epoch, expectation, observedDeposit, convictionBefore)
 	if observedDeposit == nil || observedDeposit.Sign() < 0 || convictionBefore == nil || convictionBefore.Sign() < 0 {
@@ -347,11 +381,23 @@ func EvaluateDepositUsage(statement *usage.Statement, rows DepositUsageRows, exp
 		audit.Error = "usage statement does not match its on-chain root commitment"
 		return audit
 	}
+	// The statement's version must be the one its header calls for, and a version
+	// 2 statement must carry the committed extender component.
+	if err := statement.CheckExtenders(expectation.Extenders); err != nil {
+		audit.Error = err.Error()
+		return audit
+	}
 	// usage.Statement.CheckRows over sums already taken, so a pass that reuses
 	// verified rows judges exactly as one that read them.
-	if rows.UsageBytes != statement.TotalUsageBytes || rows.Count != statement.ProviderRows {
+	if expectation.Extenders == nil && (rows.UsageBytes != statement.TotalUsageBytes || rows.Count != statement.ProviderRows) {
 		audit.Error = fmt.Sprintf("usage: the statement claims %d bytes in %d rows; the ledger holds %d in %d", statement.TotalUsageBytes, statement.ProviderRows, rows.UsageBytes, rows.Count)
 		return audit
+	}
+	if expectation.Extenders != nil {
+		if err := statement.CheckSums(rows.UsageBytes, rows.Count); err != nil {
+			audit.Error = err.Error()
+			return audit
+		}
 	}
 	judgeDepositUsage(&audit, statement.TotalUsageBytes, statement.TotalUsers, observedDeposit, convictionBefore, depositPolicy)
 	return audit

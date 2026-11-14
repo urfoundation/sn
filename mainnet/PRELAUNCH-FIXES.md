@@ -5738,10 +5738,15 @@ For PH-12 and PH-13, keep the SN usage ledger independent of customer billing.
 R35's signed artifacts for both operators in epochs 585 and 586 contained no
 provider rows and zero total usage, although each operator had settled hundreds
 of thousands of same-network contracts that day. The producer read only
-`transfer_escrow_sweep`; those contracts correctly created no customer charge or
-billing sweep and were consequently invisible to SN. The last positive billing
-sweeps predated the campaign by eleven days. Creating paid sidecar traffic would
-mask this accounting defect and is not its repair.
+`transfer_escrow_sweep`; those contracts created no customer charge or billing
+sweep, as same-network contracts then did not, and were consequently invisible
+to SN. The last positive billing sweeps predated the campaign by eleven days.
+Creating paid sidecar traffic would mask this accounting defect and is not its
+repair. Since 2026-11-11 same-network contracts do charge the sender: server
+`586673c74`, which reached every network operator service between 05:43 and
+11:39 UTC that day, escrows them from the sender's transfer balance like other
+contracts ([WHITEPAPER.md](../WHITEPAPER.md) §8.6.7, step 0). The usage ledger
+stays independent of that billing.
 
 The required rule is that all valid paid and free provider bytes contribute
 equally. Record immutable per-contract/provider usage independently of balances,

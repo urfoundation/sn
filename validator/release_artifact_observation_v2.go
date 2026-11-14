@@ -396,6 +396,37 @@ func (self *ReleaseSteerer) gatherPoolWeightsV2(ctx context.Context, snapshot *R
 	return weights, pools, audits, ctx.Err()
 }
 
+// gatherCaptureTheFlagV2 gives decision the capture the flag entries in force
+// for its epoch and, when the `ctf` setting supports it, the CTF pools they
+// select, resolved at the pass's snapshot as options' independent observation
+// (CAPTURETHEFLAG.md §2.3). With no entry in force the decision has no capture
+// the flag, and theta splits the row; neither then, nor with ctf off, is a CTF
+// contract read, so no CTF fault can stop the pass.
+func (self *ReleaseSteerer) gatherCaptureTheFlagV2(ctx context.Context, snapshot *ReleaseSnapshot, hotkeys map[[32]byte]uint16, decision *ReleaseMeasurementArtifact, options *ReleaseMeasurementV2Options) error {
+	epoch := decision.SettlementEpoch
+	noIDs := make([]uint64, len(decision.Pools))
+	for index, pool := range decision.Pools {
+		noIDs[index] = pool.NoID
+	}
+	entries, err := self.amendments.captureTheFlagAt(noIDs, epoch)
+	if err != nil {
+		return err
+	}
+	var resolved []ReleasePoolMeasurement
+	if len(entries) != 0 && releaseCtfSupported(self.cfg) {
+		resolved, err = self.chain.releaseCtfPoolsContext(ctx, self.settlementV2, snapshot.BlockNumber, snapshot.BlockHash, snapshot.BlockNumber, snapshot.BlockHash, epoch, decision.Pools, hotkeys)
+		if err != nil {
+			return err
+		}
+	}
+	decision.CaptureTheFlag, err = newReleaseCaptureTheFlag(self.cfg, entries, resolved)
+	if err != nil {
+		return err
+	}
+	options.CtfPools = resolved
+	return nil
+}
+
 // The audit's capture is checked with the custody it acquires. Startup shares
 // one custody across every retained intent, and each caller checks its whole
 // custody before using the audit.

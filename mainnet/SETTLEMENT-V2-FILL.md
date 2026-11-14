@@ -118,7 +118,7 @@ and signs them into the plan; nothing compares them with a file
 (`mainnet/evm_phase.go:59-62,180`). The repositories name no file for them.
 A suggestion, not a rule: pin the frozen checkout's source lock for the first,
 and step 8.2's fence file, `/secure/ur-mainnet/run-v2-custody/former-writer.json`,
-for the second. The source lock command needs Go 1.27.3 on `PATH`. The pin of
+for the second. The source lock command needs Go 1.27.4 on `PATH`. The pin of
 any file is `sha256:` and its SHA-256:
 
 ```sh

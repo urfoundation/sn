@@ -167,10 +167,14 @@ func closeFleetNative(chain *crv4.Chain) {
 	}
 }
 
+// Runs one `provider fleet` command. A refusal is returned for Run to print.
+// On mainnet, a refusal for a runtime the authority document doesn't name
+// says that no reviewed document covers the chain's current runtime.
 func fleetCommand(opts docopt.Opts) error {
-	// init creates the manifest the other fleet commands load.
+	// init creates the manifest the other fleet commands load: stdout is the
+	// manifest file, its commitment and member count go to stderr.
 	if mustBoolOpt(opts, "init") {
-		return fleetInit(opts, os.Stdout, fleetInitRandom)
+		return fleetInit(opts, os.Stdout, os.Stderr, fleetInitRandom)
 	}
 	// storage prepares what the writes below need, from no fleet at all.
 	if mustBoolOpt(opts, "storage") {
@@ -181,24 +185,27 @@ func fleetCommand(opts docopt.Opts) error {
 	if err != nil {
 		return err
 	}
-	switch {
-	case mustBoolOpt(opts, "manifest"):
-		return printFleetManifest(os.Stdout, manifest)
-	case mustBoolOpt(opts, "register"):
-		return fleetRegister(ctx, opts, manifest)
-	case mustBoolOpt(opts, "publish"):
-		return fleetPublish(ctx, opts, manifest)
-	case mustBoolOpt(opts, "bind"):
-		return fleetBind(ctx, opts, manifest)
-	case mustBoolOpt(opts, "sign"):
-		return fleetSign(opts, manifest, os.Stdout, os.Stderr)
-	case mustBoolOpt(opts, "status"):
-		return fleetStatus(ctx, opts, manifest)
-	case mustBoolOpt(opts, "revoke"):
-		return fleetRevoke(ctx, opts, manifest)
-	default:
-		return errors.New("unknown fleet command")
-	}
+	err = func() error {
+		switch {
+		case mustBoolOpt(opts, "manifest"):
+			return printFleetManifest(os.Stdout, os.Stdout, manifest)
+		case mustBoolOpt(opts, "register"):
+			return fleetRegister(ctx, opts, manifest)
+		case mustBoolOpt(opts, "publish"):
+			return fleetPublish(ctx, opts, manifest)
+		case mustBoolOpt(opts, "bind"):
+			return fleetBind(ctx, opts, manifest)
+		case mustBoolOpt(opts, "sign"):
+			return fleetSign(opts, manifest, os.Stdout, os.Stderr)
+		case mustBoolOpt(opts, "status"):
+			return fleetStatus(ctx, opts, manifest)
+		case mustBoolOpt(opts, "revoke"):
+			return fleetRevoke(ctx, opts, manifest)
+		default:
+			return errors.New("unknown fleet command")
+		}
+	}()
+	return explainFleetMainnetRuntimeRefusal(manifest, err)
 }
 
 func mustBoolOpt(opts docopt.Opts, name string) bool {

@@ -158,6 +158,7 @@ func cloneReleaseSubmissionResultV2(value VerifiedReleaseMeasurementV2) Verified
 		decision.Pools[i].Score = cloneRat(decision.Pools[i].Score)
 	}
 	decision.MaskedUIDs = slices.Clone(decision.MaskedUIDs)
+	decision.Ctf = cloneWeights(decision.Ctf)
 	decision.UIDs = slices.Clone(decision.UIDs)
 	decision.Scores = slices.Clone(decision.Scores)
 	for i := range decision.Scores {

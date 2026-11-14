@@ -39,6 +39,13 @@ type minerLocalStatus struct {
 	StoppedAt      *time.Time          `json:"stopped_at,omitempty"`
 	ConnectedSince *time.Time          `json:"connected_since,omitempty"`
 	Members        []minerMemberStatus `json:"members"`
+	// The extender role of the slot that runs it (extender_standing.go): the
+	// tcp 443 bind and the last activation. Absent from an older miner, and
+	// before the first status of a run.
+	Extender *minerExtenderStanding `json:"extender,omitempty"`
+	// the extender's router port mapping (connect/EXTENDER.md S10), absent
+	// from a miner that predates it
+	PortMapping *minerPortMappingStatus `json:"port_mapping,omitempty"`
 }
 
 type minerMemberStatus struct {
@@ -115,9 +122,11 @@ func writeMinerLocalStatus(status *minerLocalStatus) error {
 }
 
 // startMinerStatusFile keeps the status file current from the run's
-// progress until the returned stop is called, which records the stop time.
-// A status file that can't be written never stops the miner.
-func startMinerStatusFile(ctx context.Context, progress *providerProgressOwner) (stop func()) {
+// progress, the extender's standing from `extender` and its router port
+// mapping from `portMapping` when not nil, until the returned stop is called,
+// which records the stop time. A status file that can't be written never
+// stops the miner.
+func startMinerStatusFile(ctx context.Context, progress *providerProgressOwner, extender *minerExtenderStandings, portMapping *minerPortMappingHolder) (stop func()) {
 	if progress == nil {
 		return func() {}
 	}
@@ -134,7 +143,9 @@ func startMinerStatusFile(ctx context.Context, progress *providerProgressOwner) 
 		for _, member := range value.Members {
 			status.Members = append(status.Members, minerMemberStatus{Slot: member.Slot, ClientId: member.ClientId, Lifecycle: member.Lifecycle, Connected: member.Connected, Ready: member.Ready})
 		}
+		status.Extender = extender.current()
 		status.UpdatedAt = time.Now().UTC()
+		status.PortMapping = portMapping.snapshot()
 		if status.connected() {
 			if status.ConnectedSince == nil {
 				since := status.UpdatedAt
@@ -170,6 +181,10 @@ func startMinerStatusFile(ctx context.Context, progress *providerProgressOwner) 
 		status.StoppedAt = &stopped
 		status.UpdatedAt = stopped
 		status.ConnectedSince = nil
+		// a stopped miner runs no extender, and its role removed what the router
+		// forwarded to it
+		status.Extender = nil
+		status.PortMapping = nil
 		for i := range status.Members {
 			status.Members[i].Connected = false
 			status.Members[i].Ready = false

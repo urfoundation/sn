@@ -1,0 +1,1206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  The head. On ur.xyz, astro/src/layouts/Base.astro writes it from the route's props (title, description,
+  jsonLd, alternate, breadcrumbName, ogImage) and adds the robots, hreflang, Twitter and BreadcrumbList tags.
+  These are the hub's values; for ?page=<cc> the script swaps in the country page's. See SEO.md §2 and §6.
+  This mockup alone is noindex, because its data is simulated.
+-->
+<meta name="robots" content="noindex">
+<title>Earn crypto by sharing your internet in 249 countries | UR</title>
+<meta name="description" content="Five provider and five extender reward slots in every country, every week. See the open slots, the pots and the chance to win, then start mining.">
+<link rel="canonical" href="https://ur.xyz/ctf">
+<link rel="alternate" type="application/json" href="https://api.bringyour.com/sn/ctf">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="UR">
+<meta property="og:title" content="Earn crypto by sharing your internet in 249 countries | UR">
+<meta property="og:description" content="Five provider and five extender reward slots in every country, every week. See the open slots, the pots and the chance to win, then start mining.">
+<meta property="og:url" content="https://ur.xyz/ctf">
+<meta property="og:image" content="https://ur.xyz/ctf/og/epoch-39.png">
+<script type="application/ld+json" id="ctf-jsonld">
+{
+ "@context": "https://schema.org",
+ "@graph": [
+  {
+   "@type": "Dataset",
+   "@id": "https://ur.xyz/ctf#dataset",
+   "name": "URnetwork capture the flag: reward slots and pots by country",
+   "description": "Each epoch (one week), every network operator of Bittensor subnet 25 (UR) has five provider slots and five extender slots in every one of the 249 ISO 3166-1 countries, and this data adds every operator's up. Per country, the data gives last epoch's winners and the units in each draw, the pot carried into this epoch for each role, and a newcomer's chance to win where all five slots were won. Amounts are in alpha, the subnet's token, before participants' costs.",
+   "url": "https://ur.xyz/ctf",
+   "dateModified": "2026-11-11",
+   "isAccessibleForFree": true,
+   "creator": {
+    "@type": "Organization",
+    "name": "UR",
+    "url": "https://ur.xyz"
+   },
+   "spatialCoverage": {
+    "@type": "Place",
+    "name": "Worldwide"
+   },
+   "temporalCoverage": "2026-11-27/..",
+   "variableMeasured": [
+    "Provider slots won",
+    "Extender slots won",
+    "Units in the draw",
+    "Provider pot (alpha)",
+    "Extender pot (alpha)",
+    "Chance to win"
+   ],
+   "distribution": [
+    {
+     "@type": "DataDownload",
+     "encodingFormat": "application/json",
+     "contentUrl": "https://api.bringyour.com/sn/ctf"
+    }
+   ]
+  }
+ ]
+}
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500;600;700&amp;family=Silkscreen:wght@400;700&amp;display=swap">
+<!--
+  Design for ur.xyz/ctf ("Capture the flag"), CAPTURETHEFLAG.md §9.2. This file is the page's design: it
+  replaced the "ur.xyz CTF page" canvas on 2026-11-11, and changes to the page are made here. Open it in a
+  browser; it needs flags-4x3-sprite.svg beside it.
+  Mock data: 26 simulated epochs on the network's real country coverage (August to November 2026).
+  Preview states with query parameters: ?page=ke (the Kenya country page, /ctf/ke), ?focus=np (the hub
+  filtered to open provider slots), ?country=tm (visitor country), ?expanded=af (an opened tile on
+  touch sizes), ?motion=0 (no animation), ?prelaunch (the note at the top of the hub, and compact at the top of a
+  country page with ?page=, before capture the flag starts, 15 days 3 hours 38 minutes before epoch 8 on a clock of
+  its own; ?prelaunch=15 starts it 15 seconds from now, to see the last minute and the turn). Resize the window below 1100px for tablet and below 600px for mobile.
+  The real page is built in web/ur.xyz (Astro) with self-hosted fonts and flag files; see SEO.md.
+-->
+<style>
+/* ur.xyz /ctf mockup: one stylesheet for the desktop, tablet and mobile artboards.
+   Desktop is the base. Touch sizes (1099px and below) replace hover with tap to expand;
+   mobile (600px and below) also compacts the grid into tiles. Nothing scrolls sideways. */
+body{margin:0;background:#101010}
+a{color:#ED8FFF}a:hover{color:#F6C4FF}
+.ctf{--bg:#101010;--panel:#141414;--line:#242424;--line2:#303030;--ink:#F2F4EF;--soft:#C9CCC6;--muted:#8F938C;--faint:#868B83;--acc:#ED8FFF;--blue:#7B95FF;--green:#87FB67;background:var(--bg);color:var(--ink);font-family:Inter,"Helvetica Neue",Helvetica,Arial,sans-serif;-webkit-font-smoothing:antialiased;min-height:100vh;padding-bottom:40px;overflow-x:clip}
+.shell{width:min(1200px,calc(100% - 64px));margin:0 auto}
+.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace}
+.px{font-family:Silkscreen,"JetBrains Mono",monospace;font-weight:400}
+.label{font:500 11px/1.2 "JetBrains Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.touch-block,.mob-only{display:none}
+.mockbar{display:flex;justify-content:center;flex-wrap:wrap;gap:6px 10px;padding:8px 16px;background:#0c0c0c;border-bottom:1px solid var(--line);font:400 12px "JetBrains Mono",monospace;color:var(--muted);text-align:center}
+.mockbar b{color:#101010;background:#FF6C58;font:700 10px/1 "JetBrains Mono",monospace;letter-spacing:.1em;text-transform:uppercase;padding:4px 6px;border-radius:4px}
+
+/* nav and header */
+.nav{display:flex;align-items:center;justify-content:space-between;gap:4px 24px;flex-wrap:wrap;border-bottom:1px solid var(--line)}
+.nav a{color:var(--muted);text-decoration:none;font-size:14px;display:inline-flex;align-items:center;min-height:44px;padding:0 4px;white-space:nowrap}
+.nav a:hover{color:var(--ink)}
+.nav a[aria-current="page"]{color:var(--ink)}
+.nav-links{display:flex;flex-wrap:wrap;gap:0 18px}
+.brand{gap:10px;color:var(--ink)!important;font-weight:600;font-size:17px!important;letter-spacing:-.01em}
+.brand i{width:9px;height:9px;border-radius:50%;background:var(--acc)}
+.hdr{padding:52px 0 26px;display:flex;flex-direction:column;gap:14px;max-width:780px}
+.hdr h1{margin:0;font:500 clamp(36px,5vw,54px)/1.02 Inter,sans-serif;letter-spacing:-.035em}
+.mission{margin:-4px 0 4px;font:500 clamp(20px,2.4vw,26px)/1.25 Inter,sans-serif;letter-spacing:-.015em;color:var(--acc)}
+.intro{margin:0;font-size:17px;line-height:1.55;color:var(--soft)}
+.h2{margin:0;font:500 30px/1.1 Inter,sans-serif;letter-spacing:-.02em}
+.sub{margin:0;color:var(--soft);font-size:15px;line-height:1.5;max-width:660px}
+.sec{margin-top:60px;display:flex;flex-direction:column;gap:18px}
+
+/* the note above everything else until capture the flag starts (?prelaunch): its sentence, a countdown on split
+   tiles in the pixel face, the blocks left with a bar that fills over each block's 12 seconds, and a flag that
+   climbs its pole over the three epochs before the start (--hoist, 0 to 1) and glides up to its place as the page
+   starts. The two sentences share one place, and so do the countdown and its live status, so nothing under the
+   note moves when it turns live; at the start the flag waves and ten pips burst from it, five providers' (blue)
+   and five extenders' (green). A screen reader hears the sentence and the time left in words, at most once a
+   minute; the figures are hidden from it. Without motion nothing rolls, waves, glides or bursts. */
+.start{--digit:clamp(30px,3.4vw,44px);--fw:46px;--fh:34px;margin-top:28px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;grid-template-areas:"pole line clock" "pole blocks clock";align-items:center;gap:16px 44px;padding:24px 32px 22px 24px;border:1px solid rgba(237,143,255,.3);border-radius:18px;background:radial-gradient(ellipse 300px 220px at 0% 100%,rgba(237,143,255,.13),transparent 70%),#151215}
+.start+.hdr{padding-top:40px}
+.start-compact{--digit:clamp(22px,1.9vw,26px);--fw:30px;--fh:22px;grid-template-areas:"pole line clock";gap:8px 32px;padding:14px 24px 14px 18px;border-radius:14px;background:radial-gradient(ellipse 200px 120px at 0% 100%,rgba(237,143,255,.11),transparent 70%),#151215}
+.start-compact .start-pole{min-height:60px}
+.start-compact .start-line{font-size:17px;line-height:1.35}
+.start-compact .start-count{gap:6px}
+.start-compact .start-tiles{gap:4px}
+.start-compact .start-unit{gap:5px}
+.start-compact .start-num{border-radius:7px}
+.start-compact .start-uname{font-size:8.5px;letter-spacing:.04em}
+.start-pole{grid-area:pole;align-self:stretch;position:relative;width:calc(var(--fw) + 6px);min-height:118px}
+.start-pole::before{content:"";position:absolute;left:2px;top:4px;bottom:0;width:3px;border-radius:2px;background:var(--muted)}
+.start-pole::after{content:"";position:absolute;left:0;top:0;width:7px;height:7px;border-radius:50%;background:#D6E6F4;box-shadow:0 0 10px rgba(214,230,244,.45)}
+.start-notch{position:absolute;left:-1px;width:9px;height:1px;background:rgba(214,230,244,.4);bottom:calc(var(--fh) + (100% - 10px - var(--fh)) / 3)}
+.start-notch+.start-notch{bottom:calc(var(--fh) + (100% - 10px - var(--fh)) * 2 / 3)}
+.start-car{position:absolute;top:10px;bottom:0;left:0;right:0;display:flex;align-items:flex-end;transform:translateY(calc(var(--hoist) * (var(--fh) - 100%)));transition:transform 1.8s cubic-bezier(.3,1.18,.4,1)}
+.start-flag{position:relative;display:grid;place-items:center;width:var(--fw);height:var(--fh);margin-left:5px;border-radius:2px 5px 5px 2px;background:linear-gradient(90deg,transparent 22%,rgba(255,255,255,.2) 42%,transparent 58%,rgba(16,16,16,.1) 82%,transparent),linear-gradient(160deg,#F6C4FF,var(--acc) 55%,#D46FE8);box-shadow:0 0 22px rgba(237,143,255,.35);transform-origin:left center;animation:wave 2.8s ease-in-out infinite}
+.start-flag b{font:400 calc(var(--fh) * .62)/1 Silkscreen,monospace;color:#101010}
+.start[data-last-minute] .start-flag{animation-duration:1.4s}
+.start[data-phase="live"] .start-flag{animation-duration:1.6s}
+.start-burst{position:absolute;left:calc(5px + var(--fw) / 2);bottom:calc(var(--fh) / 2)}
+.start-burst i{position:absolute;left:-3.5px;top:-3.5px;width:7px;height:7px;border-radius:2px;background:var(--blue);opacity:0;animation:burst 1.3s cubic-bezier(.15,.7,.3,1) .4s both}
+.start-burst i:nth-child(n+6){background:var(--green)}
+.start-burst i:nth-child(1){--x:-46px;--y:-30px;--r:-80deg}.start-burst i:nth-child(2){--x:12px;--y:-52px;--r:120deg}.start-burst i:nth-child(3){--x:58px;--y:-22px;--r:-140deg}.start-burst i:nth-child(4){--x:66px;--y:30px;--r:90deg}.start-burst i:nth-child(5){--x:20px;--y:58px;--r:-60deg}
+.start-burst i:nth-child(6){--x:-28px;--y:-54px;--r:150deg}.start-burst i:nth-child(7){--x:40px;--y:-48px;--r:-100deg}.start-burst i:nth-child(8){--x:76px;--y:4px;--r:70deg}.start-burst i:nth-child(9){--x:48px;--y:50px;--r:-120deg}.start-burst i:nth-child(10){--x:-10px;--y:64px;--r:100deg}
+@keyframes burst{0%{opacity:1;transform:translate(0,0) scale(.4) rotate(0deg)}65%{opacity:1}100%{opacity:0;transform:translate(var(--x),var(--y)) scale(1) rotate(var(--r))}}
+.start-line{grid-area:line;margin:0;display:grid;font:400 clamp(19px,1.85vw,23px)/1.32 Inter,sans-serif;letter-spacing:-.01em;color:var(--ink)}
+.start-line>span{grid-area:1/1}
+.start-ghost{visibility:hidden}
+.start-clock{grid-area:clock;display:grid}
+.start-clock>*{grid-area:1/1}
+.start-count{display:flex;flex-direction:column;gap:10px}
+.start-tiles{display:flex;align-items:flex-start;gap:6px}
+.start-unit{display:flex;flex-direction:column;align-items:center;gap:8px}
+.start-num{position:relative;display:flex;direction:ltr;padding:.12em .14em .04em;border:1px solid rgba(237,143,255,.4);border-radius:10px;background:linear-gradient(180deg,#2b1a30,#1e1323 50%,#170f1b 50%,#1f1425);box-shadow:0 0 24px rgba(237,143,255,.1),inset 0 1px 0 rgba(255,225,255,.12);color:var(--acc);font:400 var(--digit)/1 Silkscreen,monospace;text-shadow:0 0 16px rgba(237,143,255,.5)}
+.start-num::after{content:"";position:absolute;inset:50% 0 auto;height:1px;background:rgba(16,16,16,.65)}
+.start-d{display:block;width:.62em;text-align:center}
+.start-d>span{display:block;animation:roll .45s cubic-bezier(.2,.8,.2,1)}
+.start-d>span.s{animation:none}
+@keyframes roll{from{transform:translateY(-40%) scaleY(.6);opacity:0}}
+.start-sep{padding-top:.12em;color:rgba(237,143,255,.55);font:400 var(--digit)/1 Silkscreen,monospace;animation:blink 1s steps(1,end) infinite}
+@keyframes blink{50%{opacity:.25}}
+.start-uname{display:flex;justify-content:center;width:0;font:400 10px/1.2 "JetBrains Mono",monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);white-space:nowrap}
+.start[data-last-minute] .start-num{animation:flare 1s ease-out infinite}
+@keyframes flare{from{box-shadow:0 0 40px rgba(237,143,255,.5),inset 0 1px 0 rgba(255,225,255,.12)}}
+.start-go{display:inline-flex;align-items:center;justify-content:center;gap:.4em;color:var(--acc);font:400 calc(var(--digit) * .9)/1 Silkscreen,monospace;letter-spacing:.06em;text-transform:uppercase;text-shadow:0 0 22px rgba(237,143,255,.5)}
+.start-go i{flex:none;width:.3em;height:.3em;border-radius:50%;background:var(--acc);animation:pulse 2s infinite}
+.start[data-phase="live"] .start-count{visibility:hidden}
+.start[data-phase="live"] .start-go{animation:go .9s cubic-bezier(.2,.8,.2,1)}
+@keyframes go{from{opacity:0;transform:scale(.88)}}
+.start-blocks{grid-area:blocks;margin:0;display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px}
+.start-blocks b{display:inline-block;min-width:8ch;font:400 14px/1 Silkscreen,monospace;color:var(--ink);white-space:nowrap}
+.start-track{position:relative;width:64px;height:3px;border-radius:2px;background:#2c2830;overflow:hidden}
+.start-bar{position:absolute;inset:0;background:rgba(237,143,255,.75);transform-origin:left center;animation:block 12s linear both}
+@keyframes block{from{transform:scaleX(0)}}
+.start[data-phase="live"] .start-blocks{visibility:hidden}
+.still .start-car{transition:none}
+.still .start-flag,.still .start-d>span,.still .start-sep,.still .start[data-last-minute] .start-num,.still .start-go,.still .start-go i{animation:none!important}
+.still .start-burst,.still .start-track{display:none}
+@media (prefers-reduced-motion:reduce){.start-car{transition:none}.start-flag,.start-d>span,.start-sep,.start[data-last-minute] .start-num,.start-go,.start-go i{animation:none!important}.start-burst,.start-track{display:none}}
+
+/* stats bar: wraps instead of scrolling; hairline separators come from the 1px gap */
+.live{display:flex;flex-wrap:wrap;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.live>*{background:#0d0d0d;flex:1 1 auto}
+.live .tag{display:flex;align-items:center;gap:8px;padding:14px 18px;white-space:nowrap}
+.live .tag i{width:7px;height:7px;border-radius:50%;background:var(--acc);animation:pulse 2s infinite}
+.live .it{display:flex;flex-direction:column;justify-content:center;gap:4px;padding:10px 18px;white-space:nowrap}
+.live .it b{font-weight:500;font-size:17px;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
+.live .it-btn{appearance:none;border:0;color:inherit;font:inherit;text-align:left;cursor:pointer;min-height:44px}
+.live .it-btn:hover{background:#151015}
+.live .it-btn[aria-pressed="true"]{background:#1E1320;box-shadow:inset 0 -2px 0 var(--acc)}
+.live .it-btn[aria-pressed="true"] b{color:var(--acc)}
+.live .it-btn:focus-visible{outline:2px solid #F2F4EF;outline-offset:-4px}
+.it-hint{display:inline-flex;align-items:center;gap:6px}
+.it-hint svg{transition:transform .2s ease}
+.it-btn[aria-pressed="true"] .it-hint svg{transform:rotate(180deg)}
+.live .it-group{gap:2px;padding:8px 10px 8px 18px}
+.it-row{appearance:none;border:0;background:none;color:var(--ink);display:flex;align-items:center;gap:8px;min-height:30px;padding:0 8px;margin-left:-8px;border-radius:7px;cursor:pointer;font:inherit;text-align:left}
+.it-row span{font:400 12.5px Inter,sans-serif;color:var(--soft);min-width:66px}
+.live .it-row b{font-weight:500;font-size:15px;font-variant-numeric:tabular-nums}
+.it-row svg{color:var(--faint);transition:transform .2s ease}
+.it-row:hover{background:#151015}
+.it-row[aria-pressed="true"]{background:#1E1320}
+.live .it-row[aria-pressed="true"] b{color:var(--acc)}
+.it-row[aria-pressed="true"] svg{transform:rotate(180deg)}
+.it-row:focus-visible{outline:2px solid #F2F4EF;outline-offset:1px}
+
+/* flags */
+.flag{display:block;flex:none;background-image:url(flags-4x3-sprite.svg);background-size:1600% 1600%;background-repeat:no-repeat;border-radius:3px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);transform-origin:left center}
+.f-s{width:36px;height:27px}
+.f-m{width:72px;height:54px;border-radius:4px}
+.f-l{width:128px;height:96px;border-radius:6px}
+.pole{position:relative;padding-left:8px;display:inline-block}
+.pole::before{content:"";position:absolute;left:0;top:-8px;bottom:-22px;width:3px;border-radius:2px;background:#8F938C}
+.pole::after{content:"";position:absolute;left:-2px;top:-13px;width:7px;height:7px;border-radius:50%;background:#D6E6F4}
+.wave .flag,.cell.hot .flag{animation:wave 2.8s ease-in-out infinite}
+.cell:hover .flag{animation:wave 1.4s ease-in-out infinite}
+@keyframes wave{0%,100%{transform:perspective(260px) rotateY(0deg) skewY(0deg)}30%{transform:perspective(260px) rotateY(-16deg) skewY(-2deg)}65%{transform:perspective(260px) rotateY(9deg) skewY(1.5deg)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+@keyframes glow{0%,100%{box-shadow:inset 0 0 0 1px rgba(237,143,255,.55),0 0 16px rgba(237,143,255,.08)}50%{box-shadow:inset 0 0 0 1px rgba(237,143,255,.95),0 0 28px rgba(237,143,255,.26)}}
+.still .flag,.still .cell,.still .fc,.still .live .tag i{animation:none!important}
+@media (prefers-reduced-motion:reduce){.flag,.cell,.fc,.live .tag i{animation:none!important}}
+
+/* your country */
+.mine{margin-top:22px;display:grid;grid-template-columns:auto minmax(0,1fr) minmax(250px,300px);gap:28px 40px;align-items:center;padding:34px 32px 30px 38px;border:1px solid var(--line2);border-radius:18px;background:#151215}
+.me-body{display:flex;flex-direction:column;gap:6px;min-width:0}
+.me-name{margin:0;font:500 30px/1.1 Inter,sans-serif;letter-spacing:-.02em}
+.me-amtrow{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-top:10px}
+.me-amt{font-size:46px;line-height:1;color:var(--acc)}
+.me-unit{font-size:20px;color:var(--acc)}
+.me-msg{margin:6px 0 0;color:var(--soft);font-size:15px;line-height:1.5;max-width:580px}
+.me-note{margin:10px 0 0;font:400 12.5px/1.5 "JetBrains Mono",monospace;color:var(--muted)}
+.cta{display:flex;flex-direction:column;gap:10px}
+.cta-note{margin:2px 0 0;font-size:12.5px;line-height:1.5;color:var(--muted)}
+.pick{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.roles{display:grid;gap:10px;margin-top:16px}
+.role{display:grid;grid-template-columns:96px auto minmax(0,1fr);align-items:center;gap:14px}
+.role-txt{font-size:12.5px;line-height:1.45;color:var(--soft)}
+.role .tip-pop .act{left:auto;right:0}
+.pips{display:inline-flex;gap:3px;align-items:center}
+.pip{width:7px;height:7px;border-radius:2px;box-shadow:inset 0 0 0 1px #4A4D49;display:inline-block}
+.pip.p{background:var(--blue);box-shadow:none}
+.pip.x{background:var(--green);box-shadow:none}
+.cell .pip{width:5px;height:5px}
+.big .pip{width:14px;height:14px;border-radius:4px}
+.big{gap:5px}
+
+/* buttons and fields */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:48px;padding:0 20px;border-radius:10px;font:600 15px Inter,sans-serif;text-decoration:none;border:1px solid transparent;text-align:center;box-sizing:border-box}
+.btn-p{background:var(--acc);color:#101010!important}
+.btn-p:hover{background:#F6C4FF}
+.btn-s{border-color:var(--line2);color:var(--ink)!important}
+.btn-s:hover{border-color:var(--muted)}
+button.btn{background:none;cursor:pointer}
+button.btn-p{background:var(--acc)}
+.btn-sm{min-height:44px;width:100%;padding:0 8px;font-size:12.5px;border-radius:9px}
+.field{background:#0d0d0d;border:1px solid var(--line2);border-radius:10px;color:var(--ink);font:400 14px Inter,sans-serif;min-height:44px;padding:0 14px;box-sizing:border-box}
+.field::placeholder{color:#7D817A}
+.search{width:220px}
+
+/* easy wins: a flowing grid at every size */
+.feat{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px}
+.fc{position:relative;display:flex;flex-direction:column;gap:12px;padding:24px 20px 20px 26px;border-radius:14px;background:#170f18;animation:glow 2.6s ease-in-out infinite;min-width:0}
+.fc-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.fc-name{margin:14px 0 0;font:500 18px/1.2 Inter,sans-serif}
+.fc-amt{display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.fc-amt b{font-size:30px;line-height:1;color:var(--acc)}
+.fc-amt span{font-size:15px;color:var(--acc)}
+.fc-pots{font-size:11.5px;color:var(--faint)}
+.fc-pots-s{display:none}
+.fc-line{margin:0;font-size:12px;line-height:1.55;color:var(--soft)}
+.fc-hit,.fc-next{display:none}
+
+/* labels, chips and next-step cards (hover and focus on desktop) */
+.ribbon{font:400 9.5px/1 Silkscreen,"JetBrains Mono",monospace;letter-spacing:.05em;text-transform:uppercase;padding:5px 6px 4px;border-radius:5px;white-space:nowrap}
+.r-hot{background:var(--acc);color:#101010}
+.r-open{color:var(--acc);box-shadow:inset 0 0 0 1px rgba(237,143,255,.6)}
+.r-held{color:var(--faint);box-shadow:inset 0 0 0 1px var(--line2)}
+.tip{display:inline-flex}
+.tip-pop{position:relative}
+.tip-btn{appearance:none;border:0;margin:0;cursor:pointer;position:relative}
+.tip-btn::after{content:"";position:absolute;inset:-12px -8px}
+.chance.tip-btn::after{inset:-5px -6px}
+.tip-btn:focus-visible{outline:2px solid #F2F4EF;outline-offset:3px}
+.act{position:absolute;z-index:30;left:-1px;right:-1px;top:38px;display:flex;flex-direction:column;gap:7px;padding:11px 11px 12px;border-radius:12px;background:#1E1320;box-shadow:inset 0 0 0 1px rgba(237,143,255,.6),0 16px 36px rgba(0,0,0,.6);visibility:hidden;opacity:0;transform:translateY(4px);transition:opacity .14s ease,transform .14s ease,visibility 0s linear .16s;text-align:left;white-space:normal}
+.tip:hover .act,.tip:focus-within .act,.tip.pinned .act{visibility:visible;opacity:1;transform:none;transition:opacity .14s ease,transform .14s ease}
+.act-low{top:calc(100% + 2px);left:-13px;right:-13px}
+.act .label{color:var(--acc)}
+.act-near{font:400 11px/1.45 "JetBrains Mono",ui-monospace,monospace;color:var(--soft)}
+.act-do{font:500 12.5px/1.42 Inter,sans-serif;color:var(--ink)}
+.act-do b{color:var(--acc);font-weight:600}
+.fc .act{left:auto;right:18px;top:52px;width:min(290px,calc(100% - 36px))}
+.tip-pop .act{left:0;right:auto;top:calc(100% + 6px);width:290px}
+@media (prefers-reduced-motion:reduce){.act{transition:none;transform:none}}
+
+/* grid controls and legend */
+.seg{display:inline-flex;padding:3px;border:1px solid var(--line);border-radius:11px;gap:3px;background:#0d0d0d}
+.seg button{appearance:none;border:0;background:none;color:var(--muted);font:500 13px Inter,sans-serif;min-height:40px;padding:0 14px;border-radius:8px;cursor:pointer}
+.seg button:hover{color:var(--ink)}
+.seg button[aria-pressed="true"]{background:var(--ink);color:#101010}
+.controls{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:center;justify-content:space-between}
+.find{display:flex;align-items:center;gap:10px}
+.legend{display:flex;flex-wrap:wrap;align-items:center;gap:10px 18px;font:400 11.5px "JetBrains Mono",monospace;color:var(--faint)}
+.li{display:inline-flex;align-items:center;gap:6px}
+.gsec{margin-top:60px;display:flex;flex-direction:column;gap:16px}
+.gsec.focused{margin-top:18px}
+.fbar{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px 20px;padding:18px 20px 18px 22px;border:1px solid var(--line2);border-radius:14px;background:#151215}
+.fbar-h{margin:0;font:500 26px/1.1 Inter,sans-serif;letter-spacing:-.02em}
+
+/* grid cells */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(158px,1fr));gap:10px}
+.cell{position:relative;display:flex;flex-direction:column;gap:7px;padding:12px 12px 11px;border-radius:12px;background:var(--panel);box-shadow:inset 0 0 0 1px var(--line);min-width:0}
+.cell.hot{background:#170f18;animation:glow 2.6s ease-in-out infinite}
+.cell.open{box-shadow:inset 0 0 0 1px rgba(237,143,255,.30)}
+.cell:hover,.cell:focus-within,.cell.pinned{z-index:40}
+.cell-top{display:flex;justify-content:space-between;align-items:flex-start;gap:6px}
+.cname{margin:0;font:500 13px/1.25 Inter,sans-serif;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.amt{display:flex;align-items:baseline;gap:5px;flex-wrap:wrap}
+.amt b{font:400 17px/1 Silkscreen,"JetBrains Mono",monospace;color:var(--ink)}
+.cell.hot .amt b,.cell.open .amt b{color:var(--acc)}
+.amt span{font:400 10.5px "JetBrains Mono",monospace;color:var(--faint)}
+.last{display:flex;flex-direction:column;gap:5px;border-top:1px solid var(--line);padding-top:8px;font:400 10.5px "JetBrains Mono",monospace;color:var(--faint)}
+.rrow{position:relative;display:flex;align-items:center;gap:4px;min-height:20px;transition:opacity .3s ease}
+.rl{font:600 10px/1 "JetBrains Mono",monospace;color:var(--faint);width:9px}
+.rcount{display:none}
+.rpot{margin-left:3px;font:500 10.5px/1 "JetBrains Mono",ui-monospace,monospace;color:var(--ink);white-space:nowrap}
+.chance{margin-left:auto;font:500 10.5px/1 "JetBrains Mono",monospace;color:var(--soft);padding:4px 5px;border-radius:5px;white-space:nowrap}
+.chance.win{color:#101010;background:var(--acc);font-weight:700;letter-spacing:.03em}
+button.chance{appearance:none;border:0;margin:0;cursor:pointer}
+.chance.ex{box-shadow:inset 0 0 0 1px var(--line2)}
+button.chance.ex:hover,.tip.pinned button.chance.ex{box-shadow:inset 0 0 0 1px var(--acc);color:var(--ink)}
+.focus-p .rrow.x-row,.focus-x .rrow.p-row{opacity:.35}
+.mini,.cell-hit,.cell-more{display:none}
+.m{font:600 10px/1 "JetBrains Mono",monospace;font-style:normal;padding:3px 5px;border-radius:5px}
+.m.open{background:var(--acc);color:#101010}
+.m.held{box-shadow:inset 0 0 0 1px var(--line2);color:var(--faint)}
+.more-near{margin:0;font:500 12px/1.4 "JetBrains Mono",monospace;color:var(--acc)}
+.more-line{margin:0;font:400 13px/1.5 Inter,sans-serif;color:var(--soft)}
+.more-cta{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tap{position:absolute;inset:0;z-index:5;appearance:none;border:0;background:none;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.tap:focus-visible{outline:2px solid #F2F4EF;outline-offset:-2px}
+
+/* view transitions for the stat filters and card expansion */
+::view-transition-group(*){animation-duration:.55s;animation-timing-function:cubic-bezier(.22,.9,.24,1)}
+::view-transition-old(*):only-child{animation:vt-out .32s cubic-bezier(.4,0,1,1) both}
+::view-transition-new(*):only-child{animation:vt-in .42s cubic-bezier(0,0,.2,1) .12s both}
+::view-transition-old(root),::view-transition-new(root){animation-duration:.3s}
+@keyframes vt-out{to{opacity:0;transform:scale(.86) translateY(8px)}}
+@keyframes vt-in{from{opacity:0;transform:scale(.92) translateY(12px)}}
+@media (prefers-reduced-motion:reduce){::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}}
+
+/* how it works */
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.step{display:flex;flex-direction:column;gap:10px;padding:22px;border:1px solid var(--line);border-radius:14px;background:var(--panel)}
+.step b{font:400 22px/1 Silkscreen,monospace;color:var(--acc)}
+.step h3{margin:0;font:500 17px/1.25 Inter,sans-serif}
+.step p{margin:0;font-size:14px;line-height:1.55;color:var(--soft)}
+.foot{display:flex;flex-direction:column;gap:8px;padding-top:18px;border-top:1px solid var(--line);font-size:12px;line-height:1.6;color:var(--faint)}
+.foot p{margin:0}
+
+/* touch sizes, tablet and mobile (1099px and below): tap to expand replaces hover */
+@media (max-width:1099px){
+  .shell{width:calc(100% - 48px)}
+  .start{grid-template-columns:auto minmax(0,1fr);grid-template-areas:"pole line" "pole clock" "pole blocks";align-items:start;justify-items:start;gap:18px 26px}
+  .start-compact{--digit:clamp(22px,3.2vw,28px);grid-template-areas:"pole line" "pole clock";gap:12px 20px}
+  .touch-block{display:block}
+  .live{display:grid;grid-template-columns:repeat(3,minmax(0,1fr))}
+  .live .tag{grid-column:1/-1;padding:12px 18px}
+  .mine{grid-template-columns:auto minmax(0,1fr);gap:24px 32px;padding:30px 28px 26px 34px}
+  .mine .cta{grid-column:1/-1;display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:start}
+  .mine .cta-note,.mine .pick{grid-column:1/-1}
+  .pick .field{max-width:360px}
+  .role .tip .act{display:none}
+  .role .tip-btn{pointer-events:none}
+  .feat{grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-flow:dense}
+  .fc .act{display:none}
+  .fc .tip-btn{pointer-events:none}
+  .fc-line{display:none}
+  .fc-hit{display:block;border-radius:14px}
+  .fc.expanded{grid-column:1/-1}
+  .fc.expanded .fc-hit{display:none}
+  .fc.expanded .fc-line{display:block}
+  .fc.expanded .fc-next{display:flex;flex-direction:column;gap:12px}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(136px,1fr));grid-auto-flow:dense}
+  .cell .pips{display:none}
+  .rcount{display:inline;margin-left:1px;font:500 10.5px/1 "JetBrains Mono",monospace;color:var(--soft)}
+  .cell .tip .act{display:none}
+  .cell .tip-btn{pointer-events:none}
+  .cell-hit{display:block;border-radius:12px}
+  .cell.expanded{grid-column:1/-1;padding:16px 18px 16px;gap:10px}
+  .cell.expanded .cell-hit{display:none}
+  .cell.expanded .pips{display:inline-flex}
+  .cell.expanded .pip{width:7px;height:7px}
+  .cell.expanded .rcount{display:none}
+  .cell.expanded .cname{font-size:16px;white-space:normal}
+  .cell.expanded .amt b{font-size:20px}
+  .cell.expanded .last{max-width:360px}
+  .cell.expanded .cell-more{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 22px;padding-top:6px}
+  .cell.expanded .more-near,.cell.expanded .more-cta{grid-column:1/-1}
+  .cell.expanded .more-cta{max-width:420px}
+  .steps{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .steps .step:last-child{grid-column:1/-1}
+}
+
+/* mobile: 600px and below */
+@media (max-width:600px){
+  .shell{width:calc(100% - 32px)}
+  .start{--digit:clamp(22px,7.4vw,32px);--fw:34px;--fh:25px;margin-top:20px;gap:16px 14px;padding:20px 16px 18px 14px;border-radius:16px}
+  .start+.hdr{padding-top:30px}
+  .start-compact{--digit:clamp(18px,6vw,24px);--fw:26px;--fh:19px;gap:12px 12px;padding:14px 14px 14px 12px}
+  .start-compact .start-line{font-size:15.5px}
+  .start-line{font-size:17px}
+  .start-tiles{gap:3px}
+  .start-num{border-radius:8px}
+  .start-uname{font-size:9px;letter-spacing:.06em}
+  .mob-only{display:inline-flex}
+  .nav{gap:0 12px}
+  .nav-links{gap:0 14px}
+  .hdr{padding:30px 0 20px;gap:12px}
+  .intro{font-size:15.5px}
+  .h2{font-size:24px}
+  .sec,.gsec{margin-top:44px}
+  .gsec.focused{margin-top:14px}
+  .live{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .live .it{padding:10px 14px}
+  .live .it-group{grid-column:1/-1;padding:8px 10px 8px 14px}
+  .live .it b{font-size:15px}
+  .mine{grid-template-columns:minmax(0,1fr);gap:18px;padding:26px 18px 20px 24px;border-radius:16px}
+  .mine .f-l{width:96px;height:72px}
+  .me-name{font-size:26px}
+  .me-amt{font-size:38px}
+  .mine .cta{grid-template-columns:minmax(0,1fr)}
+  .pick .field{max-width:none;width:100%}
+  .role{grid-template-columns:78px auto;row-gap:4px}
+  .role .role-txt{grid-column:1/-1}
+  .feat{gap:10px}
+  .fc{padding:16px 12px 14px 18px;gap:8px}
+  .fc .f-m{width:48px;height:36px}
+  .fc .pole::before{bottom:-14px}
+  .fc .ribbon{font-size:8.5px;padding:4px 5px 3px}
+  .fc-name{margin-top:8px;font-size:15px}
+  .fc-amt b{font-size:22px}
+  .fc-amt span{font-size:12px}
+  .fc-pots-l{display:none}
+  .fc-pots-s{display:block;font-size:10.5px}
+  .fc.expanded{padding:20px 16px 16px 22px;gap:10px}
+  .fc.expanded .fc-pots-l{display:block}
+  .fc.expanded .fc-pots-s{display:none}
+  .controls{flex-direction:column;align-items:stretch}
+  .find{width:100%}
+  .search{width:100%}
+  .seg{width:100%;box-sizing:border-box}
+  .seg button{flex:1;padding:0 8px}
+  .legend{gap:8px 12px;font-size:11px}
+  .legend .shown{display:none}
+  .legend .tip .act{display:none}
+  .legend .tip-btn{pointer-events:none}
+  .fbar-h{font-size:22px}
+  .fbar .btn{width:100%}
+  .grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .cell{padding:10px 9px 9px;gap:5px;border-radius:11px}
+  .cell .tip,.cell .ribbon,.cell .last{display:none}
+  .cname{font-size:12px}
+  .amt b{font-size:15px}
+  .amt .amt-l{display:none}
+  .mini{display:flex;gap:4px;margin-top:2px}
+  .cell-hit{border-radius:11px}
+  .cell.expanded{padding:14px}
+  .cell.expanded .mini{display:none}
+  .cell.expanded .amt .amt-l{display:inline}
+  .cell.expanded .ribbon{display:inline-block}
+  .cell.expanded .tip{display:inline-flex}
+  .cell.expanded .last{display:flex;max-width:none}
+  .cell.expanded .cell-more{grid-template-columns:minmax(0,1fr)}
+  .steps{grid-template-columns:minmax(0,1fr)}
+  .steps .step:last-child{grid-column:auto}
+}
+
+</style>
+<style>
+/* standalone additions: view-transition names while a transition runs, the SEO line and the FAQ */
+#app.vt .cell,#app.vt .fc{view-transition-name:var(--vt)}
+#app.vt .live{view-transition-name:ctf-live}
+#app.vt .mine{view-transition-name:ctf-mine}
+#app.vt .feat-sec{view-transition-name:ctf-feat}
+#app.vt .ghead{view-transition-name:ctf-ghead}
+#app.vt .fbar{view-transition-name:ctf-fbar}
+#app.vt #how{view-transition-name:ctf-how}
+#app.vt #faq{view-transition-name:ctf-faq}
+.me-seo{margin:2px 0 0;font:500 14px/1.45 Inter,sans-serif}
+.me-seo a{color:var(--acc);text-decoration:none}
+.me-seo a:hover{text-decoration:underline}
+.crumbs{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font:500 12px/1.3 "JetBrains Mono",monospace;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.crumbs a{color:var(--muted);text-decoration:none}
+.crumbs a:hover{color:var(--ink)}
+.intro .answer{color:var(--ink);font-weight:600}
+.cname a,.fc-name a{color:inherit;text-decoration:none}
+.cname a:hover,.fc-name a:hover{text-decoration:underline;text-underline-offset:3px}
+.cname a:focus-visible,.fc-name a:focus-visible,.me-seo a:focus-visible,.crumbs a:focus-visible{outline:2px solid #F2F4EF;outline-offset:2px;border-radius:4px}
+.faq-note{margin:0 0 16px;color:var(--muted);font:400 13px/1.55 "JetBrains Mono",monospace}
+.faq details p a{color:var(--acc)}
+.faq code{font:500 12.5px/1 "JetBrains Mono",monospace;color:var(--ink)}
+.all-link{display:flex;justify-content:center}
+.faq{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:start}
+.faq details{border:1px solid var(--line);border-radius:12px;background:var(--panel);padding:0 18px}
+.faq summary{cursor:pointer;list-style:none;padding:16px 0;font:500 15.5px/1.35 Inter,sans-serif;display:flex;justify-content:space-between;align-items:baseline;gap:14px}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{content:"+";color:var(--acc);font:400 18px/1 "JetBrains Mono",monospace;flex:none}
+.faq details[open] summary::after{content:"\2212"}
+.faq summary:focus-visible{outline:2px solid #F2F4EF;outline-offset:2px;border-radius:6px}
+.faq details p{margin:0 0 16px;color:var(--soft);font-size:14px;line-height:1.6}
+.faq details p b{color:var(--ink);font-weight:600}
+@media (max-width:1099px){.faq{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:400px){.start-uname,.start-compact .start-uname{font-size:8px;letter-spacing:.02em}.start-compact{--digit:clamp(21px,6vw,24px)}}
+</style>
+</head>
+<body>
+<noscript><p style="font:16px/1.5 system-ui;color:#F2F4EF;background:#101010;padding:24px;margin:0">Capture the flag: every network operator of SN25 has five provider and five extender reward slots in every country each epoch, and this page adds them up. This design needs JavaScript to draw its mock data; the live page renders it on the server.</p></noscript>
+<div id="app"></div>
+<script>
+(function () {
+  'use strict';
+
+  // ---- data: [code, name, flag col, flag row, providers won, extenders won, provider units, extender units,
+  //            paid last epoch, provider pot, extender pot, epochs since a winner, near misses] (mock)
+  const RAW = [["ad","Andorra",0,0,0,0,0,0,0,0.432,6.243,1,1],["ae","United Arab Emirates",1,0,5,0,7,0,0.24,0,0.432,0,1],["af","Afghanistan",2,0,2,0,2,0,0.24,0.144,6.243,0,0],["ag","Antigua and Barbuda",3,0,0,0,0,0,0,6.243,6.243,26,0],["ai","Anguilla",4,0,0,0,0,0,0,6.243,6.243,26,0],["al","Albania",5,0,1,0,1,0,0.24,0.192,6.243,0,2],["am","Armenia",6,0,0,0,0,0,0,0.672,6.243,2,1],["ao","Angola",7,0,0,0,0,0,0,6.243,6.243,26,0],["aq","Antarctica",8,0,0,0,0,0,0,6.243,6.243,26,0],["ar","Argentina",9,0,1,0,1,0,0.096,0.192,6.243,0,4],["as","American Samoa",10,0,0,0,0,0,0,6.243,6.243,26,0],["at","Austria",11,0,5,1,12,1,0.72,0,0.192,0,0],["au","Australia",12,0,5,1,257,1,0.72,0,0.192,0,0],["aw","Aruba",13,0,0,0,0,0,0,6.243,6.243,26,0],["ax","Åland Islands",14,0,0,0,0,0,0,6.243,6.243,26,0],["az","Azerbaijan",15,0,0,0,0,0,0,6.243,6.243,26,0],["ba","Bosnia and Herzegovina",0,1,2,0,2,0,0.24,0.144,6.243,0,1],["bb","Barbados",1,1,0,0,0,0,0,6.243,6.243,26,0],["bd","Bangladesh",2,1,5,0,14,0,0.24,0,1.153,0,1],["be","Belgium",3,1,5,0,10,0,0.24,0,6.243,0,0],["bf","Burkina Faso",4,1,0,0,0,0,0,6.243,6.243,26,0],["bg","Bulgaria",5,1,5,1,21,1,0.48,0,0.192,0,0],["bh","Bahrain",6,1,0,0,0,0,0,0.432,6.243,1,2],["bi","Burundi",7,1,1,0,1,0,0.816,0.192,6.243,0,0],["bj","Benin",8,1,0,0,0,0,0,6.243,6.243,26,0],["bl","Saint Barthélemy",9,1,0,0,0,0,0,6.243,6.243,26,0],["bm","Bermuda",10,1,0,0,0,0,0,6.243,6.243,26,0],["bn","Brunei Darussalam",11,1,0,0,0,0,0,6.243,6.243,26,0],["bo","Bolivia",12,1,0,0,0,0,0,0.432,6.243,1,1],["bq","Bonaire, Sint Eustatius and Saba",13,1,0,0,0,0,0,6.243,6.243,26,0],["br","Brazil",14,1,5,5,33,6,0.528,0,0,0,1],["bs","Bahamas",15,1,0,0,0,0,0,3.794,6.243,15,0],["bt","Bhutan",0,2,0,0,0,0,0,6.243,6.243,26,0],["bv","Bouvet Island",1,2,0,0,0,0,0,6.243,6.243,26,0],["bw","Botswana",2,2,5,0,7,0,0.24,0,6.243,0,0],["by","Belarus",3,2,0,0,0,0,0,0.432,6.243,1,1],["bz","Belize",4,2,0,0,0,0,0,6.243,6.243,26,0],["ca","Canada",5,2,5,4,2254,4,0.576,0,0.048,0,2],["cc","Cocos (Keeling) Islands",6,2,0,0,0,0,0,6.243,6.243,26,0],["cd","Congo, The Democratic Republic of the",7,2,0,0,0,0,0,6.243,6.243,26,0],["cf","Central African Republic",8,2,0,0,0,0,0,6.243,6.243,26,0],["cg","Congo",9,2,0,0,0,0,0,6.243,6.243,26,0],["ch","Switzerland",10,2,5,1,32,1,0.48,0,0.192,0,0],["ci","Côte d'Ivoire",11,2,0,0,0,0,0,6.243,6.243,26,0],["ck","Cook Islands",12,2,0,0,0,0,0,6.243,6.243,26,0],["cl","Chile",13,2,0,0,0,0,0,0.48,6.243,2,1],["cm","Cameroon",14,2,0,0,0,0,0,6.243,6.243,26,0],["cn","China",15,2,5,1,38,1,0.48,0,0.192,0,0],["co","Colombia",0,3,0,0,0,0,0,0.528,6.243,2,2],["cr","Costa Rica",1,3,1,0,1,0,0.24,0.192,6.243,0,0],["cu","Cuba",2,3,0,0,0,0,0,1.105,6.243,4,0],["cv","Cabo Verde",3,3,0,0,0,0,0,6.243,6.243,26,0],["cw","Curaçao",4,3,0,0,0,0,0,6.243,6.243,26,0],["cx","Christmas Island",5,3,0,0,0,0,0,6.243,6.243,26,0],["cy","Cyprus",6,3,0,0,0,0,0,0.336,6.243,1,8],["cz","Czechia",7,3,5,0,11,0,0.24,0,0.432,0,1],["de","Germany",8,3,5,5,8641,7,0.48,0,0,0,7],["dj","Djibouti",9,3,0,0,0,0,0,6.243,6.243,26,0],["dk","Denmark",10,3,2,0,2,0,0.24,0.144,6.243,0,2],["dm","Dominica",11,3,0,0,0,0,0,6.243,6.243,26,0],["do","Dominican Republic",12,3,0,0,0,0,0,0.432,6.243,1,1],["dz","Algeria",13,3,0,0,0,0,0,0.912,6.243,3,1],["ec","Ecuador",14,3,0,0,0,0,0,3.266,6.243,13,0],["ee","Estonia",15,3,5,0,9,0,0.24,0,6.243,0,0],["eg","Egypt",0,4,0,0,0,0,0,0.624,6.243,2,0],["eh","Western Sahara",1,4,0,0,0,0,0,6.243,6.243,26,0],["er","Eritrea",2,4,0,0,0,0,0,6.243,6.243,26,2],["es","Spain",3,4,5,4,69,4,0.48,0,0.048,0,3],["et","Ethiopia",4,4,0,0,0,0,0,0.672,6.243,2,0],["fi","Finland",5,4,5,0,42,0,0.24,0,0.432,0,1],["fj","Fiji",6,4,0,0,0,0,0,6.243,6.243,26,0],["fk","Falkland Islands (Malvinas)",7,4,0,0,0,0,0,6.243,6.243,26,0],["fm","Micronesia, Federated States of",8,4,0,0,0,0,0,6.243,6.243,26,0],["fo","Faroe Islands",9,4,0,0,0,0,0,6.243,6.243,26,0],["fr","France",10,4,5,5,341,10,0.48,0,0,0,5],["ga","Gabon",11,4,0,0,0,0,0,6.243,6.243,26,0],["gb","United Kingdom",12,4,5,5,858,8,0.48,0,0,0,4],["gd","Grenada",13,4,0,0,0,0,0,0.624,6.243,2,3],["ge","Georgia",14,4,1,0,1,0,0.144,0.192,6.243,0,7],["gf","French Guiana",15,4,0,0,0,0,0,1.105,6.243,4,0],["gg","Guernsey",0,5,0,0,0,0,0,6.243,6.243,26,0],["gh","Ghana",1,5,0,0,0,0,0,2.113,6.243,8,0],["gi","Gibraltar",2,5,0,0,0,0,0,6.243,6.243,26,0],["gl","Greenland",3,5,0,0,0,0,0,6.243,6.243,26,0],["gm","Gambia",4,5,0,0,0,0,0,6.243,6.243,26,0],["gn","Guinea",5,5,0,0,0,0,0,6.243,6.243,26,0],["gp","Guadeloupe",6,5,0,0,0,0,0,6.243,6.243,26,0],["gq","Equatorial Guinea",7,5,0,0,0,0,0,6.243,6.243,26,0],["gr","Greece",8,5,5,0,6,0,0.24,0,6.243,0,0],["gs","South Georgia and the South Sandwich Islands",9,5,0,0,0,0,0,6.243,6.243,26,0],["gt","Guatemala",10,5,0,0,0,0,0,6.243,6.243,26,0],["gu","Guam",11,5,0,0,0,0,0,6.243,6.243,26,0],["gw","Guinea-Bissau",12,5,0,0,0,0,0,6.243,6.243,26,0],["gy","Guyana",13,5,0,0,0,0,0,6.243,6.243,26,0],["hk","Hong Kong",14,5,5,2,94,2,0.528,0,0.144,0,1],["hm","Heard Island and McDonald Islands",15,5,0,0,0,0,0,6.243,6.243,26,0],["hn","Honduras",0,6,0,0,0,0,0,6.243,6.243,26,0],["hr","Croatia",1,6,5,0,6,0,0.24,0,6.243,0,0],["ht","Haiti",2,6,0,0,0,0,0,6.243,6.243,26,0],["hu","Hungary",3,6,5,1,16,1,0.961,0,0.192,0,0],["id","Indonesia",4,6,5,0,31,0,0.24,0,0.432,0,1],["ie","Ireland",5,6,5,0,13,0,0.24,0,0.672,0,1],["il","Israel",6,6,2,0,2,0,0.192,0.144,6.243,0,4],["im","Isle of Man",7,6,0,0,0,0,0,6.243,6.243,26,1],["in","India",8,6,5,1,76,1,0.912,0,0.192,0,1],["io","British Indian Ocean Territory",9,6,0,0,0,0,0,6.243,6.243,26,0],["iq","Iraq",10,6,2,0,2,0,0.096,0.144,6.243,0,3],["ir","Iran",11,6,5,0,10,0,0.336,0,6.243,0,0],["is","Iceland",12,6,1,0,1,0,0.24,0.192,6.243,0,1],["it","Italy",13,6,5,5,68,5,0.48,0,0,0,2],["je","Jersey",14,6,0,0,0,0,0,6.243,6.243,26,0],["jm","Jamaica",15,6,0,0,0,0,0,0.672,6.243,2,0],["jo","Jordan",0,7,0,0,0,0,0,1.009,6.243,4,0],["jp","Japan",1,7,5,1,111,1,0.432,0,0.192,0,1],["ke","Kenya",2,7,0,0,0,0,0,0.672,6.243,2,1],["kg","Kyrgyzstan",3,7,2,0,2,0,0.288,0.144,6.243,0,1],["kh","Cambodia",4,7,5,1,18,1,0.48,0,0.192,0,0],["ki","Kiribati",5,7,0,0,0,0,0,6.243,6.243,26,0],["km","Comoros",6,7,0,0,0,0,0,6.243,6.243,26,0],["kn","Saint Kitts and Nevis",7,7,0,0,0,0,0,6.243,6.243,26,0],["kp","North Korea",8,7,0,0,0,0,0,6.243,6.243,26,0],["kr","South Korea",9,7,5,1,69,1,0.432,0,0.192,0,1],["kw","Kuwait",10,7,0,0,0,0,0,6.243,6.243,26,0],["ky","Cayman Islands",11,7,0,0,0,0,0,0.432,6.243,1,1],["kz","Kazakhstan",12,7,3,0,3,0,0.144,0.096,6.243,0,6],["la","Laos",13,7,0,0,0,0,0,0.961,6.243,4,2],["lb","Lebanon",14,7,1,0,1,0,0.24,0.192,6.243,0,1],["lc","Saint Lucia",15,7,0,0,0,0,0,6.243,6.243,26,0],["li","Liechtenstein",0,8,0,0,0,0,0,0.864,6.243,3,0],["lk","Sri Lanka",1,8,0,0,0,0,0,0.48,0.672,2,0],["lr","Liberia",2,8,0,0,0,0,0,6.243,6.243,26,0],["ls","Lesotho",3,8,0,0,0,0,0,6.243,6.243,26,0],["lt","Lithuania",4,8,5,1,10,1,0.961,0,0.192,0,0],["lu","Luxembourg",5,8,1,0,1,0,0.24,0.192,6.243,0,1],["lv","Latvia",6,8,5,1,15,1,0.48,0,0.192,0,0],["ly","Libya",7,8,0,0,0,0,0,6.243,6.243,26,0],["ma","Morocco",8,8,5,0,18,0,0.24,0,6.243,0,0],["mc","Monaco",9,8,0,0,0,0,0,6.243,6.243,26,0],["md","Moldova",10,8,3,0,3,0,0.144,0.096,6.243,0,3],["me","Montenegro",11,8,0,0,0,0,0,2.353,6.243,9,0],["mf","Saint Martin (French part)",12,8,0,0,0,0,0,6.243,6.243,26,0],["mg","Madagascar",13,8,0,0,0,0,0,3.794,6.243,15,0],["mh","Marshall Islands",14,8,0,0,0,0,0,6.243,6.243,26,0],["mk","North Macedonia",15,8,2,0,2,0,0.24,0.144,6.243,0,4],["ml","Mali",0,9,0,0,0,0,0,1.201,6.243,5,0],["mm","Myanmar",1,9,0,0,0,0,0,0.912,6.243,3,0],["mn","Mongolia",2,9,0,0,0,0,0,6.243,6.243,26,0],["mo","Macao",3,9,5,0,6,0,0.288,0,6.243,0,1],["mp","Northern Mariana Islands",4,9,0,0,0,0,0,6.243,6.243,26,0],["mq","Martinique",5,9,0,0,0,0,0,6.243,6.243,26,0],["mr","Mauritania",6,9,0,0,0,0,0,6.243,6.243,26,0],["ms","Montserrat",7,9,0,0,0,0,0,6.243,6.243,26,0],["mt","Malta",8,9,1,0,1,0,0.432,0.192,6.243,0,0],["mu","Mauritius",9,9,0,0,0,0,0,6.243,6.243,26,0],["mv","Maldives",10,9,0,0,0,0,0,6.243,6.243,26,0],["mw","Malawi",11,9,0,0,0,0,0,6.243,6.243,26,0],["mx","Mexico",12,9,5,1,31,1,0.48,0,0.192,0,0],["my","Malaysia",13,9,5,0,44,0,0.24,0,6.243,0,0],["mz","Mozambique",14,9,0,0,0,0,0,2.305,6.243,9,0],["na","Namibia",15,9,0,0,0,0,0,6.243,6.243,26,0],["nc","New Caledonia",0,10,0,0,0,0,0,6.243,6.243,26,0],["ne","Niger",1,10,0,0,0,0,0,6.243,6.243,26,0],["nf","Norfolk Island",2,10,0,0,0,0,0,6.243,6.243,26,0],["ng","Nigeria",3,10,2,0,2,0,0.192,0.144,6.243,0,2],["ni","Nicaragua",4,10,0,0,0,0,0,6.243,6.243,26,0],["nl","Netherlands",5,10,5,1,375,1,0.48,0,0.192,0,3],["no","Norway",6,10,5,0,5,0,0.24,0,6.243,0,0],["np","Nepal",7,10,0,0,0,0,0,0.432,6.243,1,1],["nr","Nauru",8,10,0,0,0,0,0,6.243,6.243,26,0],["nu","Niue",9,10,0,0,0,0,0,6.243,6.243,26,0],["nz","New Zealand",10,10,0,0,0,0,0,0.384,6.243,1,2],["om","Oman",11,10,0,0,0,0,0,0.672,6.243,2,1],["pa","Panama",12,10,1,0,1,0,0.336,0.192,6.243,0,0],["pe","Peru",13,10,0,1,0,1,0.24,0.672,0.192,0,1],["pf","French Polynesia",14,10,0,0,0,0,0,6.243,6.243,26,0],["pg","Papua New Guinea",15,10,0,0,0,0,0,6.243,6.243,26,0],["ph","Philippines",0,11,5,2,8,2,0.48,0,0.144,0,0],["pk","Pakistan",1,11,1,1,1,1,0.432,0.192,0.192,0,1],["pl","Poland",2,11,5,1,20,1,0.48,0,0.192,0,0],["pm","Saint Pierre and Miquelon",3,11,0,0,0,0,0,6.243,6.243,26,0],["pn","Pitcairn",4,11,0,0,0,0,0,6.243,6.243,26,0],["pr","Puerto Rico",5,11,2,0,2,0,0.288,0.144,6.243,0,1],["ps","Palestine, State of",6,11,0,0,0,0,0,6.243,6.243,26,0],["pt","Portugal",7,11,5,0,17,0,0.24,0,0.672,0,1],["pw","Palau",8,11,0,0,0,0,0,6.243,6.243,26,0],["py","Paraguay",9,11,0,0,0,0,0,0.672,6.243,2,3],["qa","Qatar",10,11,0,0,0,0,0,0.624,6.243,2,1],["re","Réunion",11,11,0,0,0,0,0,6.243,6.243,26,0],["ro","Romania",12,11,5,1,39,1,0.48,0,0.192,0,0],["rs","Serbia",13,11,5,0,5,0,0.24,0,6.243,0,0],["ru","Russian Federation",14,11,5,1,175,1,0.432,0,0.192,0,3],["rw","Rwanda",15,11,0,0,0,0,0,6.243,6.243,26,0],["sa","Saudi Arabia",0,12,5,0,5,0,0.288,0,6.243,0,0],["sb","Solomon Islands",1,12,0,0,0,0,0,6.243,6.243,26,0],["sc","Seychelles",2,12,0,0,0,0,0,0.961,1.105,4,0],["sd","Sudan",3,12,0,0,0,0,0,6.243,6.243,26,0],["se","Sweden",4,12,5,2,35,2,0.48,0,0.144,0,1],["sg","Singapore",5,12,5,2,165,2,0.48,0,0.144,0,2],["sh","Saint Helena, Ascension and Tristan da Cunha",6,12,0,0,0,0,0,6.243,6.243,26,0],["si","Slovenia",7,12,4,0,4,0,0.192,0.048,6.243,0,4],["sj","Svalbard and Jan Mayen",8,12,0,0,0,0,0,6.243,6.243,26,0],["sk","Slovakia",9,12,5,0,9,0,0.24,0,6.243,0,0],["sl","Sierra Leone",10,12,0,0,0,0,0,6.243,6.243,26,0],["sm","San Marino",11,12,0,0,0,0,0,1.153,6.243,4,0],["sn","Senegal",12,12,0,0,0,0,0,6.243,6.243,26,0],["so","Somalia",13,12,0,0,0,0,0,6.243,6.243,26,0],["sr","Suriname",14,12,0,0,0,0,0,6.243,6.243,26,0],["ss","South Sudan",15,12,0,0,0,0,0,6.243,6.243,26,3],["st","Sao Tome and Principe",0,13,0,0,0,0,0,6.243,6.243,26,0],["sv","El Salvador",1,13,0,0,0,0,0,6.243,6.243,26,0],["sx","Sint Maarten (Dutch part)",2,13,0,0,0,0,0,6.243,6.243,26,0],["sy","Syria",3,13,0,0,0,0,0,6.243,6.243,26,0],["sz","Eswatini",4,13,0,0,0,0,0,6.243,6.243,26,0],["tc","Turks and Caicos Islands",5,13,0,0,0,0,0,6.243,6.243,26,0],["td","Chad",6,13,0,0,0,0,0,6.243,6.243,26,0],["tf","French Southern Territories",7,13,0,0,0,0,0,6.243,6.243,26,0],["tg","Togo",8,13,0,0,0,0,0,6.243,6.243,26,0],["th","Thailand",9,13,5,3,6,3,0.48,0,0.096,0,3],["tj","Tajikistan",10,13,0,0,0,0,0,6.243,6.243,26,0],["tk","Tokelau",11,13,0,0,0,0,0,6.243,6.243,26,0],["tl","Timor-Leste",12,13,0,0,0,0,0,6.243,6.243,26,0],["tm","Turkmenistan",13,13,0,0,0,0,0,6.243,6.243,26,3],["tn","Tunisia",14,13,0,0,0,0,0,0.672,6.243,2,0],["to","Tonga",15,13,0,0,0,0,0,6.243,6.243,26,0],["tr","Türkiye",0,14,5,1,30,1,0.48,0,0.192,0,0],["tt","Trinidad and Tobago",1,14,1,0,1,0,0.24,0.192,6.243,0,0],["tv","Tuvalu",2,14,0,0,0,0,0,6.243,6.243,26,0],["tw","Taiwan",3,14,5,0,18,0,0.24,0,0.432,0,1],["tz","Tanzania",4,14,0,0,0,0,0,0.432,6.243,1,2],["ua","Ukraine",5,14,5,1,38,1,0.48,0,0.192,0,0],["ug","Uganda",6,14,0,0,0,0,0,1.153,6.243,4,0],["um","United States Minor Outlying Islands",7,14,0,0,0,0,0,6.243,6.243,26,0],["us","United States",8,14,5,5,30631,36,0.48,0,0,0,19],["uy","Uruguay",9,14,2,0,2,0,0.288,0.144,6.243,0,1],["uz","Uzbekistan",10,14,1,0,1,0,0.192,0.192,6.243,0,0],["va","Holy See (Vatican City State)",11,14,0,0,0,0,0,6.243,6.243,26,0],["vc","Saint Vincent and the Grenadines",12,14,0,0,0,0,0,6.243,6.243,26,0],["ve","Venezuela",13,14,1,0,1,0,0.48,0.192,6.243,0,0],["vg","Virgin Islands, British",14,14,0,0,0,0,0,6.243,6.243,26,0],["vi","Virgin Islands, U.S.",15,14,0,0,0,0,0,6.243,6.243,26,0],["vn","Vietnam",0,15,5,5,1267,13,0.48,0,0,0,5],["vu","Vanuatu",1,15,0,0,0,0,0,6.243,6.243,26,0],["wf","Wallis and Futuna",2,15,0,0,0,0,0,6.243,6.243,26,0],["ws","Samoa",3,15,0,0,0,0,0,6.243,6.243,26,0],["ye","Yemen",4,15,0,0,0,0,0,6.243,6.243,26,0],["yt","Mayotte",5,15,0,0,0,0,0,6.243,6.243,26,0],["za","South Africa",6,15,5,0,11,0,0.24,0,0.672,0,1],["zm","Zambia",7,15,0,0,0,0,0,6.243,6.243,26,0],["zw","Zimbabwe",8,15,0,0,0,0,0,6.243,6.243,26,1]];
+  const THE = { us: 1, gb: 1, nl: 1, ph: 1, ae: 1, bs: 1, cf: 1, do: 1, gm: 1, ky: 1, mh: 1, mv: 1, sb: 1, sc: 1, tc: 1, cc: 1, ck: 1, fk: 1, mp: 1, km: 1, fo: 1 };
+  const SAY = { cd: 'the DR Congo', vg: 'the British Virgin Islands', vi: 'the U.S. Virgin Islands', um: 'the U.S. Outlying Islands', io: 'the British Indian Ocean Territory', bq: 'the Caribbean Netherlands', fm: 'Micronesia', ps: 'Palestine', va: 'Vatican City', sh: 'Saint Helena', gs: 'South Georgia', hm: 'Heard Island', ru: 'Russia', bn: 'Brunei' };
+  const ROWS = RAW.map(function (a) {
+    const short = a[1].split(',')[0].replace(/ \(.*\)$/, '');
+    return {
+      c: a[0], n: a[1], the: SAY[a[0]] || ((THE[a[0]] ? 'the ' : '') + short),
+      fx: a[2], fy: a[3], pp: a[4], xp: a[5], pu: a[6], xu: a[7],
+      paid: a[8], ppot: a[9], xpot: a[10], open: a[11], near: a[12]
+    };
+  });
+  const BY = {};
+  ROWS.forEach(function (r) { BY[r.c] = r; });
+  const SLOT = 0.04802566;
+  const NOPOP = { aq: 1, bv: 1, gs: 1, hm: 1, io: 1, tf: 1, um: 1 };
+
+  // ---- preview options
+  const qs = new URLSearchParams(location.search);
+  // ?page=<cc> previews a country page (/ctf/<cc> on ur.xyz); ?focus=held|np|nx opens the hub filtered.
+  const PAGE = BY[(qs.get('page') || '').toLowerCase()] ? qs.get('page').toLowerCase() : null;
+  const FOCUS0 = ['held', 'np', 'nx'].indexOf(qs.get('focus')) >= 0 ? qs.get('focus') : null;
+  const API = 'https://api.bringyour.com/sn/ctf';
+  // The page combines every network operator of the operator list (CAPTURETHEFLAG.md §9.2); this mock has one,
+  // bringyour.com, whose API serves /sn/ctf. With several, the figures are their sums and a role's odds,
+  // open slots and missed draws are listed by operator ("38% at bringyour.com · 83% at example.org").
+  const OPERATORS = 'https://ur.xyz/operators.yml';
+  // the calls to action: Start mining and Run a provider open the miner guide, Run an extender its extender chapter
+  const ctaHref = (cta) => (cta === 'Run an extender' ? '/docs/miner/extender' : '/docs/miner');
+  const PROPS = {
+    country: (qs.get('country') || 'is').toLowerCase(),
+    threshold: 5,
+    motion: qs.get('motion') !== '0'
+  };
+  const state = {
+    viewer: null, sort: 'az', show: 'all', q: '', tip: null, focus: PAGE ? null : FOCUS0,
+    seed: Math.floor(Math.random() * 2147483647),
+    expanded: qs.get('expanded') ? qs.get('expanded').toLowerCase() : null, fexp: null
+  };
+  const root = document.getElementById('app');
+  let featCache = { seed: null, codes: [] };
+
+  // ---- formatting
+  const esc = function (s) { return String(s).replace(/[&<>"']/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]; }); };
+  const two = function (v) { return v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+  const int = function (v) { return v.toLocaleString('en-US'); };
+  const pos = function (r) { return (r.fx / 15 * 100).toFixed(3) + '% ' + (r.fy / 15 * 100).toFixed(3) + '%'; };
+  const pips = function (n, cls) { const out = []; for (let i = 0; i < 5; i++) out.push(i < n ? cls : ''); return out; };
+  const pageHref = function (code) { return '?page=' + code; }; // /ctf/<cc> on ur.xyz
+  const pipsHtml = function (list) { return list.map(function (p) { return '<i class="pip ' + p + '"></i>'; }).join(''); };
+  const delayOf = function (r) { return '-' + (((r.fx * 7 + r.fy * 11) % 23) / 10).toFixed(1) + 's'; };
+  // A newcomer's chance: the entries are last epoch's eligible units in the role plus the newcomer.
+  // The draw picks five of the n entries at random, so each entry wins with probability 5/n, or 1 with five or fewer.
+  const chance = function (units) { const n = units + 1; return n <= 5 ? 1 : 5 / n; };
+  const pct = function (p) {
+    if (p >= 1) return '100%';
+    const v = p * 100;
+    if (v >= 10) return Math.round(v) + '%';
+    if (v >= 0.1) return v.toFixed(1) + '%';
+    return v.toFixed(3) + '%';
+  };
+  const drawStr = function (units) { return 'All five slots were won last epoch from ' + int(units) + ' units. With you that is ' + int(units + 1) + ' entries for five slots, each worth about ' + SLOT.toFixed(3) + ' α.'; };
+  const nextStep = function (r) {
+    const xClaim = r.xp < 5 ? SLOT + r.xpot / 5 : 0;
+    const pClaim = r.pp < 5 ? SLOT + r.ppot / 5 : 0;
+    const top = Math.max(xClaim, pClaim);
+    const both = Math.min(xClaim, pClaim) >= Math.max(0.2, top / 2);
+    const ext = xClaim >= pClaim;
+    return {
+      nearStr: r.near > 1 ? r.near + ' miners here left early last epoch.' : r.near === 1 ? '1 miner here left early last epoch.' : ((5 - r.pp) + (5 - r.xp)) + ' of 10 slots here went unclaimed last epoch.',
+      actA: both
+        ? 'Run an extender, a provider or both in ' + r.the + ' for half an epoch. Both roles have open slots, so you win by default and take a fifth of each pot every epoch you stay, '
+        : 'Run ' + (ext ? 'an extender' : 'a provider') + ' in ' + r.the + ' for half an epoch. A slot is open, so you win by default and take a fifth of its pot every epoch you stay, ',
+      actB: 'about ' + two(top) + ' α' + (both ? ' a role' : '') + ' this epoch',
+      actCta: both ? 'Start mining' : ext ? 'Run an extender' : 'Run a provider'
+    };
+  };
+  const moreRole = function (label, art, won, units, pot, p) {
+    return won < 5
+      ? label + ': ' + won + ' of 5 won last epoch, pot ' + two(pot) + ' α. Launch ' + art + ' here and you win by default: about ' + two(SLOT + pot / 5) + ' α this epoch, then a fifth of what is left each epoch you stay.'
+      : label + ': all five slots were won last epoch from ' + int(units) + ' units. The estimated probability that you win if you launch ' + art + ' here: ' + pct(p) + ', with ' + int(units + 1) + ' entries for five slots, each worth about ' + SLOT.toFixed(3) + ' α.';
+  };
+
+  // ---- the note before capture the flag starts (?prelaunch: on the hub, and compact on a country page, the same
+  // words on every one: one band, the flag and the tiles smaller, no notches and no blocks left). On ur.xyz it is the island
+  // react/src/components/pages/ctf/Countdown.jsx, shown while the snapshot is the prelaunch one; its start is the
+  // snapshot's prelaunch block (epoch 8's first, 9,600,028, projected at 12 s a block, so "about"). The preview
+  // runs on a clock of its own: ?prelaunch shows it 15 days 3 hours 38 minutes before the start, whatever the day,
+  // and ?prelaunch=<n> n seconds before (the last minute, the turn and the burst: ?prelaunch=15; a negative n after
+  // it). The board below stays the mock's drawn epoch.
+  const START = { first: 8, block: 9600028, at: Date.parse('2026-11-27T18:25:24Z') };
+  const PRE = qs.has('prelaunch');
+  const PRE_LEAD = qs.get('prelaunch') !== '' && Number.isFinite(Number(qs.get('prelaunch'))) ? Number(qs.get('prelaunch')) : 15 * 86400 + 3 * 3600 + 38 * 60;
+  const SKEW = PRE ? START.at - PRE_LEAD * 1000 - Date.now() : 0;
+  const BLOCK_MS = 12000, HOIST_MS = 3 * 50400 * BLOCK_MS;
+  const START_NOTE = 'Capture the flag starts with epoch ' + START.first + ', at block ' + int(START.block) + ', about November 27, 18:25 UTC.';
+  const START_LIVE = 'Capture the flag is live from epoch ' + START.first + '.';
+  const START_UNITS = ['days', 'hours', 'minutes', 'seconds'];
+  const START_PIPS = '<i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>';
+  const startNow = function () { return Date.now() + SKEW; };
+  // the countdown at `now`: live from the start; before it the figures (a part second counts), the blocks left and
+  // how far into the current one, and how far up its pole the flag is, climbing over the three epochs before
+  function startAt(now) {
+    const ms = START.at - now;
+    if (!(ms > 0)) return { live: true, hoist: 1 };
+    const left = Math.ceil(ms / 1000), blocks = Math.ceil(ms / BLOCK_MS);
+    const figs = [Math.floor(left / 86400), Math.floor(left / 3600) % 24, Math.floor(left / 60) % 60, left % 60]
+      .map(function (n) { return n < 10 ? '0' + n : String(n); });
+    return { live: false, figs: figs, lastMinute: left <= 60, blocks: blocks, into: blocks * BLOCK_MS - ms, hoist: Math.min(1, Math.max(0, 1 - ms / HOIST_MS)) };
+  }
+  // the time left in words for a screen reader, from the whole minutes left, so it changes at most once a minute
+  function startWords(now) {
+    const minutes = Math.ceil((START.at - now) / 60000);
+    if (!(minutes > 0)) return '';
+    const ms = minutes * 60000;
+    const u = ms >= 1.5 * 86400000 ? [Math.round(ms / 86400000), 'day'] : ms >= 1.5 * 3600000 ? [Math.round(ms / 3600000), 'hour'] : [minutes, 'minute'];
+    return 'Starts in about ' + new Intl.NumberFormat('en', { style: 'unit', unit: u[1], unitDisplay: 'long' }).format(u[0]) + '.';
+  }
+  let startDrawn = false, startBurst = false;
+  // the note's markup; the first draw puts the flag at the foot (it glides up as the clock starts) and rolls its
+  // digits in, a later draw (another render of the page) neither. Before the start it says nothing of after it;
+  // once live, the sentence of before (the longer) and the countdown hold their places unseen, and the pips burst
+  // once, on the first draw after the start or at the turn
+  function viewStart(compact) {
+    const now = startNow();
+    const c = startAt(now);
+    const first = !startDrawn;
+    startDrawn = true;
+    const burst = c.live && !startBurst;
+    if (burst) startBurst = true;
+    const tile = function (text) {
+      return '<span class="start-num">' + text.split('').map(function (d) { return '<span class="start-d"><span' + (first ? '' : ' class="s"') + '>' + d + '</span></span>'; }).join('') + '</span>';
+    };
+    return '<div class="start' + (compact ? ' start-compact' : '') + '" id="ctf-start" data-phase="' + (c.live ? 'live' : 'soon') + '"' + (c.lastMinute ? ' data-last-minute=""' : '') + ' style="--hoist:' + (first ? 0 : c.hoist) + '">' +
+      '<div class="start-pole" aria-hidden="true">' + (compact ? '' : '<i class="start-notch"></i><i class="start-notch"></i>') + '<span class="start-car"><span class="start-flag"><b>' + START.first + '</b></span>' +
+      (burst ? '<span class="start-burst">' + START_PIPS + '</span>' : '') + '</span></div>' +
+      '<p class="start-line"><span role="status">' + esc(c.live ? START_LIVE : START_NOTE) + '</span>' + (c.live ? '<span class="start-ghost" aria-hidden="true">' + esc(START_NOTE) + '</span>' : '') + '</p>' +
+      '<div class="start-clock" aria-hidden="true"><span class="start-count"><span class="label" style="color:#ED8FFF">Starts in about</span><span class="start-tiles">' +
+      (c.live ? ['--', '--', '--', '--'] : c.figs).map(function (f, i) { return (i ? '<span class="start-sep">:</span>' : '') + '<span class="start-unit">' + tile(f) + '<span class="start-uname">' + START_UNITS[i] + '</span></span>'; }).join('') +
+      '</span></span>' + (c.live ? '<span class="start-go"><i></i>Live</span>' : '') + '</div>' +
+      (compact ? '' : '<p class="start-blocks" aria-hidden="true"><span class="label">Blocks to go</span><b>≈ ' + (c.live ? '0' : int(c.blocks)) + '</b><span class="start-track">' +
+      (c.live ? '' : '<i class="start-bar" style="animation-delay:-' + c.into + 'ms"></i>') + '</span></p>') +
+      '<p class="sr">' + esc(startWords(now)) + '</p></div>';
+  }
+  // each second of the countdown (on the start's own beat) until the start: the flag's height, the digits that
+  // changed (each rolls in), the blocks left and the bar, the time in words; at the start the sentence turns live
+  // (a status, heard once) and the pips burst. Only where there is a page and a clock to run it.
+  let startTicking = false;
+  function startTick() {
+    const el = document.getElementById('ctf-start');
+    if (!el || !el.querySelector) return;
+    const now = startNow();
+    const c = startAt(now);
+    el.style.setProperty('--hoist', String(c.hoist));
+    el.setAttribute('data-phase', c.live ? 'live' : 'soon');
+    if (c.lastMinute) el.setAttribute('data-last-minute', ''); else el.removeAttribute('data-last-minute');
+    const status = el.querySelector('[role="status"]');
+    const words = startWords(now);
+    const sr = el.querySelector('.sr');
+    if (sr.textContent !== words) sr.textContent = words;
+    if (c.live) {
+      if (status.textContent !== START_LIVE) {
+        status.textContent = START_LIVE;
+        status.insertAdjacentHTML('afterend', '<span class="start-ghost" aria-hidden="true">' + esc(START_NOTE) + '</span>');
+        el.querySelector('.start-clock').insertAdjacentHTML('beforeend', '<span class="start-go"><i></i>Live</span>');
+        if (!startBurst) {
+          startBurst = true;
+          el.querySelector('.start-car').insertAdjacentHTML('beforeend', '<span class="start-burst">' + START_PIPS + '</span>');
+        }
+      }
+      return;
+    }
+    const cells = el.querySelectorAll('.start-d');
+    const digits = c.figs.join('').split('');
+    if (cells.length === digits.length) {
+      digits.forEach(function (d, i) { if (cells[i].textContent !== d) cells[i].innerHTML = '<span>' + d + '</span>'; });
+    }
+    const b = el.querySelector('.start-blocks b');
+    if (b && b.textContent !== '≈ ' + int(c.blocks)) {
+      b.textContent = '≈ ' + int(c.blocks);
+      el.querySelector('.start-track').innerHTML = '<i class="start-bar" style="animation-delay:-' + c.into + 'ms"></i>';
+    }
+    window.setTimeout(startTick, ((START.at - now) % 1000 || 1000) + 20);
+  }
+
+  // ---- the page's values
+  function compute() {
+    const threshold = PROPS.threshold;
+    const tipKey = state.tip;
+    let carried = 0, paid = 0, winners = 0, fullHeld = 0, openP = 0, openX = 0;
+    const all = ROWS.map(function (r) {
+      const avail = r.ppot + r.xpot + 10 * SLOT;
+      const tier = avail >= threshold ? (r.near > 0 ? 'hot' : 'open') : 'plain';
+      const full = r.pp === 5 && r.xp === 5;
+      carried += r.ppot + r.xpot; paid += r.paid; winners += r.pp + r.xp;
+      if (full) fullHeld += 1;
+      if (r.pp < 5) openP += 1;
+      if (r.xp < 5) openX += 1;
+      const ribbon = tier === 'hot' ? 'So close' : tier === 'open' ? 'Big pot' : (full ? 'Held' : '');
+      const keys = ['grid:', 'p:', 'x:', 'pc:', 'xc:'].map(function (k) { return k + r.c; });
+      const pc = chance(r.pu), xc = chance(r.xu);
+      const isExp = state.expanded === r.c;
+      return Object.assign({
+        c: r.c, n: r.n, the: r.the, avail: avail, availStr: two(avail), tier: tier, near: r.near,
+        won: r.pp + r.xp, full: full, ppot: r.ppot, xpot: r.xpot, paid: r.paid,
+        rank: tier === 'hot' ? 0 : tier === 'open' ? 1 : 2,
+        hasTip: tier === 'hot', plainRibbon: ribbon !== '' && tier !== 'hot', ribbon: ribbon,
+        ribbonCls: tier === 'open' ? 'r-open' : 'r-held',
+        pinCls: keys.indexOf(tipKey) >= 0 ? 'pinned' : '',
+        pOpen: r.pp < 5, pPips: pips(r.pp, 'p'), pChance: pct(pc), pClaim: 'about ' + two(SLOT + r.ppot / 5) + ' α', pPotStr: two(r.ppot) + ' α',
+        pOpenStr: (5 - r.pp) + ' of 5 provider slots went unclaimed last epoch.', pDrawStr: drawStr(r.pu), pCount: r.pp + '/5',
+        xOpen: r.xp < 5, xPips: pips(r.xp, 'x'), xChance: pct(xc), xClaim: 'about ' + two(SLOT + r.xpot / 5) + ' α', xPotStr: two(r.xpot) + ' α',
+        xOpenStr: (5 - r.xp) + ' of 5 extender slots went unclaimed last epoch.', xDrawStr: drawStr(r.xu), xCount: r.xp + '/5',
+        pMini: r.pp < 5 ? 'open' : 'held', xMini: r.xp < 5 ? 'open' : 'held',
+        moreP: moreRole('Providers', 'a provider', r.pp, r.pu, r.ppot, pc),
+        moreX: moreRole('Extenders', 'an extender', r.xp, r.xu, r.xpot, xc),
+        hasNear: r.near > 0,
+        moreNear: r.near > 0 ? 'So close: ' + r.near + (r.near === 1 ? ' miner' : ' miners') + ' here left early last epoch.' : '',
+        ctaA: r.pp < 5 && r.xp < 5 ? 'Start mining' : r.xp < 5 ? 'Run an extender' : r.pp < 5 ? 'Run a provider' : 'Start mining',
+        expanded: isExp, expCls: isExp ? 'expanded' : '',
+        hitLabel: 'Show details for ' + r.n,
+        bgpos: pos(r), delay: delayOf(r),
+        lastStr: (r.pp + r.xp) + ' won · ' + two(r.paid) + ' α',
+        srLast: 'Last epoch: ' + r.pp + ' of 5 provider slots and ' + r.xp + ' of 5 extender slots won, ' + two(r.paid) + ' alpha paid. ' +
+          (r.pp < 5 ? 'Providers not fully captured: a new provider wins by default. ' : 'Chance to win as a new provider: ' + pct(pc) + '. ') +
+          (r.xp < 5 ? 'Extenders not fully captured: a new extender wins by default.' : 'Chance to win as a new extender: ' + pct(xc) + '.')
+      }, nextStep(r));
+    });
+
+    const q = state.q.trim().toLowerCase();
+    const focus = state.focus;
+    const cells = all.filter(function (c) {
+      if (focus === 'held') return c.full;
+      if (focus === 'np') return c.pOpen;
+      if (focus === 'nx') return c.xOpen;
+      if (state.show === 'big' && c.tier === 'plain') return false;
+      if (state.show === 'held' && !c.full) return false;
+      if (q && c.n.toLowerCase().indexOf(q) < 0 && c.c !== q) return false;
+      return true;
+    });
+    // Pots within about 0.1 α of each other count as equal and fall back to A–Z (bucketed, so the order is consistent).
+    const bucket = function (v) { return Math.round(v / 0.1); };
+    const byPot = function (a, b) { return (bucket(b.ppot + b.xpot) - bucket(a.ppot + a.xpot)) || a.n.localeCompare(b.n); };
+    cells.sort(function (a, b) {
+      if (focus === 'held') return a.n.localeCompare(b.n);
+      if (focus === 'np' || focus === 'nx') return byPot(a, b);
+      if (state.sort === 'az') return a.n.localeCompare(b.n);
+      if (state.sort === 'pot') return byPot(a, b);
+      return (a.rank - b.rank) || byPot(a, b);
+    });
+
+    // Easy wins: 8 countries sampled from the big pots, weighted by pot size, without replacement
+    // (Efraimidis-Spirakis: key = u^(1/weight), keep the 8 largest). Territories without a permanent population are left out.
+    if (featCache.seed !== state.seed) {
+      let a = state.seed | 0;
+      const rnd = function () { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+      featCache = {
+        seed: state.seed,
+        codes: all.filter(function (c) { return c.avail >= threshold && !NOPOP[c.c] && c.c !== PAGE; })
+          .map(function (c) { return { c: c.c, k: Math.pow(rnd(), 1 / c.avail) }; })
+          .sort(function (x, y) { return y.k - x.k; }).slice(0, 8).map(function (x) { return x.c; })
+      };
+    }
+    const cellBy = {};
+    all.forEach(function (c) { cellBy[c.c] = c; });
+    const feat = featCache.codes.map(function (code) { return cellBy[code]; }).sort(byPot).map(function (c) {
+      const roles = c.pOpen && c.xOpen ? 'providers and extenders' : c.pOpen ? 'providers' : 'extenders';
+      return Object.assign({
+        c: c.c, n: c.n, availStr: c.availStr, bgpos: c.bgpos, delay: c.delay,
+        ribbon: c.near > 0 ? 'So close' : 'Easy win',
+        potLine: 'Provider pot ' + two(c.ppot) + ' α · extender pot ' + two(c.xpot) + ' α',
+        potShort: 'P ' + two(c.ppot) + ' α · E ' + two(c.xpot) + ' α',
+        line: (c.near > 0 ? c.near + (c.near === 1 ? ' miner was' : ' miners were') + ' here last epoch but left early. ' : '') + 'Not fully captured: ' + roles + ', so a newcomer wins by default.',
+        expanded: state.fexp === c.c, expCls: state.fexp === c.c ? 'expanded' : '',
+        hitLabel: 'Show the next step for ' + c.n
+      }, nextStep(BY[c.c]));
+    });
+
+    const r = BY[PAGE || state.viewer || PROPS.country] || BY.is;
+    const mpc = chance(r.pu), mxc = chance(r.xu);
+    const parts = [];
+    if (r.pp < 5) parts.push((5 - r.pp) + ' provider slot' + (5 - r.pp === 1 ? '' : 's'));
+    if (r.xp < 5) parts.push((5 - r.xp) + ' extender slot' + (5 - r.xp === 1 ? '' : 's'));
+    const who = r.pp < 5 && r.xp < 5 ? 'provider or extender' : r.pp < 5 ? 'provider' : 'extender';
+    const roleLine = function (won, units, pot, name) {
+      return won < 5
+        ? won + ' of 5 won last epoch · pot ' + two(pot) + ' α · not fully captured, a new ' + name + ' wins by default'
+        : '5 of 5 won last epoch · ' + int(units) + ' units in the draw · chance to win';
+    };
+    const ns = nextStep(r);
+    const me = {
+      c: r.c, n: r.n, the: r.the, bgpos: pos(r), avail: r.ppot + r.xpot + 10 * SLOT, availStr: two(r.ppot + r.xpot + 10 * SLOT),
+      msg: parts.length
+        ? parts.join(' and ') + ' in ' + r.the + ' went unclaimed last epoch, so a new ' + who + ' who stays online there for half the epoch wins by default.'
+        : 'All ten slots in ' + r.the + ' were won last epoch. A newcomer needs the draw: ' + pct(mpc) + ' as a provider, ' + pct(mxc) + ' as an extender.',
+      ppips: pips(r.pp, 'p'), xpips: pips(r.xp, 'x'),
+      pLine: roleLine(r.pp, r.pu, r.ppot, 'provider'), xLine: roleLine(r.xp, r.xu, r.xpot, 'extender'),
+      pClosed: r.pp >= 5, xClosed: r.xp >= 5, pChance: pct(mpc), xChance: pct(mxc),
+      pDrawStr: drawStr(r.pu), xDrawStr: drawStr(r.xu),
+      anyOpen: parts.length > 0, anyClosed: r.pp >= 5 || r.xp >= 5,
+      newcomer: ns.actB, waveCls: parts.length ? 'wave' : ''
+    };
+
+    return {
+      motionCls: PROPS.motion ? '' : 'still', epoch: 39, drawIn: '3d 04h', slotStr: '0.048',
+      carriedStr: two(carried), paidStr: two(paid), winners: int(winners), fullHeld: fullHeld, openP: openP, openX: openX,
+      thresholdStr: two(threshold),
+      oddsTxt: '5 ÷ entries, the exact odds of a draw of five winners',
+      focus: focus, showIntro: !focus, showFeat: feat.length > 0 && !focus,
+      gridCls: focus === 'np' ? 'focus-p' : focus === 'nx' ? 'focus-x' : '',
+      focusTitle: { held: fullHeld + ' flags held', np: openP + ' countries with providers not fully captured', nx: openX + ' countries with extenders not fully captured' }[focus] || '',
+      focusNote: {
+        held: 'Every provider slot and every extender slot was won last epoch. A newcomer needs the draw, and each cell shows the chance to win.',
+        np: 'At least one provider slot went unclaimed last epoch. A new provider who stays online there for half the epoch wins by default. Biggest pots first, provider and extender together, and A–Z among pots within 0.1 α.',
+        nx: 'At least one extender slot went unclaimed last epoch. A new extender who stays online there for half the epoch wins by default. Biggest pots first, provider and extender together, and A–Z among pots within 0.1 α.'
+      }[focus] || '',
+      page: PAGE, row: r,
+      me: me, feat: feat, cells: cells, sort: state.sort, show: state.show, q: state.q,
+      countries: ROWS.slice().sort(function (a, b) { return a.n.localeCompare(b.n); })
+    };
+  }
+
+  // ---- markup
+  const CHEV = '<svg aria-hidden="true" width="10" height="10" viewBox="0 0 10 10"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.4"></path></svg>';
+
+  // A next-step or explanation card on a chip or label: hover and focus on desktop, tap to pin.
+  function tip(o) {
+    const pinned = state.tip === o.key;
+    const id = 'd-' + o.key.replace(/[^a-z0-9-]/gi, '-');
+    return '<span class="tip ' + (o.pop || '') + (pinned ? ' pinned' : '') + '"' + (o.style ? ' style="' + o.style + '"' : '') + '>' +
+      '<button type="button" class="' + o.cls + ' tip-btn"' + (o.btnStyle ? ' style="' + o.btnStyle + '"' : '') + ' data-act="tip" data-arg="' + esc(o.key) + '" data-fk="tip:' + esc(o.key) + '" aria-describedby="' + id + '" aria-expanded="' + pinned + '">' + o.text + '</button>' +
+      '<span class="act ' + (o.low ? 'act-low' : '') + '">' +
+      '<span class="label">' + o.label + '</span>' +
+      (o.near ? '<span class="act-near">' + o.near + '</span>' : '') +
+      '<span class="act-do" id="' + id + '">' + o.body + '</span>' +
+      (o.after ? '<span class="act-near">' + o.after + '</span>' : '') +
+      '<a class="btn btn-p btn-sm" href="' + ctaHref(o.cta) + '">' + o.cta + '</a>' +
+      '</span></span>';
+  }
+
+  function viewNav() {
+    return '<nav class="nav" aria-label="Site"><a class="brand" href="https://ur.xyz"><i aria-hidden="true"></i>ur.xyz</a>' +
+      '<div class="nav-links"><a href="https://ur.xyz/price">Price</a><a href="https://ur.xyz/mainnet">Mainnet</a><a href="https://ur.xyz/reserve">Reserve</a>' +
+      '<a href="https://ur.xyz/dashboard">Dashboard</a><a href="https://ur.xyz/ctf" aria-current="page">Capture the flag</a></div></nav>';
+  }
+
+  // The header. A country page leads with plain earning words; "Capture the flag" stays the program's name.
+  function viewHeader(v) {
+    if (v.page) {
+      const r = v.row;
+      return '<header class="hdr">' +
+        '<nav class="crumbs" aria-label="Breadcrumb"><a href="?">Capture the flag</a><span aria-hidden="true">›</span><span aria-current="page">' + esc(r.the.replace(/^the /, '')) + '</span></nav>' +
+        '<h1>Earn crypto in ' + esc(r.the) + ' with your internet connection</h1>' +
+        '<p class="mission">Five provider and five extender slots in ' + esc(r.the) + ' every epoch</p>' +
+        '<p class="intro"><span class="answer">Mine in ' + esc(r.the) + ' as a provider or an extender, with the miner or the free URnetwork app, and you can win weekly crypto rewards.</span> As of epoch ' + v.epoch + ': ' + esc(v.me.msg) + ' Rewards are paid in alpha, the token of Bittensor subnet 25, and are not guaranteed.</p>' +
+        '</header>';
+    }
+    return '<header class="hdr">' +
+      '<div class="label" style="color:#ED8FFF">SN25 · every country, every epoch</div>' +
+      '<h1>Capture the flag</h1>' +
+      '<p class="mission">Providers and extenders in every country</p>' +
+      '<p class="intro"><span class="answer">Mine as a provider or an extender, with the miner or the free URnetwork app, and you can win weekly crypto rewards wherever you are.</span> Every SN25 network operator runs a capture the flag pool beside its provider pool, with ten slots in every country each epoch (one week): five for providers and five for extenders. A slot nobody wins rolls into the country\'s pot at that operator, and each winner there takes its slot and a fifth of the pot. Where an operator\'s slot went unclaimed, a new miner with that operator who stays online for half the epoch wins by default.</p>' +
+      '</header>';
+  }
+
+  function viewLive(v) {
+    return '<section class="live" aria-label="This epoch">' +
+      '<div class="tag label" style="color:#ED8FFF"><i aria-hidden="true"></i>Epoch ' + v.epoch + '</div>' +
+      '<div class="it"><span class="label">Draw in</span><b>' + v.drawIn + '</b></div>' +
+      '<div class="it"><span class="label">Slot</span><b>' + v.slotStr + ' α</b></div>' +
+      '<div class="it"><span class="label">Carried into this epoch</span><b>' + v.carriedStr + ' α</b></div>' +
+      '<div class="it"><span class="label">Paid last epoch</span><b>' + v.paidStr + ' α · ' + v.winners + ' winners</b></div>' +
+      '<button type="button" class="it it-btn" data-act="focus" data-arg="held" data-fk="focus-held" aria-pressed="' + (v.focus === 'held') + '" title="Show only the flags held on both roles"><span class="label it-hint">Flags held' + CHEV + '</span><b>' + v.fullHeld + ' / 249</b></button>' +
+      '<div class="it it-group" role="group" aria-labelledby="nc-label"><span class="label" id="nc-label">Not fully captured</span>' +
+      '<button type="button" class="it-row" data-act="focus" data-arg="np" data-fk="focus-np" aria-pressed="' + (v.focus === 'np') + '" title="Show only countries with a provider slot open"><span>Providers</span><b>' + v.openP + '</b>' + CHEV + '</button>' +
+      '<button type="button" class="it-row" data-act="focus" data-arg="nx" data-fk="focus-nx" aria-pressed="' + (v.focus === 'nx') + '" title="Show only countries with an extender slot open"><span>Extenders</span><b>' + v.openX + '</b>' + CHEV + '</button>' +
+      '</div></section>';
+  }
+
+  function viewMine(v) {
+    const me = v.me;
+    const chanceTip = function (role) {
+      const P = role === 'p';
+      if (!(P ? me.pClosed : me.xClosed)) return '';
+      return tip({
+        key: P ? 'me-pc' : 'me-xc', cls: 'chance ex', text: P ? me.pChance : me.xChance, pop: 'tip-pop',
+        style: 'margin-left:6px;vertical-align:middle', btnStyle: 'margin-left:0',
+        label: 'Chance to win · ' + (P ? 'providers' : 'extenders'),
+        body: 'The estimated probability that you win this epoch\'s reward in ' + esc(me.the) + ' if you launch ' + (P ? 'a provider' : 'an extender') + ' there and keep it online for half the epoch: <b>' + (P ? me.pChance : me.xChance) + '</b>.',
+        after: esc(P ? me.pDrawStr : me.xDrawStr), cta: P ? 'Run a provider' : 'Run an extender'
+      });
+    };
+    const options = v.countries.map(function (x) { return '<option value="' + esc(x.n) + '"></option>'; }).join('');
+    return '<section class="mine ' + me.waveCls + '" aria-labelledby="mine-h">' +
+      '<div class="pole"><span class="flag f-l" aria-hidden="true" style="background-position:' + me.bgpos + '"></span></div>' +
+      '<div class="me-body"><div class="label">' + (v.page ? 'This epoch in ' + esc(me.the) : 'Your country · from your connection') + '</div>' +
+      '<h2 id="mine-h" class="me-name">' + esc(me.n) + '</h2>' +
+      (v.page ? '' : '<p class="me-seo"><a href="' + pageHref(me.c) + '">Earning in ' + esc(me.the) + ': questions and how to start</a></p>') +
+      '<div class="me-amtrow"><b class="px me-amt">' + me.availStr + '</b><span class="me-unit">α</span><span style="color:#C9CCC6;font-size:15px">up for grabs this epoch</span></div>' +
+      '<p class="me-msg">' + esc(me.msg) + '</p>' +
+      '<div class="roles">' +
+      '<div class="role"><span class="label">Providers</span><span class="pips big" aria-hidden="true">' + pipsHtml(me.ppips) + '</span><span class="mono role-txt">' + esc(me.pLine) + chanceTip('p') + '</span></div>' +
+      '<div class="role"><span class="label">Extenders</span><span class="pips big" aria-hidden="true">' + pipsHtml(me.xpips) + '</span><span class="mono role-txt">' + esc(me.xLine) + chanceTip('x') + '</span></div>' +
+      '</div>' +
+      (me.anyClosed ? '<p class="touch-block me-note">Chance to win is the estimated probability that you win the epoch reward if you launch a provider or an extender here and keep it online for half the epoch.</p>' : '') +
+      '</div>' +
+      '<div class="cta"><a class="btn btn-p" href="/docs/miner">Start mining in ' + esc(me.the) + '</a><a class="btn btn-s" href="/docs/miner/extender">Run an extender</a>' +
+      '<p class="cta-note">Stay online in ' + esc(me.the) + ' for at least half the epoch to enter the draw. Your app\'s payout wallet is used.</p>' +
+      '<div class="pick"><label for="ctf-country" class="label">Somewhere else?</label><input id="ctf-country" class="field" list="ctf-countries" placeholder="Type a country" autocomplete="off"><datalist id="ctf-countries">' + options + '</datalist></div>' +
+      '</div></section>';
+  }
+
+  function viewFeatCard(f) {
+    return '<article class="fc wave ' + f.expCls + '" style="animation-delay:' + f.delay + ';--vt:f-' + f.c + '">' +
+      '<button type="button" class="fc-hit tap" data-act="fexp" data-arg="' + f.c + '" data-fk="fexp:' + f.c + '" aria-label="' + esc(f.hitLabel) + '" aria-expanded="' + f.expanded + '"></button>' +
+      '<div class="fc-top"><span class="pole"><span class="flag f-m" aria-hidden="true" style="background-position:' + f.bgpos + ';animation-delay:' + f.delay + '"></span></span>' +
+      tip({ key: 'feat:' + f.c, cls: 'ribbon r-hot', text: f.ribbon, label: 'Next step', near: esc(f.nearStr), body: esc(f.actA) + '<b>' + esc(f.actB) + '</b>.', cta: f.actCta }) +
+      '</div>' +
+      '<h3 class="fc-name"><a href="' + pageHref(f.c) + '">' + esc(f.n) + '</a></h3>' +
+      '<div class="fc-amt"><b class="px">' + f.availStr + '</b><span>α up for grabs</span></div>' +
+      '<span class="mono fc-pots fc-pots-l">' + esc(f.potLine) + '</span><span class="mono fc-pots fc-pots-s">' + esc(f.potShort) + '</span>' +
+      '<p class="mono fc-line">' + esc(f.line) + '</p>' +
+      '<div class="fc-next"><span class="act-near">' + esc(f.nearStr) + '</span><span class="act-do">' + esc(f.actA) + '<b>' + esc(f.actB) + '</b>.</span>' +
+      '<div class="more-cta"><a class="btn btn-p btn-sm" href="' + ctaHref(f.actCta) + '">' + f.actCta + '</a><button type="button" class="btn btn-s btn-sm" data-act="fexp" data-arg="' + f.c + '">Close</button></div></div>' +
+      '</article>';
+  }
+
+  function viewFeat(v) {
+    return '<section class="sec feat-sec" aria-labelledby="close-h">' +
+      '<div style="display:flex;justify-content:space-between;align-items:flex-end;gap:12px 20px;flex-wrap:wrap"><div style="display:flex;flex-direction:column;gap:8px">' +
+      '<div class="label" style="color:#ED8FFF">Easy wins</div><h2 id="close-h" class="h2">' + (v.page ? 'Other big pots this epoch' : 'Big pots waiting this epoch') + '</h2>' +
+      '<p class="sub">Eight countries drawn at random from the biggest pots, weighted by pot size. Each has an open slot, so a newcomer who stays online there for half the epoch wins by default.</p></div>' +
+      '<button type="button" class="btn btn-s" data-act="shuffle" data-fk="shuffle">Shuffle</button></div>' +
+      '<div class="feat">' + v.feat.map(viewFeatCard).join('') + '</div></section>';
+  }
+
+  function viewRole(c, role) {
+    const P = role === 'p';
+    const name = P ? 'provider' : 'extender', art = P ? 'a provider' : 'an extender', cta = P ? 'Run a provider' : 'Run an extender';
+    const chip = (P ? c.pOpen : c.xOpen)
+      ? '<span class="rpot" title="' + (P ? 'Provider' : 'Extender') + ' pot">' + (P ? c.pPotStr : c.xPotStr) + '</span>' +
+        tip({ key: (P ? 'p:' : 'x:') + c.c, cls: 'chance win', text: 'Open', low: true, label: 'Not fully captured · ' + name + 's', near: esc(P ? c.pOpenStr : c.xOpenStr),
+              body: 'Run ' + art + ' in ' + esc(c.the) + ' for half an epoch and you win by default: <b>' + (P ? c.pClaim : c.xClaim) + '</b> this epoch, then a fifth of what is left each epoch you stay.', cta: cta })
+      : tip({ key: (P ? 'pc:' : 'xc:') + c.c, cls: 'chance ex', text: P ? c.pChance : c.xChance, low: true, label: 'Chance to win · ' + name + 's',
+              body: 'The estimated probability that you win this epoch\'s reward in ' + esc(c.the) + ' if you launch ' + art + ' there and keep it online for half the epoch: <b>' + (P ? c.pChance : c.xChance) + '</b>.',
+              after: esc(P ? c.pDrawStr : c.xDrawStr), cta: cta });
+    return '<div class="rrow ' + (P ? 'p-row' : 'x-row') + '"><span class="rl" aria-hidden="true">' + (P ? 'P' : 'E') + '</span>' +
+      '<span class="pips" aria-hidden="true">' + pipsHtml(P ? c.pPips : c.xPips) + '</span><span class="rcount" aria-hidden="true">' + (P ? c.pCount : c.xCount) + '</span>' + chip + '</div>';
+  }
+
+  function viewCell(c) {
+    const ribbon = c.hasTip
+      ? tip({ key: 'grid:' + c.c, cls: 'ribbon r-hot', text: 'So close', label: 'Next step', near: esc(c.nearStr), body: esc(c.actA) + '<b>' + esc(c.actB) + '</b>.', cta: c.actCta })
+      : (c.plainRibbon ? '<span class="ribbon ' + c.ribbonCls + '">' + c.ribbon + '</span>' : '');
+    return '<article class="cell ' + c.tier + ' ' + c.pinCls + ' ' + c.expCls + '" style="animation-delay:' + c.delay + ';--vt:c-' + c.c + '">' +
+      '<button type="button" class="cell-hit tap" data-act="exp" data-arg="' + c.c + '" data-fk="exp:' + c.c + '" aria-label="' + esc(c.hitLabel) + '" aria-expanded="' + c.expanded + '"></button>' +
+      '<div class="cell-top"><span class="flag f-s" aria-hidden="true" style="background-position:' + c.bgpos + ';animation-delay:' + c.delay + '"></span>' + ribbon + '</div>' +
+      '<h3 class="cname" title="' + esc(c.n) + '"><a href="' + pageHref(c.c) + '">' + esc(c.n) + '</a></h3>' +
+      '<div class="amt"><b>' + two(c.ppot + c.xpot) + '</b><span class="amt-u">α</span><span class="amt-l">in pots</span></div>' +
+      '<span class="mini" aria-hidden="true"><i class="m ' + c.pMini + '">P</i><i class="m ' + c.xMini + '">E</i></span>' +
+      '<div class="last">' + viewRole(c, 'p') + viewRole(c, 'x') + '<span aria-hidden="true">' + c.lastStr + '</span><span class="sr">' + esc(c.srLast) + '</span></div>' +
+      '<div class="cell-more">' + (c.hasNear ? '<p class="more-near">' + esc(c.moreNear) + '</p>' : '') +
+      '<p class="more-line">' + esc(c.moreP) + '</p><p class="more-line">' + esc(c.moreX) + '</p>' +
+      '<div class="more-cta"><a class="btn btn-p btn-sm" href="' + ctaHref(c.ctaA) + '">' + c.ctaA + '</a><a class="btn btn-s btn-sm" href="' + pageHref(c.c) + '">Country page</a><button type="button" class="btn btn-s btn-sm" data-act="exp" data-arg="' + c.c + '">Close</button></div></div>' +
+      '</article>';
+  }
+
+  function seg(act, arg, label, cur) {
+    return '<button type="button" data-act="' + act + '" data-arg="' + arg + '" data-fk="' + act + ':' + arg + '" aria-pressed="' + (cur === arg) + '">' + label + '</button>';
+  }
+
+  function viewGrid(v) {
+    const head = v.showIntro
+      ? '<div class="ghead" style="display:flex;flex-direction:column;gap:16px">' +
+        '<div style="display:flex;flex-direction:column;gap:8px"><div class="label">Every flag</div><h2 id="grid-h" class="h2">All 249 countries</h2></div>' +
+        '<div class="controls"><div style="display:flex;flex-wrap:wrap;gap:10px">' +
+        '<div class="seg" role="group" aria-label="Sort">' + seg('sort', 'az', 'A–Z', v.sort) + seg('sort', 'pot', 'Biggest pot', v.sort) + seg('sort', 'easy', 'Easiest wins', v.sort) + '</div>' +
+        '<div class="seg" role="group" aria-label="Show">' + seg('show', 'all', 'All', v.show) + seg('show', 'big', 'Big pots', v.show) + seg('show', 'held', 'Held', v.show) + '</div></div>' +
+        '<div class="find"><label for="ctf-q" class="label">Find</label><input id="ctf-q" class="field search" type="search" placeholder="Country or code" value="' + esc(v.q) + '"></div></div>' +
+        '<div class="legend">' +
+        '<span class="li mob-only"><i class="m open">P</i><i class="m held">E</i>open slot, or fully captured · tap a country for its details</span>' +
+        '<span class="li"><i class="pip p"></i>provider won</span><span class="li"><i class="pip x"></i>extender won</span><span class="li"><i class="pip"></i>slot open</span>' +
+        '<span class="li">' + tip({ key: 'legend-open', cls: 'chance win', text: 'Open', pop: 'tip-pop', btnStyle: 'margin-left:0', label: 'Not fully captured',
+          body: 'A slot went unclaimed last epoch. A new provider or extender who stays online there for half the epoch <b>wins by default</b> and takes a fifth of the pot each epoch. Hover any Open chip for its role and amount.', cta: 'Start mining' }) + ' not fully captured, a newcomer wins by default</span>' +
+        '<span class="li">' + tip({ key: 'legend-chance', cls: 'chance ex', text: '2.0%', pop: 'tip-pop', btnStyle: 'margin-left:0', label: 'Chance to win',
+          body: 'Where all five of a role\'s slots were won, this is the estimated probability that you win that role\'s <b>epoch reward</b> if you launch a provider or an extender in the country and keep it online for half the epoch.',
+          after: 'Entries are last epoch\'s eligible units in the role, plus you.', cta: 'Start mining' }) + ' chance to win where all five slots were won</span>' +
+        '<span class="li">' + tip({ key: 'legend', cls: 'ribbon r-hot', text: 'So close', pop: 'tip-pop', label: 'Next step',
+          body: 'Miners were in these countries but left before half the epoch. Run a provider or an extender there for half an epoch and you take <b>a fifth of the pot</b> each epoch you stay.', cta: 'Start mining' }) + ' a big pot, and miners there fell short last epoch</span>' +
+        '<span class="li"><span class="ribbon r-open">Big pot</span>' + v.thresholdStr + ' α or more waiting</span>' +
+        '<span class="shown" style="margin-left:auto">' + v.cells.length + ' shown · P providers, E extenders: last epoch\'s winners and each open role\'s pot</span>' +
+        '</div></div>'
+      : '';
+    const fbar = v.focus
+      ? '<div class="fbar"><div style="display:flex;flex-direction:column;gap:6px;min-width:0"><div class="label" style="color:#ED8FFF">From the stats above</div>' +
+        '<h2 id="grid-h" class="fbar-h">' + esc(v.focusTitle) + '</h2><p class="sub" style="font-size:14.5px;max-width:640px">' + esc(v.focusNote) + '</p></div>' +
+        '<button type="button" class="btn btn-s" data-act="focus" data-arg="" data-fk="clear">Show all 249</button></div>'
+      : '';
+    return '<section class="gsec' + (v.focus ? ' focused' : '') + '" aria-labelledby="grid-h">' + head + fbar +
+      '<div class="grid ' + v.gridCls + '">' + v.cells.map(viewCell).join('') + '</div>' +
+      (v.cells.length === 0 ? '<p style="margin:0;padding:28px;border:1px dashed #303030;border-radius:12px;color:#8F938C;text-align:center">No country matches “' + esc(v.q) + '”.</p>' : '') +
+      '</section>';
+  }
+
+  function viewHow(v) {
+    return '<section id="how" class="sec" aria-labelledby="how-h"><h2 id="how-h" class="h2">How the draw works</h2><div class="steps">' +
+      '<div class="step"><b>01</b><h3>Be there</h3><p>Run a provider or an extender in the country for at least half the epoch, and be online when it ends. Your network\'s existing payout wallet is used, so there is nothing new to sign.</p></div>' +
+      '<div class="step"><b>02</b><h3>The draw</h3><p>When the epoch ends, each network operator commits the list of its eligible miners on chain. A public drand round then picks up to five winners per country for each role from that list. With five or fewer entries, everyone wins. Miners in one /29 or /48 share a single ticket.</p></div>' +
+      '<div class="step"><b>03</b><h3>Claim</h3><p>Each winner takes its slot and a fifth of the country\'s pot, so staying several epochs captures most of a big pot. The alpha accrues to your wallet, and you claim it with your pool earnings in the app.</p></div>' +
+      '</div></section>';
+  }
+
+  // Questions, as visible HTML (no FAQPage markup: Google dropped that rich result). A country page answers the
+  // seed searches in their own words: make money, passive income, remote work (SEO.md §2.2).
+  function faqHtml(title, items) {
+    return '<section id="faq" class="sec" aria-labelledby="faq-h"><h2 id="faq-h" class="h2">' + esc(title) + '</h2><div class="faq">' +
+      items.map(function (it, i) {
+        return '<details' + (i === 0 ? ' open' : '') + '><summary>' + esc(it[0]) + '</summary><p>' + it[1] + '</p>' +
+          (it[2] ? '<p class="faq-note">' + it[2] + '</p>' : '') + '</details>';
+      }).join('') + '</div></section>';
+  }
+
+  function viewFaq(v) {
+    if (!v.page) {
+      return faqHtml('Questions', [
+        ['What is capture the flag?', 'A weekly reward that is part of the protocol of Bittensor subnet 25 (UR): every network operator runs a capture the flag pool beside its provider pool, with five provider slots and five extender slots in every country each epoch (one week), and winners are paid in alpha, the subnet\'s token. A slot that nobody wins adds its amount to that country\'s pot, so a newcomer to an empty country takes a fifth of the pot every epoch it stays.'],
+        ['How do I win a slot?', 'Run a miner or the free URnetwork app as a provider or an extender, keep it online in your country for at least half the epoch, and be online when it ends. Where your operator\'s slot went unclaimed last epoch, a newcomer wins by default. Where all five were won, its public draw picks five winners.'],
+        ['How much can I earn?', 'A slot is worth about ' + v.slotStr + ' α this epoch, and a winner in a country with a pot also takes a fifth of that pot. Amounts change every epoch with the network\'s emission and with how many people run in each country, and alpha\'s price moves. Nothing is guaranteed.'],
+        ['Is it passive income, or a job?', 'Neither, quite. The app runs in the background on a phone or computer you already have, but it earns only while it stays online. It is not a job, with no employer, hours or wage, and not an investment, with no fixed return.'],
+        ['What is the difference between a provider and an extender?', 'A provider shares your internet connection with the people who use the network. An extender is a relay for people who cannot reach the network directly, for example behind censorship. The miner and the desktop app run both by default, and one device can win in both roles.'],
+        ['How is the draw kept fair?', 'When the epoch ends, each network operator commits the list of its eligible miners on chain. A drand round published after that commitment then picks the winners, so nobody, the operator included, can choose them. Every draw can be checked against its census and its round.'],
+        ['Can my AI assistant read this data?', 'Yes. The numbers on this page add up the public JSON every network operator serves at <a href="' + API + '">/sn/ctf</a>, documented in <code>sn/api/operator.yml</code>, with times in UTC and amounts in α; <a href="' + OPERATORS + '">the operator list</a> names each operator\'s API. They change once an epoch.']
+      ]);
+    }
+    const r = v.row, me = v.me, the = esc(r.the);
+    const entries = function (won, units, role) {
+      return units === 0 ? 'no ' + role + ' entered' : won + ' of ' + int(units) + ' ' + role + (units === 1 ? ' entry' : ' entries') + ' won a slot';
+    };
+    const pOpen = r.pp < 5, xOpen = r.xp < 5;
+    const advice = pOpen && xOpen
+      ? 'Either. Both roles have open slots in ' + the + ', so a newcomer in either role wins by default. The desktop app runs both.'
+      : xOpen
+        ? 'An extender. Its slots in ' + the + ' were not all won last epoch, so a new extender wins by default. All five provider slots were won, so a new provider needs the draw: about <b>' + me.pChance + '</b>.'
+        : pOpen
+          ? 'A provider. Its slots in ' + the + ' were not all won last epoch, so a new provider wins by default. All five extender slots were won, so a new extender needs the draw: about <b>' + me.xChance + '</b>.'
+          : 'Both roles were fully captured last epoch, so a newcomer needs the draw: about <b>' + me.pChance + '</b> as a provider and <b>' + me.xChance + '</b> as an extender. The desktop app runs both, which enters both draws.';
+    return faqHtml('Questions about earning in ' + r.the, [
+      ['Can you make money in ' + r.the + ' by sharing your internet?', 'Yes, in small amounts. A slot is worth about ' + v.slotStr + ' α this epoch, and the pots carried in ' + the + ' are <b>' + two(r.ppot) + ' α</b> for providers and <b>' + two(r.xpot) + ' α</b> for extenders. Each winner takes its slot and a fifth of its role\'s pot. Last epoch, ' + entries(r.pp, r.pu, 'provider') + ' and ' + entries(r.xp, r.xu, 'extender') + '. Rewards are paid in alpha, whose value changes, and nothing is guaranteed.'],
+      ['Is it passive income?', 'Partly. The app runs in the background on a phone or computer you already have, but it earns only while it stays online, and what you win depends on how many others run in ' + the + ' and on alpha\'s price. It is not an investment and has no fixed return.'],
+      ['Is it remote work in ' + r.the + '?', 'No. Capture the flag is not a job: there is no employer, no hours and no wage. It can run alongside remote work or any other job, on the internet connection you already have.'],
+      ['Provider or extender: which should I run in ' + r.the + '?', advice],
+      ['How are winners chosen, and can I check?', 'When the epoch ends, each network operator commits the list of its eligible miners in ' + the + ' on chain, and a drand round published after it draws up to five winners per role. With five entries or fewer, everyone wins. Miners in one /29 or /48 share a single entry. Each draw\'s census and round are public.'],
+      ['How do I get paid?', 'Winnings go to the payout wallet the app already uses, and you claim them with your pool earnings in the app.',
+        'Local note for ' + the + ': how to cash out here and what local law says, dated and reviewed by a person.']
+    ]);
+  }
+
+  function viewAll() {
+    return '<section class="sec all-link" aria-label="More countries"><a class="btn btn-s" href="?">All 249 countries</a></section>';
+  }
+
+  // The head follows the page, as Base.astro's props would: title, description, canonical, alternate, JSON-LD.
+  const HUB_TITLE = "Earn crypto by sharing your internet in 249 countries | UR";
+  const HUB_LD = {"@context": "https://schema.org", "@graph": [{"@type": "Dataset", "@id": "https://ur.xyz/ctf#dataset", "name": "URnetwork capture the flag: reward slots and pots by country", "description": "Each epoch (one week), every network operator of Bittensor subnet 25 (UR) has five provider slots and five extender slots in every one of the 249 ISO 3166-1 countries, and this data adds every operator's up. Per country, the data gives last epoch's winners and the units in each draw, the pot carried into this epoch for each role, and a newcomer's chance to win where all five slots were won. Amounts are in alpha, the subnet's token, before participants' costs.", "url": "https://ur.xyz/ctf", "dateModified": "2026-11-11", "isAccessibleForFree": true, "creator": {"@type": "Organization", "name": "UR", "url": "https://ur.xyz"}, "spatialCoverage": {"@type": "Place", "name": "Worldwide"}, "temporalCoverage": "2026-11-27/..", "variableMeasured": ["Provider slots won", "Extender slots won", "Units in the draw", "Provider pot (alpha)", "Extender pot (alpha)", "Chance to win"], "distribution": [{"@type": "DataDownload", "encodingFormat": "application/json", "contentUrl": "https://api.bringyour.com/sn/ctf"}]}]};
+  const UPDATED = '2026-11-11';
+  const titleFor = function (r) {
+    const a = 'Earn crypto in ' + r.the + ': open slots and pots | UR';
+    return Array.from(a).length <= 60 ? a : 'Earn crypto in ' + r.the + ' | UR';
+  };
+  function setMeta(attr, key, val) {
+    let el = document.head.querySelector('meta[' + attr + '="' + key + '"]');
+    if (!el) { el = document.createElement('meta'); el.setAttribute(attr, key); document.head.appendChild(el); }
+    el.setAttribute('content', val);
+  }
+  function setLink(rel, href) {
+    let el = document.head.querySelector('link[rel="' + rel + '"]');
+    if (!el) { el = document.createElement('link'); el.setAttribute('rel', rel); document.head.appendChild(el); }
+    el.setAttribute('href', href);
+  }
+  function countryLd(r, url) {
+    // Base.astro adds the BreadcrumbList from breadcrumbName, so it is not repeated here.
+    return { '@context': 'https://schema.org', '@graph': [{
+      '@type': 'WebPage', '@id': url + '#page', url: url, name: titleFor(r).replace(/ \| UR$/, ''),
+      dateModified: UPDATED, inLanguage: 'en',
+      about: { '@type': 'Country', name: r.n, identifier: r.c.toUpperCase() },
+      isPartOf: { '@id': 'https://ur.xyz/ctf#dataset' }
+    }] };
+  }
+  function syncHead(v) {
+    const r = v.row;
+    const url = 'https://ur.xyz/ctf' + (v.page ? '/' + r.c : '');
+    const title = v.page ? titleFor(r) : HUB_TITLE;
+    const desc = v.page
+      ? r.the.charAt(0).toUpperCase() + r.the.slice(1) + ' this epoch: ' + (5 - r.pp) + ' provider and ' + (5 - r.xp) + ' extender slots open, with pots of ' + two(r.ppot) + ' α and ' + two(r.xpot) + ' α. Stay online for half the epoch to win. Updated ' + UPDATED + '.'
+      : 'Five provider and five extender reward slots in every country, every week. This epoch: ' + v.openP + ' countries with open provider slots and ' + v.carriedStr + ' α in pots.';
+    document.title = title;
+    setMeta('name', 'description', desc);
+    setMeta('property', 'og:title', title);
+    setMeta('property', 'og:description', desc);
+    setMeta('property', 'og:url', url);
+    setMeta('property', 'og:image', 'https://ur.xyz/ctf/og/' + (v.page ? r.c + '-' : '') + 'epoch-' + v.epoch + '.png');
+    setLink('canonical', url);
+    setLink('alternate', API + (v.page ? '/country/' + r.c : ''));
+    const ld = document.getElementById('ctf-jsonld');
+    if (ld) ld.textContent = JSON.stringify(v.page ? countryLd(r, url) : HUB_LD, null, 1);
+  }
+
+  function viewFoot(v) {
+    return '<footer class="mono foot" style="margin-top:48px">' +
+      '<p>Up for grabs is an estimate: the pots carried in, plus this epoch\'s ten slots at last epoch\'s slot amount of ' + v.slotStr + ' α. Every draw can be checked against its on-chain census and drand round, published at its operator\'s <a href="https://api.bringyour.com/sn/ctf">/sn/ctf</a>.</p>' +
+      '<p>Chance to win shows where all five of a role\'s slots at an operator were won last epoch. Its entries are last epoch\'s eligible units in that role at that operator plus you, and it is ' + v.oddsTxt + '. Where an operator\'s slot went unclaimed, a new miner with that operator wins by default.</p>' +
+      '<p>Rewards are paid in alpha, the token of Bittensor subnet 25, whose value changes and can fall. They depend on uptime, on how many others run in each country and on the network\'s emission. They are not wages, a salary, a guaranteed income or an investment, and you pay your own costs, such as power and data.</p>' +
+      '<p>Capture the flag is part of the SN25 protocol: every network operator runs a capture the flag pool beside its provider pool, with its own draw in every country, and this page combines every operator in <a href="' + OPERATORS + '">the operator list</a>. Its rules are public: the method in CAPTURETHEFLAG.md, and the code in the subnet\'s repository.</p>' +
+      '<p>Country pages are built from each epoch\'s public data. Their local notes are written and reviewed by people.</p>' +
+      '<p>Mockup data: 26 simulated epochs on the network\'s provider coverage of August to November 2026, at epoch 4\'s scale. Flags: flag-icons, MIT licence.</p>' +
+      '</footer>';
+  }
+
+  function view(v) {
+    return '<div class="ctf ' + v.motionCls + '">' +
+      '<div class="mockbar"><b>Mockup</b><span>Simulated data: 26 epochs on the network\'s real country coverage, one network operator\'s; with several, the page adds them up and lists each operator\'s odds by its domain' + (PRE ? '; the note before the start counts down to epoch 8 on a clock of its own, above the drawn mock' : '') + '</span></div>' +
+      '<div class="shell">' + viewNav() + (PRE ? viewStart(Boolean(v.page)) : '') + viewHeader(v) + viewLive(v) +
+      (v.showIntro ? viewMine(v) : '') + (v.page ? viewFaq(v) : '') + (v.showFeat ? viewFeat(v) : '') +
+      (v.page ? viewAll(v) : viewGrid(v)) + viewHow(v) + (v.page ? '' : viewFaq(v)) + viewFoot(v) +
+      '</div></div>';
+  }
+
+  // ---- rendering, focus restore and transitions
+  function render() {
+    const a = document.activeElement;
+    let keep = null;
+    if (a && root.contains(a)) keep = { id: a.id, fk: a.getAttribute('data-fk'), s: a.selectionStart, e: a.selectionEnd };
+    const v = compute();
+    root.innerHTML = view(v);
+    syncHead(v);
+    if (PRE && !startTicking && typeof window.setTimeout === 'function') { startTicking = true; window.setTimeout(startTick, 40); }
+    if (keep) {
+      const el = keep.id ? document.getElementById(keep.id) : keep.fk ? root.querySelector('[data-fk="' + CSS.escape(keep.fk) + '"]') : null;
+      if (el) {
+        el.focus({ preventScroll: true });
+        if (keep.s != null && el.setSelectionRange) { try { el.setSelectionRange(keep.s, keep.e); } catch (err) { /* not a text field */ } }
+      }
+    }
+  }
+
+  function transition(mutate) {
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!PROPS.motion || reduce || !document.startViewTransition) { mutate(); render(); return; }
+    root.classList.add('vt');
+    const t = document.startViewTransition(function () { mutate(); render(); });
+    t.finished.finally(function () { root.classList.remove('vt'); });
+  }
+
+  root.addEventListener('click', function (e) {
+    const el = e.target.closest('[data-act]');
+    if (!el || !root.contains(el)) return;
+    const act = el.getAttribute('data-act'), arg = el.getAttribute('data-arg');
+    if (act === 'tip') { state.tip = state.tip === arg ? null : arg; render(); }
+    else if (act === 'sort') { state.sort = arg; render(); }
+    else if (act === 'show') { state.show = arg; render(); }
+    else if (act === 'shuffle') { state.seed = Math.floor(Math.random() * 2147483647); state.tip = null; render(); }
+    else if (act === 'focus') {
+      if (PAGE) { location.href = arg ? '?focus=' + arg : '?'; return; }
+      const next = arg && state.focus !== arg ? arg : null;
+      transition(function () { state.focus = next; state.tip = null; state.expanded = null; state.fexp = null; });
+    }
+    else if (act === 'exp') { transition(function () { state.expanded = state.expanded === arg ? null : arg; state.tip = null; }); }
+    else if (act === 'fexp') { transition(function () { state.fexp = state.fexp === arg ? null : arg; state.tip = null; }); }
+  });
+  root.addEventListener('input', function (e) {
+    if (e.target.id === 'ctf-q') { state.q = e.target.value; render(); }
+  });
+  root.addEventListener('change', function (e) {
+    if (e.target.id !== 'ctf-country') return;
+    const v = e.target.value.trim().toLowerCase();
+    const hit = ROWS.find(function (x) { return x.n.toLowerCase() === v || x.c === v; });
+    if (hit && PAGE) { location.href = pageHref(hit.c); return; }
+    if (hit) { state.viewer = hit.c; render(); }
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

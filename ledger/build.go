@@ -63,6 +63,28 @@ type EpochInput struct {
 	// ascending source epoch order. Each is allocated by its source epoch's
 	// rows, and the epoch's own rows allocate f_k less their amounts.
 	Recovery []RecoveryInput
+	// The epoch's extender pool (WHITEPAPER.md §8.6.2). Set it for every
+	// epoch the extender pool amendment covers, from the first epoch of its
+	// signed amendment entry (E_x), and for no other; Rows are then the
+	// provider rows without the shares the amendment pools. Nil builds the
+	// epoch as before the amendment.
+	Extenders *ExtenderInput
+}
+
+// One covered epoch's extender pool input.
+type ExtenderInput struct {
+	// Z: the funded intra-platform and intra-network bytes of the contracts
+	// that closed in the epoch's earning window, less declared measurement
+	// and test traffic, before the cap.
+	Bytes uint64
+	// The epoch's census, sorted by client id and extender id
+	// (CheckCensusRows).
+	Census []CensusRow
+	// When not nil, the census chunk references the epoch's extender component
+	// was first built with, and Bytes must be the Z it was first built with.
+	// Census must encode to exactly these chunks. Leave it nil the first time,
+	// or to rebuild on an operator command.
+	Chunks []Ref
 }
 
 // BuildInput is a root's input.
@@ -96,6 +118,22 @@ type EpochAllocation struct {
 	Deltas []protocol.LedgerDelta
 	// Recovery lists the epoch's recovery components and what each allocated.
 	Recovery []RecoveryAllocation
+	// The epoch's extender component, nil without one. Its share rows were
+	// allocated with the provider rows.
+	Extenders *ExtenderAllocation
+}
+
+// An epoch's extender component as built: the split, and the chunks the header
+// lists for its census and share rows.
+type ExtenderAllocation struct {
+	ExtenderSplit
+	Census []Ref
+	Chunks []Ref
+}
+
+// The component as the header lists it.
+func (self *ExtenderAllocation) Header() *HeaderExtenders {
+	return &HeaderExtenders{Bytes: self.Bytes, Census: slices.Clone(self.Census), Rows: slices.Clone(self.Chunks)}
 }
 
 // Objects holds ledger objects by reference.
@@ -119,10 +157,11 @@ type Ledger struct {
 // with eligible usage is allocated from its own rows; the others carry their
 // funding forward. A covered epoch's recovery components (§16 step 6) are
 // each allocated from their source epoch's rows first, and the epoch's own
-// walk step takes f_k less the amounts they allocated. Each coldkey's deltas
-// are added to its account, and coldkeys without an account get new
-// accounts, appended in ascending order. The result depends only on the
-// input.
+// walk step takes f_k less the amounts they allocated. A covered epoch with
+// an extender pool (WHITEPAPER.md §8.6.2) allocates by its provider rows and
+// its extender share rows together. Each coldkey's deltas are added to its
+// account, and coldkeys without an account get new accounts, appended in
+// ascending order. The result depends only on the input.
 func Build(ctx context.Context, in BuildInput) (*Ledger, error) {
 	if ctx == nil {
 		return nil, ErrInput
@@ -200,13 +239,23 @@ func Build(ctx context.Context, in BuildInput) (*Ledger, error) {
 		if err != nil {
 			return nil, err
 		}
-		if out.Amount, out.Deltas, err = w.step(ctx, &ordinary, input.Rows, input.Null); err != nil {
+		rows := input.Rows
+		if input.Extenders != nil {
+			if out.Extenders, err = buildExtenders(input, objects); err != nil {
+				return nil, err
+			}
+			rows = allocationRows(input.Rows, out.Extenders.Rows)
+		}
+		if out.Amount, out.Deltas, err = w.step(ctx, &ordinary, rows, input.Null); err != nil {
 			return nil, fmt.Errorf("epoch %d: %w", input.Epoch, err)
 		}
 		out.Allocated = w.allocated
 		header.Epochs[i] = HeaderEpoch{Epoch: out.Epoch, Null: out.Null, Providers: out.Providers}
 		for _, component := range out.Recovery {
 			header.Epochs[i].Recovery = append(header.Epochs[i].Recovery, HeaderRecovery{Epoch: component.Epoch, Amount: component.Amount, Null: component.Null, Providers: component.Providers})
+		}
+		if out.Extenders != nil {
+			header.Epochs[i].Extenders = out.Extenders.Header()
 		}
 	}
 	if !w.allocated {

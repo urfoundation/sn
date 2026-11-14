@@ -331,7 +331,7 @@ deleting journals or issuing another signature casually.
 
 ### Contract graph: exact action requests
 
-Build the CLI from the reviewed checkout with the pinned Go 1.27.3 toolchain.
+Build the CLI from the reviewed checkout with the pinned Go 1.27.4 toolchain.
 It runs on Linux (amd64/arm64) and macOS (arm64/amd64); on macOS, custody
 volumes follow [MACOS.md](MACOS.md). Retain the binary's SHA-256 and
 `go version -m` output with the other launch locks:
@@ -660,7 +660,7 @@ The owner decided on October 6 ([operator discovery design](../docs/OPERATOR-DIS
 sections 1.6 and 7):
 
 - Our validator hotkey is the dedicated hotkey **`ur-mainnet`** (btcli wallet
-  `root/subtensor/wallets/ur-mainnet`, hotkey `default`), not the SN25 owner hotkey.
+  `vault/subtensor/wallets/ur-mainnet`, hotkey `default`), not the SN25 owner hotkey.
   It is the `hotkey_seed_file` of the signed UR validator config, sits on root
   (netuid 0) and validates SN25
   ([current root participation](ROOT-CURRENT-PARTICIPANT.md)). **Superseded:**

@@ -21,7 +21,7 @@ How the registration works:
     TAO), which is refunded when the call executes.
   - Each signatory pays its own fee.
 - **Burn cap.** `limit_price` caps the burn; at the call below it is 0.01 TAO, against a 0.0005 TAO burn on October 6.
-- **The recipients.** Their keys live in the hotkey-only btcli wallet `root/subtensor/wallets/ur-reserve`:
+- **The recipients.** Their keys live in the hotkey-only btcli wallet `vault/subtensor/wallets/ur-reserve`:
   - `recipient-1`: `5E4cTwgTGqRkEiiZZNJ6c5gKydg5oCWNQu6H3bufPCZhnvgv`
   - `recipient-2`: `5EoH9PUVrzAQ3vXaAGQXvhxWGGd3DkTEf9mno2YnGWJ8JHPH`
 

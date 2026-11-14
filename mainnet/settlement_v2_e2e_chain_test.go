@@ -1,9 +1,14 @@
 // The settlement v2 end-to-end chain (VERSION2-FINAL.md §15, "End-to-end in
 // Go"): exact creation bytecode runs in geth's EVM over a StateDB, beside Go
 // fakes of runtime 475's neuron (0x804), staking (0x805) and alpha (0x808)
-// precompiles. Stake lives in the StateDB journal, so a Solidity revert rolls
-// a runtime move back exactly. geth hands a precompile no caller, so a tracer
-// OnEnter hook attributes each runtime call to its contract's mapped coldkey.
+// precompiles, and of its address mapping (0x80c) and its Ed25519 (0x402)
+// and sr25519 (0x403) signature checks, which verify for real. The staking
+// fake also keeps runtime 486's StakingHotkeys lists, with their limits, the
+// account opt-outs and auto-stake destinations, and addStake, which the
+// capture the flag carry contract uses (CAPTURETHEFLAG.md §4.6). Stake lives
+// in the StateDB journal, so a Solidity revert rolls a runtime move back
+// exactly. geth hands a precompile no caller, so a tracer OnEnter hook
+// attributes each runtime call to its contract's mapped coldkey.
 // The chain serves the JSON-RPC the claim daemon, snclaim, the operator server
 // and the validator read, with EIP-1898 block selectors and the native
 // genesis hash. Every mined block is final at once; blocks without
@@ -13,6 +18,7 @@ package main
 import (
 	"bytes"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -27,6 +33,7 @@ import (
 	"sync"
 	"testing"
 
+	schnorrkel "github.com/ChainSafe/go-schnorrkel"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/common/hexutil"
@@ -61,12 +68,25 @@ const (
 	// e2eBurnRao from the registering contract's balance.
 	e2eRaoWei  = 1_000_000_000
 	e2eBurnRao = 500_000_000
+	// The runtime's existential deposit, which an account the chain keeps it
+	// on (e2eRuntime.keep) can never spend from the EVM.
+	e2eExistentialDepositRao = 500
+	// Runtime 486's StakingHotkeys limits: a transfer from another coldkey
+	// adds a hotkey only to a list of fewer than 128 entries, a coldkey's own
+	// add, move or auto-stake destination to one of fewer than 256.
+	e2eThirdPartyStakingHotkeys = 128
+	e2eStakingHotkeys           = 256
 )
 
 var (
 	e2eNeuron  = common.HexToAddress("0x0000000000000000000000000000000000000804")
 	e2eStaking = common.HexToAddress("0x0000000000000000000000000000000000000805")
 	e2eAlpha   = common.HexToAddress("0x0000000000000000000000000000000000000808")
+	// The runtime's address mapping, which STCtfCarry reads its coldkey from,
+	// and the signature checks a fleet binding's signatures pass.
+	e2eAddressMapping = common.HexToAddress("0x000000000000000000000000000000000000080c")
+	e2eEd25519        = common.HexToAddress("0x0000000000000000000000000000000000000402")
+	e2eSr25519        = common.HexToAddress("0x0000000000000000000000000000000000000403")
 )
 
 // The precompile surface the contracts call, with the gas the R battery
@@ -79,7 +99,21 @@ var e2eRuntimeABI = func() abi.ABI {
 {"type":"function","name":"transferStake","stateMutability":"nonpayable","inputs":[{"name":"destinationColdkey","type":"bytes32"},{"name":"hotkey","type":"bytes32"},{"name":"originNetuid","type":"uint256"},{"name":"destinationNetuid","type":"uint256"},{"name":"amount","type":"uint256"}],"outputs":[]},
 {"type":"function","name":"registerLimit","stateMutability":"payable","inputs":[{"name":"netuid","type":"uint16"},{"name":"hotkey","type":"bytes32"},{"name":"limitPrice","type":"uint64"}],"outputs":[]},
 {"type":"function","name":"getUid","stateMutability":"view","inputs":[{"name":"netuid","type":"uint16"},{"name":"hotkey","type":"bytes32"}],"outputs":[{"name":"exists","type":"bool"},{"name":"uid","type":"uint16"}]},
-{"type":"function","name":"getAlphaPrice","stateMutability":"view","inputs":[{"name":"netuid","type":"uint16"}],"outputs":[{"name":"","type":"uint256"}]}
+{"type":"function","name":"getAlphaPrice","stateMutability":"view","inputs":[{"name":"netuid","type":"uint16"}],"outputs":[{"name":"","type":"uint256"}]},
+{"type":"function","name":"addressMapping","stateMutability":"view","inputs":[{"name":"target","type":"address"}],"outputs":[{"name":"","type":"bytes32"}]},
+{"type":"function","name":"verify","stateMutability":"pure","inputs":[{"name":"message","type":"bytes32"},{"name":"publicKey","type":"bytes32"},{"name":"r","type":"bytes32"},{"name":"s","type":"bytes32"}],"outputs":[{"name":"","type":"bool"}]},
+{"type":"function","name":"addStake","stateMutability":"payable","inputs":[{"name":"hotkey","type":"bytes32"},{"name":"amount","type":"uint256"},{"name":"netuid","type":"uint256"}],"outputs":[]},
+{"type":"function","name":"getNominatorMinRequiredStake","stateMutability":"view","inputs":[],"outputs":[{"name":"","type":"uint256"}]},
+{"type":"function","name":"getStakingHotkeys","stateMutability":"view","inputs":[{"name":"coldkey","type":"bytes32"},{"name":"offset","type":"uint64"},{"name":"limit","type":"uint16"}],"outputs":[{"name":"hotkeys","type":"bytes32[]"},{"name":"total","type":"uint64"}]},
+{"type":"function","name":"getOwnedHotkeys","stateMutability":"view","inputs":[{"name":"coldkey","type":"bytes32"}],"outputs":[{"name":"","type":"bytes32[]"}]},
+{"type":"function","name":"getColdkeyLock","stateMutability":"view","inputs":[{"name":"coldkey","type":"bytes32"},{"name":"netuid","type":"uint256"}],"outputs":[{"name":"lockInfo","type":"tuple","components":[{"name":"exists","type":"bool"},{"name":"hotkey","type":"bytes32"},{"name":"locked_mass","type":"uint256"},{"name":"conviction","type":"uint128"},{"name":"is_perpetual","type":"bool"}]}]},
+{"type":"function","name":"setRejectStakingHotkeyGrowth","stateMutability":"nonpayable","inputs":[{"name":"enabled","type":"bool"}],"outputs":[]},
+{"type":"function","name":"getRejectStakingHotkeyGrowth","stateMutability":"view","inputs":[{"name":"coldkey","type":"bytes32"}],"outputs":[{"name":"","type":"bool"}]},
+{"type":"function","name":"setRejectLockedAlpha","stateMutability":"payable","inputs":[{"name":"enabled","type":"bool"}],"outputs":[]},
+{"type":"function","name":"getRejectLockedAlpha","stateMutability":"view","inputs":[{"name":"coldkey","type":"bytes32"}],"outputs":[{"name":"","type":"bool"}]},
+{"type":"function","name":"getHotkeyOwner","stateMutability":"view","inputs":[{"name":"hotkey","type":"bytes32"}],"outputs":[{"name":"exists","type":"bool"},{"name":"owner","type":"bytes32"}]},
+{"type":"function","name":"setColdkeyAutoStakeHotkey","stateMutability":"nonpayable","inputs":[{"name":"netuid","type":"uint16"},{"name":"hotkey","type":"bytes32"}],"outputs":[]},
+{"type":"function","name":"getAutoStakeDestination","stateMutability":"view","inputs":[{"name":"coldkey","type":"bytes32"},{"name":"netuid","type":"uint16"}],"outputs":[{"name":"exists","type":"bool"},{"name":"hotkey","type":"bytes32"}]}
 ]`))
 	if err != nil {
 		panic(err)
@@ -90,6 +124,17 @@ var e2eRuntimeABI = func() abi.ABI {
 var e2eRuntimeGas = map[string]uint64{
 	"getStake": 4_748, "getMinerCollateral": 1_013, "moveStake": 81_753, "transferStake": 79_321,
 	"registerLimit": 1_409_550, "getUid": 995, "getAlphaPrice": 1_000,
+	// Not measured by the R battery: the runtime's Ed25519 and sr25519
+	// checks charge a 6,000 base, and its address mapping charges nothing of
+	// its own.
+	"addressMapping": 0, "verify": 6_000,
+	// Nor are the calls the carry contract adds (rehearsal R-9 measures them
+	// on the live runtime): its seed's addStake, the account settings it sets
+	// and reads, and the views ctf-carry review reads.
+	"addStake": 81_753, "getNominatorMinRequiredStake": 1_000, "getStakingHotkeys": 5_000, "getOwnedHotkeys": 5_000,
+	"getColdkeyLock": 2_000, "setRejectStakingHotkeyGrowth": 20_000, "getRejectStakingHotkeyGrowth": 1_000,
+	"setRejectLockedAlpha": 20_000, "getRejectLockedAlpha": 1_000, "getHotkeyOwner": 1_000,
+	"setColdkeyAutoStakeHotkey": 20_000, "getAutoStakeDestination": 1_000,
 }
 
 // Runtime 475 charges a dispatch's actual weight but admits it only if the gas
@@ -123,6 +168,9 @@ type e2eRuntime struct {
 	// shortfall makes every move and transfer credit its destination one rao
 	// short, as a share pool above price 1 can.
 	shortfall bool
+	// keep holds the accounts whose existential deposit the chain keeps:
+	// their EVM balance is the runtime's spendable balance (spendable).
+	keep map[common.Address]bool
 }
 
 func e2eRuntimeSlot(kind string, words ...[32]byte) common.Hash {
@@ -145,8 +193,11 @@ func (self *e2eRuntime) stake(hotkey, coldkey [32]byte) *big.Int {
 	return self.word(e2eStaking, e2eRuntimeSlot("stake", hotkey, coldkey))
 }
 
+// setStake writes a position, and the coldkey's StakingHotkeys list follows
+// it (sync). It checks no limit: the operations that grow a list do.
 func (self *e2eRuntime) setStake(hotkey, coldkey [32]byte, amount *big.Int) {
 	self.setWord(e2eStaking, e2eRuntimeSlot("stake", hotkey, coldkey), amount)
+	self.sync(coldkey, hotkey)
 }
 
 func (self *e2eRuntime) collateral(hotkey, coldkey [32]byte) *big.Int {
@@ -197,6 +248,166 @@ func (self *e2eRuntime) credit(hotkey, coldkey [32]byte, amount *big.Int) {
 		amount = new(big.Int).Sub(amount, common.Big1)
 	}
 	self.setStake(hotkey, coldkey, new(big.Int).Add(self.stake(hotkey, coldkey), amount))
+}
+
+// e2eRuntimeIndex is a list index as a slot word.
+func e2eRuntimeIndex(index uint64) [32]byte { return common.BigToHash(new(big.Int).SetUint64(index)) }
+
+// spendable is address's balance as the EVM sees it: for an account the
+// chain keeps the existential deposit on, its free balance less the deposit,
+// as Frontier reports the reducible balance under Preserve; else all of it.
+func (self *e2eRuntime) spendable(db *state.StateDB, address common.Address) *uint256.Int {
+	balance := db.GetBalance(address)
+	if !self.keep[address] {
+		return balance
+	}
+	deposit := new(uint256.Int).Mul(uint256.NewInt(e2eExistentialDepositRao), uint256.NewInt(e2eRaoWei))
+	if balance.Lt(deposit) {
+		return new(uint256.Int)
+	}
+	return new(uint256.Int).Sub(balance, deposit)
+}
+
+// hotkeyOwner returns the coldkey that owns a hotkey account, if any:
+// registerLimit's caller, or the coldkey that associated it.
+func (self *e2eRuntime) hotkeyOwner(hotkey [32]byte) ([32]byte, bool) {
+	owner := self.db.GetState(e2eNeuron, e2eRuntimeSlot("owner", hotkey))
+	return owner, owner != (common.Hash{})
+}
+
+// associate makes hotkey a hotkey account of coldkey, as try_associate_hotkey
+// and a registration do; a hotkey account someone else holds stays theirs,
+// and the call changes nothing (runtime 486). It reports whether coldkey owns
+// it after.
+func (self *e2eRuntime) associate(hotkey, coldkey [32]byte) bool {
+	if owner, owned := self.hotkeyOwner(hotkey); owned {
+		return owner == coldkey
+	}
+	self.db.SetState(e2eNeuron, e2eRuntimeSlot("owner", hotkey), common.Hash(coldkey))
+	count := self.word(e2eNeuron, e2eRuntimeSlot("owned-count", coldkey)).Uint64()
+	self.db.SetState(e2eNeuron, e2eRuntimeSlot("owned", coldkey, e2eRuntimeIndex(count)), common.Hash(hotkey))
+	self.setWord(e2eNeuron, e2eRuntimeSlot("owned-count", coldkey), new(big.Int).SetUint64(count+1))
+	return true
+}
+
+// owned is the hotkeys coldkey owns, in the order it came to own them.
+func (self *e2eRuntime) owned(coldkey [32]byte) [][32]byte {
+	count := self.word(e2eNeuron, e2eRuntimeSlot("owned-count", coldkey)).Uint64()
+	hotkeys := make([][32]byte, count)
+	for i := range hotkeys {
+		hotkeys[i] = self.db.GetState(e2eNeuron, e2eRuntimeSlot("owned", coldkey, e2eRuntimeIndex(uint64(i))))
+	}
+	return hotkeys
+}
+
+// stakingHotkeys is coldkey's StakingHotkeys list.
+func (self *e2eRuntime) stakingHotkeys(coldkey [32]byte) [][32]byte {
+	length := self.word(e2eStaking, e2eRuntimeSlot("list-length", coldkey)).Uint64()
+	hotkeys := make([][32]byte, length)
+	for i := range hotkeys {
+		hotkeys[i] = self.db.GetState(e2eStaking, e2eRuntimeSlot("list", coldkey, e2eRuntimeIndex(uint64(i))))
+	}
+	return hotkeys
+}
+
+func (self *e2eRuntime) listed(coldkey, hotkey [32]byte) bool {
+	return self.word(e2eStaking, e2eRuntimeSlot("listed", coldkey, hotkey)).Sign() != 0
+}
+
+func (self *e2eRuntime) flag(name string, coldkey [32]byte) bool {
+	return self.word(e2eStaking, e2eRuntimeSlot(name, coldkey)).Sign() != 0
+}
+
+func (self *e2eRuntime) setFlag(name string, coldkey [32]byte, on bool) {
+	value := new(big.Int)
+	if on {
+		value.SetUint64(1)
+	}
+	self.setWord(e2eStaking, e2eRuntimeSlot(name, coldkey), value)
+}
+
+// autoStake is coldkey's auto-stake destination on the subnet, if any.
+func (self *e2eRuntime) autoStake(coldkey [32]byte) ([32]byte, bool) {
+	hotkey := self.db.GetState(e2eStaking, e2eRuntimeSlot("auto-stake", coldkey))
+	return hotkey, hotkey != (common.Hash{})
+}
+
+// sync keeps hotkey on coldkey's StakingHotkeys list while the pair holds
+// stake or the hotkey is the coldkey's auto-stake destination, and drops it
+// otherwise: a move of a whole position leaves no dust (runtime 486,
+// staking_hotkey_must_remain).
+func (self *e2eRuntime) sync(coldkey, hotkey [32]byte) {
+	destination, pinned := self.autoStake(coldkey)
+	keep := self.stake(hotkey, coldkey).Sign() != 0 || (pinned && destination == hotkey)
+	index := self.word(e2eStaking, e2eRuntimeSlot("listed", coldkey, hotkey)).Uint64()
+	length := self.word(e2eStaking, e2eRuntimeSlot("list-length", coldkey)).Uint64()
+	switch {
+	case keep && index == 0:
+		self.db.SetState(e2eStaking, e2eRuntimeSlot("list", coldkey, e2eRuntimeIndex(length)), common.Hash(hotkey))
+		self.setWord(e2eStaking, e2eRuntimeSlot("listed", coldkey, hotkey), new(big.Int).SetUint64(length+1))
+		self.setWord(e2eStaking, e2eRuntimeSlot("list-length", coldkey), new(big.Int).SetUint64(length+1))
+	case !keep && index != 0:
+		last := self.db.GetState(e2eStaking, e2eRuntimeSlot("list", coldkey, e2eRuntimeIndex(length-1)))
+		self.db.SetState(e2eStaking, e2eRuntimeSlot("list", coldkey, e2eRuntimeIndex(index-1)), last)
+		self.setWord(e2eStaking, e2eRuntimeSlot("listed", coldkey, last), new(big.Int).SetUint64(index))
+		self.db.SetState(e2eStaking, e2eRuntimeSlot("list", coldkey, e2eRuntimeIndex(length-1)), common.Hash{})
+		self.setWord(e2eStaking, e2eRuntimeSlot("listed", coldkey, hotkey), new(big.Int))
+		self.setWord(e2eStaking, e2eRuntimeSlot("list-length", coldkey), new(big.Int).SetUint64(length-1))
+	}
+}
+
+// ownGrowth checks that coldkey's own operation may add hotkey to its list:
+// a listed hotkey always, a new one below 256 entries.
+func (self *e2eRuntime) ownGrowth(coldkey, hotkey [32]byte) error {
+	if !self.listed(coldkey, hotkey) && self.word(e2eStaking, e2eRuntimeSlot("list-length", coldkey)).Uint64() >= e2eStakingHotkeys {
+		return errors.New("TooManyStakingHotkeys")
+	}
+	return nil
+}
+
+// thirdPartyGrowth checks that a transfer from another coldkey may add
+// hotkey to coldkey's list: a listed hotkey always; a new one only below 128
+// entries, and, while the coldkey rejects staking-hotkey growth, only one it
+// owns (runtime 486, ensure_third_party_staking_hotkeys_can_grow).
+func (self *e2eRuntime) thirdPartyGrowth(coldkey, hotkey [32]byte) error {
+	if self.listed(coldkey, hotkey) {
+		return nil
+	}
+	if owner, owned := self.hotkeyOwner(hotkey); self.flag("rejects-growth", coldkey) && (!owned || owner != coldkey) {
+		return errors.New("AccountRejectsStakingHotkeyGrowth")
+	}
+	if self.word(e2eStaking, e2eRuntimeSlot("list-length", coldkey)).Uint64() >= e2eThirdPartyStakingHotkeys {
+		return errors.New("TooManyStakingHotkeys")
+	}
+	return nil
+}
+
+// sweep is root's sweep of small nominations (runtime 486,
+// clear_small_nomination_if_required): a position on a hotkey the coldkey
+// does not own, worth less than the nominator minimum, is unstaked to the
+// coldkey's TAO, which account, the coldkey's EVM address, holds. It returns
+// the TAO in rao.
+func (self *e2eRuntime) sweep(hotkey, coldkey [32]byte, account common.Address) *big.Int {
+	held := self.stake(hotkey, coldkey)
+	tao := new(big.Int).Div(new(big.Int).Mul(held, self.price()), big.NewInt(1e18))
+	if owner, owned := self.hotkeyOwner(hotkey); (owned && owner == coldkey) || held.Sign() == 0 || tao.Cmp(self.word(e2eStaking, e2eRuntimeSlot("nominator-minimum"))) >= 0 {
+		return new(big.Int)
+	}
+	self.setStake(hotkey, coldkey, new(big.Int))
+	self.db.AddBalance(account, uint256.MustFromBig(new(big.Int).Mul(tao, big.NewInt(e2eRaoWei))), tracing.BalanceChangeUnspecified)
+	return tao
+}
+
+// e2eSpendableState is the StateDB the EVM executes over: the balances of the
+// accounts the runtime keeps an existential deposit on read as spendable,
+// for BALANCE, SELFBALANCE and every value transfer's check alike.
+type e2eSpendableState struct {
+	*state.StateDB
+	runtime *e2eRuntime
+}
+
+func (self e2eSpendableState) GetBalance(address common.Address) *uint256.Int {
+	return self.runtime.spendable(self.StateDB, address)
 }
 
 // e2ePrecompile is one runtime precompile address.
@@ -286,6 +497,9 @@ func (self *e2ePrecompile) Run(input []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := rt.ownGrowth(coldkey, destination); err != nil {
+			return nil, err
+		}
 		rt.setStake(origin, coldkey, new(big.Int).Sub(rt.stake(origin, coldkey), amount))
 		rt.credit(destination, coldkey, amount)
 		return nil, nil
@@ -304,6 +518,13 @@ func (self *e2ePrecompile) Run(input []byte) ([]byte, error) {
 		if destination != coldkey && left.Cmp(rt.conviction(hotkey, coldkey)) < 0 {
 			return nil, errors.New("AccountRejectsLockedAlpha")
 		}
+		growth := rt.ownGrowth(destination, hotkey)
+		if destination != coldkey {
+			growth = rt.thirdPartyGrowth(destination, hotkey)
+		}
+		if growth != nil {
+			return nil, growth
+		}
 		rt.setStake(hotkey, coldkey, left)
 		rt.credit(hotkey, destination, amount)
 		return nil, nil
@@ -315,8 +536,7 @@ func (self *e2ePrecompile) Run(input []byte) ([]byte, error) {
 		if _, exists := rt.uid(hotkey); exists {
 			return nil, errors.New("HotKeyAlreadyRegisteredInSubNet")
 		}
-		owner := rt.db.GetState(e2eNeuron, e2eRuntimeSlot("owner", hotkey))
-		if owner != (common.Hash{}) && owner != common.Hash(coldkey) {
+		if owner, owned := rt.hotkeyOwner(hotkey); owned && owner != coldkey {
 			return nil, errors.New("NonAssociatedColdKey")
 		}
 		if e2eBurnRao > limit {
@@ -332,20 +552,147 @@ func (self *e2ePrecompile) Run(input []byte) ([]byte, error) {
 		next := rt.word(e2eNeuron, e2eRuntimeSlot("next-uid"))
 		rt.setWord(e2eNeuron, e2eRuntimeSlot("next-uid"), new(big.Int).Add(next, common.Big1))
 		rt.setWord(e2eNeuron, e2eRuntimeSlot("uid", hotkey), new(big.Int).Add(next, common.Big1))
-		rt.db.SetState(e2eNeuron, e2eRuntimeSlot("owner", hotkey), common.Hash(coldkey))
+		rt.associate(hotkey, coldkey)
 		return nil, nil
+	case "addStake":
+		// The caller's own stake from its TAO: the amount in rao, debited
+		// from the balance it can spend and credited at the price.
+		hotkey, amount := args[0].([32]byte), args[1].(*big.Int)
+		if err := netuid(args[2]); err != nil {
+			return nil, err
+		}
+		if amount.Sign() == 0 {
+			return nil, errors.New("AmountTooLow")
+		}
+		if err := rt.ownGrowth(coldkey, hotkey); err != nil {
+			return nil, err
+		}
+		wei := new(big.Int).Mul(amount, big.NewInt(e2eRaoWei))
+		if amount.Cmp(new(big.Int).SetUint64(e2eWholePosition)) >= 0 || rt.spendable(rt.db, rt.caller).ToBig().Cmp(wei) < 0 {
+			return nil, errors.New("NotEnoughBalanceToStake")
+		}
+		rt.db.SubBalance(rt.caller, uint256.MustFromBig(wei), tracing.BalanceChangeUnspecified)
+		alpha := new(big.Int).Div(new(big.Int).Mul(amount, big.NewInt(1e18)), rt.price())
+		rt.setStake(hotkey, coldkey, new(big.Int).Add(rt.stake(hotkey, coldkey), alpha))
+		return nil, nil
+	case "getNominatorMinRequiredStake":
+		return method.Outputs.Pack(rt.word(e2eStaking, e2eRuntimeSlot("nominator-minimum")))
+	case "getStakingHotkeys":
+		list := rt.stakingHotkeys(args[0].([32]byte))
+		offset, limit := args[1].(uint64), uint64(args[2].(uint16))
+		page := [][32]byte{}
+		if offset < uint64(len(list)) {
+			page = list[offset:min(offset+limit, uint64(len(list)))]
+		}
+		return method.Outputs.Pack(page, uint64(len(list)))
+	case "getOwnedHotkeys":
+		return method.Outputs.Pack(rt.owned(args[0].([32]byte)))
+	case "getColdkeyLock":
+		// No coldkey on the e2e chain holds a conviction lock record.
+		if err := netuid(args[1]); err != nil {
+			return nil, err
+		}
+		return method.Outputs.Pack(struct {
+			Exists      bool
+			Hotkey      [32]byte
+			LockedMass  *big.Int
+			Conviction  *big.Int
+			IsPerpetual bool
+		}{LockedMass: new(big.Int), Conviction: new(big.Int)})
+	case "setRejectStakingHotkeyGrowth":
+		rt.setFlag("rejects-growth", coldkey, args[0].(bool))
+		return nil, nil
+	case "getRejectStakingHotkeyGrowth":
+		return method.Outputs.Pack(rt.flag("rejects-growth", args[0].([32]byte)))
+	case "setRejectLockedAlpha":
+		// Every coldkey rejects conviction-locked alpha unless it opts in.
+		rt.setFlag("accepts-locked-alpha", coldkey, !args[0].(bool))
+		return nil, nil
+	case "getRejectLockedAlpha":
+		return method.Outputs.Pack(!rt.flag("accepts-locked-alpha", args[0].([32]byte)))
+	case "getHotkeyOwner":
+		owner, owned := rt.hotkeyOwner(args[0].([32]byte))
+		return method.Outputs.Pack(owned, owner)
+	case "setColdkeyAutoStakeHotkey":
+		// The destination must hold a UID on the subnet; it stays on the
+		// coldkey's list, without stake, while it is the destination.
+		hotkey := args[1].([32]byte)
+		if err := netuid(args[0]); err != nil {
+			return nil, err
+		}
+		if _, registered := rt.uid(hotkey); !registered {
+			return nil, errors.New("HotKeyNotRegisteredInSubNet")
+		}
+		old, pinned := rt.autoStake(coldkey)
+		if pinned && old == hotkey {
+			return nil, errors.New("SameAutoStakeHotkeyAlreadySet")
+		}
+		if err := rt.ownGrowth(coldkey, hotkey); err != nil {
+			return nil, err
+		}
+		rt.db.SetState(e2eStaking, e2eRuntimeSlot("auto-stake", coldkey), common.Hash(hotkey))
+		rt.sync(coldkey, hotkey)
+		if pinned {
+			rt.sync(coldkey, old)
+		}
+		return nil, nil
+	case "getAutoStakeDestination":
+		if err := netuid(args[1]); err != nil {
+			return nil, err
+		}
+		hotkey, pinned := rt.autoStake(args[0].([32]byte))
+		return method.Outputs.Pack(pinned, hotkey)
 	case "getUid":
 		if err := netuid(args[0]); err != nil {
 			return nil, err
 		}
 		uid, exists := rt.uid(args[1].([32]byte))
 		return method.Outputs.Pack(exists, uid)
+	case "addressMapping":
+		return method.Outputs.Pack(ss58.EvmMirrorPubkey(args[0].(common.Address)))
+	case "verify":
+		// The runtime checks the 32-byte message as signed: Ed25519 at 0x402,
+		// whose key must decode as a curve point or the call fails, and
+		// sr25519 at 0x403 in the substrate signing context, where a key or
+		// signature that does not decode is only an invalid signature.
+		message, key, r, s := args[0].([32]byte), args[1].([32]byte), args[2].([32]byte), args[3].([32]byte)
+		signature := append(r[:], s[:]...)
+		if self.address == e2eEd25519 {
+			if !e2eEdwardsPoint(key) {
+				return nil, errors.New("Public key recover failed")
+			}
+			return method.Outputs.Pack(ed25519.Verify(key[:], message[:], signature))
+		}
+		var public schnorrkel.PublicKey
+		var decoded schnorrkel.Signature
+		if errors.Join(public.Decode(key), decoded.Decode([64]byte(signature))) != nil {
+			return method.Outputs.Pack(false)
+		}
+		valid, err := public.Verify(&decoded, schnorrkel.NewSigningContext([]byte("substrate"), message[:]))
+		return method.Outputs.Pack(valid && err == nil)
 	default: // getAlphaPrice
 		if err := netuid(args[0]); err != nil {
 			return nil, err
 		}
 		return method.Outputs.Pack(rt.price())
 	}
+}
+
+// e2eEdwardsPoint reports whether key decodes as an Ed25519 curve point, as
+// the runtime's VerifyingKey::try_from requires: its y, the sign bit cleared
+// and reduced mod p = 2^255 − 19, has an x with x² = (y² − 1) / (d·y² + 1).
+func e2eEdwardsPoint(key [32]byte) bool {
+	p := new(big.Int).Sub(new(big.Int).Lsh(common.Big1, 255), big.NewInt(19))
+	encoded := key
+	encoded[31] &= 0x7f
+	slices.Reverse(encoded[:])
+	y := new(big.Int).Mod(new(big.Int).SetBytes(encoded[:]), p)
+	d := new(big.Int).Mul(big.NewInt(-121665), new(big.Int).ModInverse(big.NewInt(121666), p))
+	y2 := new(big.Int).Mul(y, y)
+	u := new(big.Int).Mod(new(big.Int).Sub(y2, common.Big1), p)
+	v := new(big.Int).Mod(new(big.Int).Add(new(big.Int).Mul(d, y2), common.Big1), p)
+	x2 := new(big.Int).Mod(new(big.Int).Mul(u, new(big.Int).ModInverse(v, p)), p)
+	return x2.Sign() == 0 || new(big.Int).Exp(x2, new(big.Int).Rsh(new(big.Int).Sub(p, common.Big1), 1), p).Cmp(common.Big1) == 0
 }
 
 // e2eBlock is a block with a state change; virtual blocks between two of
@@ -404,7 +751,7 @@ func newE2EChain(t testing.TB, funded map[common.Address]*big.Int) *e2eChain {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, address := range []common.Address{e2eNeuron, e2eStaking, e2eAlpha} {
+	for _, address := range []common.Address{e2eNeuron, e2eStaking, e2eAlpha, e2eAddressMapping, e2eEd25519, e2eSr25519} {
 		db.SetCode(address, []byte{byte(vm.STOP)}, tracing.CodeChangeUnspecified)
 	}
 	// Price 1 TAO per alpha until a test sets another.
@@ -445,11 +792,16 @@ func (self *e2eChain) evmLocked(db *state.StateDB, number uint64, call bool) *vm
 			self.runtime.caller, self.runtime.forwarded = from, gas
 		}
 	}}
-	evm := vm.NewEVM(context, db, self.config, vm.Config{Tracer: hooks, NoBaseFee: call})
+	evm := vm.NewEVM(context, e2eSpendableState{StateDB: db, runtime: &self.runtime}, self.config, vm.Config{Tracer: hooks, NoBaseFee: call})
 	precompiles := vm.ActivePrecompiledContracts(self.config.Rules(context.BlockNumber, true, context.Time))
 	precompiles[e2eNeuron] = &e2ePrecompile{runtime: &self.runtime, address: e2eNeuron, methods: []string{"registerLimit", "getUid"}}
-	precompiles[e2eStaking] = &e2ePrecompile{runtime: &self.runtime, address: e2eStaking, methods: []string{"getStake", "getMinerCollateral", "moveStake", "transferStake"}}
+	precompiles[e2eStaking] = &e2ePrecompile{runtime: &self.runtime, address: e2eStaking, methods: []string{"getStake", "getMinerCollateral", "moveStake", "transferStake",
+		"addStake", "getNominatorMinRequiredStake", "getStakingHotkeys", "getOwnedHotkeys", "getColdkeyLock", "setRejectStakingHotkeyGrowth",
+		"getRejectStakingHotkeyGrowth", "setRejectLockedAlpha", "getRejectLockedAlpha", "getHotkeyOwner", "setColdkeyAutoStakeHotkey", "getAutoStakeDestination"}}
 	precompiles[e2eAlpha] = &e2ePrecompile{runtime: &self.runtime, address: e2eAlpha, methods: []string{"getAlphaPrice"}}
+	precompiles[e2eAddressMapping] = &e2ePrecompile{runtime: &self.runtime, address: e2eAddressMapping, methods: []string{"addressMapping"}}
+	precompiles[e2eEd25519] = &e2ePrecompile{runtime: &self.runtime, address: e2eEd25519, methods: []string{"verify"}}
+	precompiles[e2eSr25519] = &e2ePrecompile{runtime: &self.runtime, address: e2eSr25519, methods: []string{"verify"}}
 	evm.SetPrecompiles(precompiles)
 	self.runtime.db = db
 	return evm
@@ -571,6 +923,59 @@ func (self *e2eChain) emit(hotkey, coldkey [32]byte, amount *big.Int) {
 	})
 }
 
+// keepExistentialDeposit makes the EVM see each account's balance as the
+// runtime reports it, less the existential deposit (e2eRuntime.spendable).
+func (self *e2eChain) keepExistentialDeposit(addresses ...common.Address) {
+	self.do(func() {
+		if self.runtime.keep == nil {
+			self.runtime.keep = map[common.Address]bool{}
+		}
+		for _, address := range addresses {
+			self.runtime.keep[address] = true
+		}
+	})
+}
+
+// transferNative sends rao of TAO to an EVM address's mapped account by a
+// native balance transfer, which runs no EVM code.
+func (self *e2eChain) transferNative(to common.Address, rao uint64) {
+	self.native(func(rt *e2eRuntime) {
+		rt.db.AddBalance(to, uint256.MustFromBig(new(big.Int).Mul(new(big.Int).SetUint64(rao), big.NewInt(e2eRaoWei))), tracing.BalanceChangeUnspecified)
+	})
+}
+
+// associateHotkey is coldkey's try_associate_hotkey(hotkey) as a native
+// extrinsic. It reports whether coldkey owns the hotkey account after.
+func (self *e2eChain) associateHotkey(coldkey, hotkey [32]byte) bool {
+	var owns bool
+	self.native(func(rt *e2eRuntime) { owns = rt.associate(hotkey, coldkey) })
+	return owns
+}
+
+// setNominatorMinimum is root setting the nominator minimum, in rao, and
+// sweep its sweep of one position below it, unstaked to account's TAO.
+func (self *e2eChain) setNominatorMinimum(rao uint64) {
+	self.native(func(rt *e2eRuntime) {
+		rt.setWord(e2eStaking, e2eRuntimeSlot("nominator-minimum"), new(big.Int).SetUint64(rao))
+	})
+}
+
+func (self *e2eChain) sweep(hotkey, coldkey [32]byte, account common.Address) *big.Int {
+	var tao *big.Int
+	self.native(func(rt *e2eRuntime) { tao = rt.sweep(hotkey, coldkey, account) })
+	return tao
+}
+
+// stakingHotkeys reads coldkey's StakingHotkeys list at the head.
+func (self *e2eChain) stakingHotkeys(coldkey [32]byte) [][32]byte {
+	var hotkeys [][32]byte
+	self.do(func() {
+		self.runtime.db = self.stateLocked(self.head)
+		hotkeys = self.runtime.stakingHotkeys(coldkey)
+	})
+	return hotkeys
+}
+
 // stake reads a position at the head.
 func (self *e2eChain) stake(hotkey, coldkey [32]byte) *big.Int {
 	var amount *big.Int
@@ -581,6 +986,8 @@ func (self *e2eChain) stake(hotkey, coldkey [32]byte) *big.Int {
 	return amount
 }
 
+// balance is an account's whole free balance at the head, existential
+// deposit included.
 func (self *e2eChain) balance(address common.Address) *big.Int {
 	var wei *big.Int
 	self.do(func() { wei = self.stateLocked(self.head).GetBalance(address).ToBig() })

@@ -49,3 +49,22 @@ func rootOnlyProblem(path string) string {
 		}
 	}
 }
+
+// ownerOnlyProblem says when someone other than root and the user `uid` could
+// change the file or the folders that hold it: what a system service run as
+// that user (provider service install --system --as) may run and keep.
+func ownerOnlyProblem(path string, uid int) string {
+	for current := path; ; current = filepath.Dir(current) {
+		info, err := os.Stat(current)
+		if err != nil {
+			return err.Error()
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if ok && stat.Uid != 0 && int(stat.Uid) != uid || info.Mode().Perm()&0022 != 0 && !(info.IsDir() && info.Mode()&os.ModeSticky != 0) {
+			return current + " can be changed by a user other than root and the service's user."
+		}
+		if parent := filepath.Dir(current); parent == current {
+			return ""
+		}
+	}
+}

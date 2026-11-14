@@ -488,7 +488,7 @@ steps 5, 8, 10 and 15 (VERSION2-FINAL.md §13, §17).
 | O18 | E_s and the registration date | decided: E_s is epoch 3, which starts at block 9,348,028, about 2026-10-23 18:10 UTC. The owner first chose epoch 2 (2026-10-13: "we are launching v2 now to be active the next ur epoch") and then moved E_s to epoch 3. The registration window is blocks 9,333,628 to 9,340,828, and every gate passes by block 9,333,628. Section 9 gives the schedule | 14, 15 | section 9; VERSION2-FINAL.md §12.1 step 5, §14 |
 | O19 | `v2_prune_alert_positions` | default 3 | 11 | `server/controller/st_ledger_v2_prune.go:33-35` |
 | O20 | `--ledger_max_bytes` | default 2147483648 (2 GiB); a runtime flag, raised without a re-sign | 10 | `validator/run.go:144-145`; VERSION2-FINAL.md §6.6 |
-| O21 | The watcher: host, key, RPC and fee budget, and how often it runs | a host other than the validator's; the example units run it hourly as the system user `snclaim-watcher` | 13 | VERSION2-FINAL.md §10.2; SETTLEMENT-V2-EXAMPLES.md:143-161 |
+| O21 | The watcher: host, key, RPC and fee budget, and how often it runs | a host other than the validator's; the example units run it hourly as the system user `snclaim-watcher`; the RPC is an archive node, since the capture the flag watcher, which shares it, reads the head bindings of each draw at past blocks | 13 | VERSION2-FINAL.md §10.2; SETTLEMENT-V2-EXAMPLES.md:143-161 |
 | O22 | The claim daemon: coldkeys, relayer key, state directory, threshold and batcher | threshold default 1,900,000,000 rao (1.9 α), never below 15,200,000 rao; the state directory is a durable root of its own, prepared as `provider-claim-queue` (step 13) | 13, 20 | `miner/run.go:197-199`; `miner/claim_v2_daemon.go:39-112`; SETTLEMENT-V2-EXAMPLES.md:125-141 |
 | O23 | The SDK release that pins `Vault2Address`, and the app release dates | lands before step 15 | 9 | VERSION2-FINAL.md §11; `sdk/sn_chain.go:83-89` |
 | O24 | Who runs the first claim, and for which account | anyone may claim for anyone; payment goes to the leaf's coldkey | 20 | VERSION2-FINAL.md §1, §17 |
@@ -1272,8 +1272,8 @@ umask 077 and a protected ancestry.
 whose `SettlementV2ReleaseArtifacts` the release file is exported from
 (BOOTSTRAP-CONTRACTS.md:687-705; `evm/README.md`:53-61).
 
-- `stabi/generate.sh --check` requires mode 644 on each of its fifteen
-  generated files as they are checked out (`stabi/generate.sh:148-164,174-177`).
+- `stabi/generate.sh --check` requires mode 644 on each of its sixteen
+  generated files as they are checked out (`stabi/generate.sh:154-171,181-184`).
   With any other mode it exits 1: "generated binding/ABI has non-portable
   mode: ../evm/abi/STSubnet.abi.json". A clone made under umask 002 has the
   group-writable mode 664 (STATE.md:9-10).
@@ -1286,7 +1286,7 @@ whose `SettlementV2ReleaseArtifacts` the release file is exported from
     stabi/streservesink.go stabi/stvalidatorevidence.go stabi/stsettlement2.go
   ```
 
-  Those are the eight ABI files, `stctl/st_abi.json` and the six bindings.
+  Those are the nine ABI files, `stctl/st_abi.json` and the six bindings.
 
 ```bash
 (cd evm && forge build --deny warnings --sizes)
@@ -2404,6 +2404,7 @@ exists for them.
 | `urnetwork_api_reserved_upload_startup_failed` | API metric | 1 | the reserved upload lane is off | `server/api/run.go:33-38,255-272` |
 | `ledger_audit_approve`, `_challenge`, `_demand`, `_refuse`, `_retrying` | validator diagnostics | anything but an approval of an honest root | read the custody record | `validator/release_diagnostics.go:223`; `validator/settlement_v2_custody.go:3-8` |
 | the byte budget | validator audit | a root's new objects over `--ledger_max_bytes` | raise the flag; it needs no re-sign | VERSION2-FINAL.md §6.6; `validator/settlement_v2_runtime.go:3-5` |
+| the amendments file | validator log, `settlement v2 audit: amendments:` | no verified `amendments.yml` held, so the audit decides nothing | restore `https://ur.xyz/amendments.yml`; `--amendments-fallback` stands in only for an entry not yet signed, never for an unknown file, and every reader must configure the same lines | VALIDATOR.md §11.6; `validator/settlement_v2_amendments.go` |
 | the watcher's report | `snclaim v2 check` output | any provable fault or "unverifiable" | challenge or demand inside the window | VERSION2-FINAL.md §10.2 |
 | the watcher's service | systemd on the watcher host | the service is failed | "A failed run leaves the service failed; alert on that" | SETTLEMENT-V2-EXAMPLES.md:159-161 |
 | claim gas | claim receipts | about 1.27M gas a claim instead of about 0.2M | a third party filled vault2's staking-hotkey list; raise daemon thresholds to about 10 α | §3, §10.1, §17 |

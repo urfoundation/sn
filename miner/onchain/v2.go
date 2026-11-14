@@ -8,6 +8,7 @@ package onchain
 // check rebuilds the pending root from the objects it fetches.
 
 import (
+	"cmp"
 	"context"
 	"crypto/ecdsa"
 	"crypto/rand"
@@ -18,6 +19,7 @@ import (
 	"math/big"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"sync"
 	"time"
@@ -74,9 +76,14 @@ func parseVault2(s string) (common.Address, error) {
 
 // parseAPIURL parses --api_url, the operator API serving the ledger.
 func parseAPIURL(s string) (*url.URL, error) {
+	return parseHTTPURL("--api_url", s)
+}
+
+// parseHTTPURL parses flag's http(s) URL, which has no query.
+func parseHTTPURL(flag, s string) (*url.URL, error) {
 	u, err := url.Parse(s)
 	if err != nil || (u.Scheme != "https" && u.Scheme != "http") || u.Host == "" || u.RawQuery != "" || u.Fragment != "" {
-		return nil, fmt.Errorf("--api_url: %q is not an http(s) URL without a query", s)
+		return nil, fmt.Errorf("%s: %q is not an http(s) URL without a query", flag, s)
 	}
 	if u.Path == "" {
 		u.Path = "/" // so that JoinPath gives an absolute path
@@ -187,29 +194,56 @@ type v2Account struct {
 	PendingCumulative *string `json:"pending_cumulative"`
 }
 
+// v2UnavailablePool is a pool GET /sn/ledger/account names in
+// unavailable_pools: its ledger could not be read, so whether the coldkey has
+// an account there is unknown, never none.
+type v2UnavailablePool struct {
+	Vault string `json:"vault"`
+	NoID  uint64 `json:"no_id"`
+}
+
+// check refuses a pool of another vault than --vault, as an entry's.
+func (p *v2UnavailablePool) check(vault common.Address) error {
+	if !common.IsHexAddress(p.Vault) || common.HexToAddress(p.Vault) != vault {
+		return fmt.Errorf("the ledger endpoint names pool %d of vault %q unavailable, not of --vault %s", p.NoID, p.Vault, vault.Hex())
+	}
+	return nil
+}
+
 // fetchV2Accounts reads the coldkey's accounts from GET /sn/ledger/account,
-// within the time of a chain call.
-func fetchV2Accounts(ctx context.Context, api *url.URL, coldkey [32]byte) ([]v2Account, error) {
+// within the time of a chain call, and the pools whose ledger the server
+// could not read, in ascending no_id. It asks with partial=true: without it
+// the server leaves out a capture the flag pool it cannot read, and fails the
+// whole answer with a 502 for any other pool. A server that predates the
+// parameter ignores it and names no pool.
+func fetchV2Accounts(ctx context.Context, api *url.URL, coldkey [32]byte) ([]v2Account, []v2UnavailablePool, error) {
 	ctx, cancel := context.WithTimeout(ctx, callTimeout)
 	defer cancel()
 	u := api.JoinPath("sn", "ledger", "account")
-	u.RawQuery = url.Values{"coldkey": {fmt.Sprintf("0x%x", coldkey)}}.Encode()
+	u.RawQuery = url.Values{"coldkey": {fmt.Sprintf("0x%x", coldkey)}, "partial": {"true"}}.Encode()
 	body, err := v2Get(ctx, u)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer body.Close()
 	var reply struct {
-		Coldkey  string      `json:"coldkey"`
-		Accounts []v2Account `json:"accounts"`
+		Coldkey          string              `json:"coldkey"`
+		Accounts         []v2Account         `json:"accounts"`
+		UnavailablePools []v2UnavailablePool `json:"unavailable_pools"`
 	}
 	if err := json.NewDecoder(io.LimitReader(body, v2AccountReplyLimit)).Decode(&reply); err != nil {
-		return nil, fmt.Errorf("GET %s: %w", u, err)
+		return nil, nil, fmt.Errorf("GET %s: %w", u, err)
 	}
 	if reply.Coldkey != fmt.Sprintf("0x%x", coldkey) || reply.Accounts == nil {
-		return nil, fmt.Errorf("GET %s answered for coldkey %q with accounts %v", u, reply.Coldkey, reply.Accounts)
+		return nil, nil, fmt.Errorf("GET %s answered for coldkey %q with accounts %v", u, reply.Coldkey, reply.Accounts)
 	}
-	return reply.Accounts, nil
+	slices.SortFunc(reply.UnavailablePools, func(a, b v2UnavailablePool) int { return cmp.Compare(a.NoID, b.NoID) })
+	return reply.Accounts, reply.UnavailablePools, nil
+}
+
+// v2PoolUnavailable names a pool the ledger endpoint could not read.
+func v2PoolUnavailable(noID uint64) string {
+	return fmt.Sprintf("pool %d: unavailable (the ledger endpoint cannot read it now; whether the coldkey has an account there is unknown)", noID)
 }
 
 // check refuses an entry of another vault than --vault.

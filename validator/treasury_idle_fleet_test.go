@@ -11,6 +11,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"math/big"
 	"reflect"
 	"slices"
@@ -87,11 +88,11 @@ func idleFleetTestDecision(t *testing.T, provider *VerifiedReleaseMeasurement, t
 
 // The row's exact shares are the signed split whatever the wire rounds away:
 // 9/20 to each recipient, 7/100 to the pool and 3/100 to the head, and every
-// recipient keeps at least one wire unit.
-func requireIdleFleetTestShares(t *testing.T, row OwnerRecycleMeasuredRow, tempo int) {
+// recipient keeps at least one wire unit. at names the row in a failure.
+func requireIdleFleetTestShares(t *testing.T, row OwnerRecycleMeasuredRow, at string) {
 	t.Helper()
 	if len(row.Uids) != len(row.Scores) || len(row.Uids) != len(row.Values) {
-		t.Fatalf("tempo %d: row lost an entry: %d uids, %d scores, %d values", tempo, len(row.Uids), len(row.Scores), len(row.Values))
+		t.Fatalf("%s: row lost an entry: %d uids, %d scores, %d values", at, len(row.Uids), len(row.Scores), len(row.Values))
 	}
 	head := new(big.Rat)
 	for index, uid := range row.Uids {
@@ -100,23 +101,23 @@ func requireIdleFleetTestShares(t *testing.T, row OwnerRecycleMeasuredRow, tempo
 			t.Fatal(err)
 		}
 		if row.Values[index] == 0 {
-			t.Fatalf("tempo %d: uid %d kept an exact share with a zero wire value", tempo, uid)
+			t.Fatalf("%s: uid %d kept an exact share with a zero wire value", at, uid)
 		}
 		switch {
 		case slices.Contains(row.TreasuryUids, uid):
 			if score.Cmp(big.NewRat(9, 20)) != 0 {
-				t.Fatalf("tempo %d: recipient %d share %s", tempo, uid, score)
+				t.Fatalf("%s: recipient %d share %s", at, uid, score)
 			}
 		case uid == idleFleetTestPoolUid:
 			if score.Cmp(big.NewRat(7, 100)) != 0 {
-				t.Fatalf("tempo %d: pool share %s", tempo, score)
+				t.Fatalf("%s: pool share %s", at, score)
 			}
 		default:
 			head.Add(head, score)
 		}
 	}
 	if head.Cmp(big.NewRat(3, 100)) != 0 {
-		t.Fatalf("tempo %d: head channel share %s, want exactly 3/100", tempo, head)
+		t.Fatalf("%s: head channel share %s, want exactly 3/100", at, head)
 	}
 }
 
@@ -146,50 +147,49 @@ func TestTreasuryRowSurvivesIdleFleetDecay(t *testing.T) {
 	theta := artifact.Policy.Steering.Theta
 	pools := []ExactWeightInput{{UID: idleFleetTestPoolUid, Score: big.NewRat(1, 1)}}
 	for _, test := range idleFleetTestCases {
-		t.Run(test.name, func(t *testing.T) {
-			idle := new(big.Rat).Set(test.idleStart)
-			for tempo := 0; tempo <= test.leftOutTempo+8; tempo++ {
-				decision := idleFleetTestDecision(t, provider, theta, pools, idleFleetTestHead(test.otherUids, test.otherScore, idle))
-				row, err := deriveOwnerRecycleMeasuredRow(stage.authority, artifact, decision)
-				if err != nil {
-					t.Fatalf("idle for %d tempos (%.1f h) refused the whole row: %v", tempo, float64(tempo)*1.2, err)
-				}
-				requireIdleFleetTestShares(t, row, tempo)
-				if !slices.Contains(headSelectionUIDs(decision.SelectedHead), idleFleetTestUid) {
-					t.Fatalf("tempo %d: the idle fleet lost its seat", tempo)
-				}
-				for _, uid := range test.otherUids {
-					if !slices.Contains(row.Uids, uid) {
-						t.Fatalf("tempo %d: busy fleet %d left the row", tempo, uid)
-					}
-				}
-				leftOut := tempo >= test.leftOutTempo
-				if slices.Contains(row.Uids, idleFleetTestUid) == leftOut {
-					t.Fatalf("tempo %d: idle fleet in row %v, want left out from tempo %d", tempo, row.Uids, test.leftOutTempo)
-				}
-				if excluded := idleFleetTestExcludedUids(t, row); leftOut != slices.Equal(excluded, []uint16{idleFleetTestUid}) || !leftOut && excluded != nil {
-					t.Fatalf("tempo %d: row names %v as left out", tempo, excluded)
-				}
-				idle.Mul(idle, big.NewRat(3, 4))
-			}
-			// The longest binding is 12 epochs: 1,680 tempos of decay still steer.
-			lifetime := new(big.Rat).SetFrac(new(big.Int).Exp(big.NewInt(3), big.NewInt(1680), nil), new(big.Int).Exp(big.NewInt(4), big.NewInt(1680), nil))
-			lifetime.Mul(lifetime, test.idleStart)
-			row, err := deriveOwnerRecycleMeasuredRow(stage.authority, artifact, idleFleetTestDecision(t, provider, theta, pools, idleFleetTestHead(test.otherUids, test.otherScore, lifetime)))
+		idle := new(big.Rat).Set(test.idleStart)
+		for tempo := 0; tempo <= test.leftOutTempo+8; tempo++ {
+			at := fmt.Sprintf("%s: tempo %d", test.name, tempo)
+			decision := idleFleetTestDecision(t, provider, theta, pools, idleFleetTestHead(test.otherUids, test.otherScore, idle))
+			row, err := deriveOwnerRecycleMeasuredRow(stage.authority, artifact, decision)
 			if err != nil {
-				t.Fatalf("idle for a whole binding refused the row: %v", err)
+				t.Fatalf("%s: idle for %.1f h refused the whole row: %v", at, float64(tempo)*1.2, err)
 			}
-			requireIdleFleetTestShares(t, row, 1680)
-			// A rule that keeps no state: its first tempo back returns the fleet.
-			back, err := headscore.Next(big.NewRat(1, 1), lifetime, true, headEMAWeight(artifact.Policy.Steering.HeadScoreEMA))
-			if err != nil {
-				t.Fatal(err)
+			requireIdleFleetTestShares(t, row, at)
+			if !slices.Contains(headSelectionUIDs(decision.SelectedHead), idleFleetTestUid) {
+				t.Fatalf("%s: the idle fleet lost its seat", at)
 			}
-			row, err = deriveOwnerRecycleMeasuredRow(stage.authority, artifact, idleFleetTestDecision(t, provider, theta, pools, idleFleetTestHead(test.otherUids, test.otherScore, back)))
-			if err != nil || !slices.Contains(row.Uids, idleFleetTestUid) || idleFleetTestExcludedUids(t, row) != nil {
-				t.Fatalf("a returning fleet stayed out: %v %v", row.Uids, err)
+			for _, uid := range test.otherUids {
+				if !slices.Contains(row.Uids, uid) {
+					t.Fatalf("%s: busy fleet %d left the row", at, uid)
+				}
 			}
-		})
+			leftOut := tempo >= test.leftOutTempo
+			if slices.Contains(row.Uids, idleFleetTestUid) == leftOut {
+				t.Fatalf("%s: idle fleet in row %v, want left out from tempo %d", at, row.Uids, test.leftOutTempo)
+			}
+			if excluded := idleFleetTestExcludedUids(t, row); leftOut != slices.Equal(excluded, []uint16{idleFleetTestUid}) || !leftOut && excluded != nil {
+				t.Fatalf("%s: row names %v as left out", at, excluded)
+			}
+			idle.Mul(idle, big.NewRat(3, 4))
+		}
+		// The longest binding is 12 epochs: 1,680 tempos of decay still steer.
+		lifetime := new(big.Rat).SetFrac(new(big.Int).Exp(big.NewInt(3), big.NewInt(1680), nil), new(big.Int).Exp(big.NewInt(4), big.NewInt(1680), nil))
+		lifetime.Mul(lifetime, test.idleStart)
+		row, err := deriveOwnerRecycleMeasuredRow(stage.authority, artifact, idleFleetTestDecision(t, provider, theta, pools, idleFleetTestHead(test.otherUids, test.otherScore, lifetime)))
+		if err != nil {
+			t.Fatalf("%s: idle for a whole binding refused the row: %v", test.name, err)
+		}
+		requireIdleFleetTestShares(t, row, test.name+": tempo 1680")
+		// A rule that keeps no state: its first tempo back returns the fleet.
+		back, err := headscore.Next(big.NewRat(1, 1), lifetime, true, headEMAWeight(artifact.Policy.Steering.HeadScoreEMA))
+		if err != nil {
+			t.Fatal(err)
+		}
+		row, err = deriveOwnerRecycleMeasuredRow(stage.authority, artifact, idleFleetTestDecision(t, provider, theta, pools, idleFleetTestHead(test.otherUids, test.otherScore, back)))
+		if err != nil || !slices.Contains(row.Uids, idleFleetTestUid) || idleFleetTestExcludedUids(t, row) != nil {
+			t.Fatalf("%s: a returning fleet stayed out: %v %v", test.name, row.Uids, err)
+		}
 	}
 }
 
@@ -201,13 +201,13 @@ func TestTreasuryRowExclusionBoundaryIsHalfAWireUnit(t *testing.T) {
 	artifact := fixture.operator.measurement.provider.artifact
 	theta := artifact.Policy.Steering.Theta
 	pools := []ExactWeightInput{{UID: idleFleetTestPoolUid, Score: big.NewRat(1, 1)}}
-	derive := func(t *testing.T, head []ExactWeightInput) (OwnerRecycleMeasuredRow, map[uint16]uint16) {
+	derive := func(t *testing.T, at string, head []ExactWeightInput) (OwnerRecycleMeasuredRow, map[uint16]uint16) {
 		t.Helper()
 		row, err := deriveOwnerRecycleMeasuredRow(stage.authority, artifact, idleFleetTestDecision(t, provider, theta, pools, head))
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("%s: %v", at, err)
 		}
-		requireIdleFleetTestShares(t, row, 0)
+		requireIdleFleetTestShares(t, row, at)
 		values := map[uint16]uint16{}
 		for index, uid := range row.Uids {
 			values[uid] = row.Values[index]
@@ -216,24 +216,24 @@ func TestTreasuryRowExclusionBoundaryIsHalfAWireUnit(t *testing.T) {
 	}
 	// At theta 3/10 with two recipients the head channel is 4,369 wire units, so
 	// a share of exactly 1/8,738 is exactly half a unit.
-	row, values := derive(t, []ExactWeightInput{{UID: 145, Score: big.NewRat(8737, 1)}, {UID: idleFleetTestUid, Score: big.NewRat(1, 1)}})
+	row, values := derive(t, "exactly half a unit", []ExactWeightInput{{UID: 145, Score: big.NewRat(8737, 1)}, {UID: idleFleetTestUid, Score: big.NewRat(1, 1)}})
 	if values[idleFleetTestUid] != 1 || values[145] != 4369 || idleFleetTestExcludedUids(t, row) != nil {
 		t.Fatalf("exactly half a unit: %v excluded %v", values, idleFleetTestExcludedUids(t, row))
 	}
 	// One part in 8,739 is below it. The fleet is out and 145 holds the channel.
-	row, values = derive(t, []ExactWeightInput{{UID: 145, Score: big.NewRat(8738, 1)}, {UID: idleFleetTestUid, Score: big.NewRat(1, 1)}})
+	row, values = derive(t, "below half a unit", []ExactWeightInput{{UID: 145, Score: big.NewRat(8738, 1)}, {UID: idleFleetTestUid, Score: big.NewRat(1, 1)}})
 	if _, found := values[idleFleetTestUid]; found || values[145] != 4369 || !slices.Equal(idleFleetTestExcludedUids(t, row), []uint16{idleFleetTestUid}) {
 		t.Fatalf("below half a unit: %v excluded %v", values, idleFleetTestExcludedUids(t, row))
 	}
 	// Ranks leave from the bottom, because each departure raises the others'
 	// shares: 201 ties 200 and ranks after it, and leaving it alone brings 200
 	// back to exactly half a unit.
-	row, values = derive(t, []ExactWeightInput{{UID: 145, Score: big.NewRat(8737, 1)}, {UID: idleFleetTestUid, Score: big.NewRat(1, 1)}, {UID: 201, Score: big.NewRat(1, 1)}})
+	row, values = derive(t, "lowest rank first", []ExactWeightInput{{UID: 145, Score: big.NewRat(8737, 1)}, {UID: idleFleetTestUid, Score: big.NewRat(1, 1)}, {UID: 201, Score: big.NewRat(1, 1)}})
 	if _, found := values[201]; found || values[idleFleetTestUid] != 1 || values[145] != 4369 || !slices.Equal(idleFleetTestExcludedUids(t, row), []uint16{201}) {
 		t.Fatalf("lowest rank first: %v excluded %v", values, idleFleetTestExcludedUids(t, row))
 	}
 	// Several below it leave together, listed by uid whatever their rank.
-	row, values = derive(t, []ExactWeightInput{{UID: 145, Score: big.NewRat(1_000_000, 1)}, {UID: 203, Score: big.NewRat(2, 1)}, {UID: 201, Score: big.NewRat(1, 1)}, {UID: 202, Score: big.NewRat(3, 1)}})
+	row, values = derive(t, "several below", []ExactWeightInput{{UID: 145, Score: big.NewRat(1_000_000, 1)}, {UID: 203, Score: big.NewRat(2, 1)}, {UID: 201, Score: big.NewRat(1, 1)}, {UID: 202, Score: big.NewRat(3, 1)}})
 	if len(values) != 4 || values[145] != 4369 || !slices.Equal(idleFleetTestExcludedUids(t, row), []uint16{201, 202, 203}) {
 		t.Fatalf("several below: %v excluded %v", values, idleFleetTestExcludedUids(t, row))
 	}
@@ -248,53 +248,44 @@ func TestTreasuryRowStillRefusesARealLoss(t *testing.T) {
 	artifact := fixture.operator.measurement.provider.artifact
 	theta := artifact.Policy.Steering.Theta
 	onePool := []ExactWeightInput{{UID: idleFleetTestPoolUid, Score: big.NewRat(1, 1)}}
+	tinyPool := []ExactWeightInput{{UID: idleFleetTestPoolUid, Score: big.NewRat(1, 1)}, {UID: 68, Score: big.NewRat(1, 1_000_000_000)}}
 	belowHalf := []ExactWeightInput{{UID: 145, Score: big.NewRat(1, 1)}, {UID: idleFleetTestUid, Score: big.NewRat(1, 1_000_000_000)}}
-	requireRefusal := func(t *testing.T, authority *OwnerRecycleMeasurementAuthority, source *ReleaseMeasurementArtifact, decision *VerifiedReleaseMeasurement, text string) {
-		t.Helper()
-		row, err := deriveOwnerRecycleMeasuredRow(authority, source, decision)
-		if err == nil || !strings.Contains(err.Error(), text) || !reflect.DeepEqual(row, OwnerRecycleMeasuredRow{}) {
-			t.Fatalf("row %+v error %v, want refusal containing %q", row, err, text)
+	// At this theta every fleet rounds to zero, top rank included; ceding the
+	// head channel to the pool is not this rule's to do.
+	tinyTheta := protocol.Rational{Numerator: 1, Denominator: 1_000_000}
+	tinyThetaArtifact := *artifact
+	tinyThetaArtifact.Policy.Steering.Theta = tinyTheta
+	unreproduced := idleFleetTestDecision(t, provider, theta, onePool, belowHalf)
+	unreproduced.SelectedHead = unreproduced.SelectedHead[:1]
+	owner := newOwnerRecycleProductionTestFixture(t)
+	ownerStage, ownerProvider := owner.stage(t)
+	ownerArtifact := owner.operator.measurement.provider.artifact
+	for _, test := range []struct {
+		name      string
+		authority *OwnerRecycleMeasurementAuthority
+		source    *ReleaseMeasurementArtifact
+		decision  *VerifiedReleaseMeasurement
+		text      string
+	}{
+		{name: "a tiny pool", authority: stage.authority, source: artifact,
+			decision: idleFleetTestDecision(t, provider, theta, tinyPool, []ExactWeightInput{{UID: 145, Score: big.NewRat(1, 1)}}), text: "quantization loses"},
+		{name: "a tiny pool beside a fleet that could leave", authority: stage.authority, source: artifact,
+			decision: idleFleetTestDecision(t, provider, theta, tinyPool, belowHalf), text: "quantization loses"},
+		{name: "a uid that is both a tiny pool and a tiny fleet", authority: stage.authority, source: artifact,
+			decision: idleFleetTestDecision(t, provider, theta, []ExactWeightInput{{UID: idleFleetTestPoolUid, Score: big.NewRat(1, 1)}, {UID: idleFleetTestUid, Score: big.NewRat(1, 1_000_000_000)}}, belowHalf), text: "quantization loses"},
+		{name: "the whole head channel", authority: stage.authority, source: &tinyThetaArtifact,
+			decision: idleFleetTestDecision(t, provider, tinyTheta, onePool, []ExactWeightInput{{UID: 145, Score: big.NewRat(2, 1)}, {UID: 146, Score: big.NewRat(1, 1)}}), text: "quantization loses"},
+		{name: "the last unmasked fleet below a masked one", authority: stage.authority, source: &tinyThetaArtifact,
+			decision: idleFleetTestDecision(t, provider, tinyTheta, onePool, []ExactWeightInput{{UID: provider.MaskedUIDs[0], Score: big.NewRat(2, 1)}, {UID: 145, Score: big.NewRat(1, 1)}}), text: "quantization loses"},
+		{name: "a provider row its projections do not reproduce", authority: stage.authority, source: artifact, decision: unreproduced, text: ""},
+		{name: "owner-recycle authority", authority: ownerStage.authority, source: ownerArtifact,
+			decision: idleFleetTestDecision(t, ownerProvider, ownerArtifact.Policy.Steering.Theta, onePool, belowHalf), text: "quantization loses"},
+	} {
+		row, err := deriveOwnerRecycleMeasuredRow(test.authority, test.source, test.decision)
+		if err == nil || !strings.Contains(err.Error(), test.text) || !reflect.DeepEqual(row, OwnerRecycleMeasuredRow{}) {
+			t.Fatalf("%s: row %+v error %v, want a refusal containing %q", test.name, row, err, test.text)
 		}
 	}
-	t.Run("a tiny pool", func(t *testing.T) {
-		pools := []ExactWeightInput{{UID: idleFleetTestPoolUid, Score: big.NewRat(1, 1)}, {UID: 68, Score: big.NewRat(1, 1_000_000_000)}}
-		requireRefusal(t, stage.authority, artifact, idleFleetTestDecision(t, provider, theta, pools, []ExactWeightInput{{UID: 145, Score: big.NewRat(1, 1)}}), "quantization loses")
-	})
-	t.Run("a tiny pool beside a fleet that could leave", func(t *testing.T) {
-		pools := []ExactWeightInput{{UID: idleFleetTestPoolUid, Score: big.NewRat(1, 1)}, {UID: 68, Score: big.NewRat(1, 1_000_000_000)}}
-		requireRefusal(t, stage.authority, artifact, idleFleetTestDecision(t, provider, theta, pools, belowHalf), "quantization loses")
-	})
-	t.Run("a uid that is both a tiny pool and a tiny fleet", func(t *testing.T) {
-		pools := []ExactWeightInput{{UID: idleFleetTestPoolUid, Score: big.NewRat(1, 1)}, {UID: idleFleetTestUid, Score: big.NewRat(1, 1_000_000_000)}}
-		requireRefusal(t, stage.authority, artifact, idleFleetTestDecision(t, provider, theta, pools, belowHalf), "quantization loses")
-	})
-	t.Run("the whole head channel", func(t *testing.T) {
-		// Every fleet rounds to zero, top rank included; ceding its channel to the
-		// pool is not this rule's to do.
-		tiny := protocol.Rational{Numerator: 1, Denominator: 1_000_000}
-		source := *artifact
-		source.Policy.Steering.Theta = tiny
-		requireRefusal(t, stage.authority, &source, idleFleetTestDecision(t, provider, tiny, onePool, []ExactWeightInput{{UID: 145, Score: big.NewRat(2, 1)}, {UID: 146, Score: big.NewRat(1, 1)}}), "quantization loses")
-	})
-	t.Run("the last unmasked fleet below a masked one", func(t *testing.T) {
-		tiny := protocol.Rational{Numerator: 1, Denominator: 1_000_000}
-		source := *artifact
-		source.Policy.Steering.Theta = tiny
-		masked := provider.MaskedUIDs[0]
-		requireRefusal(t, stage.authority, &source, idleFleetTestDecision(t, provider, tiny, onePool, []ExactWeightInput{{UID: masked, Score: big.NewRat(2, 1)}, {UID: 145, Score: big.NewRat(1, 1)}}), "quantization loses")
-	})
-	t.Run("a provider row its projections do not reproduce", func(t *testing.T) {
-		decision := idleFleetTestDecision(t, provider, theta, onePool, belowHalf)
-		decision.SelectedHead = decision.SelectedHead[:1]
-		requireRefusal(t, stage.authority, artifact, decision, "")
-	})
-	t.Run("owner-recycle authority", func(t *testing.T) {
-		owner := newOwnerRecycleProductionTestFixture(t)
-		ownerStage, ownerProvider := owner.stage(t)
-		ownerArtifact := owner.operator.measurement.provider.artifact
-		decision := idleFleetTestDecision(t, ownerProvider, ownerArtifact.Policy.Steering.Theta, onePool, belowHalf)
-		requireRefusal(t, ownerStage.authority, ownerArtifact, decision, "quantization loses")
-	})
 }
 
 // Every row the code before this rule accepted has its exact bytes. The hashes
@@ -307,29 +298,27 @@ func TestTreasuryRowBytesOfOlderMeasurements(t *testing.T) {
 	theta := artifact.Policy.Steering.Theta
 	pools := []ExactWeightInput{{UID: idleFleetTestPoolUid, Score: big.NewRat(1, 1)}}
 	for _, test := range idleFleetTestCases {
-		t.Run(test.name, func(t *testing.T) {
-			hash := sha256.New()
-			idle := new(big.Rat).Set(test.idleStart)
-			for tempo := 0; tempo < test.leftOutTempo; tempo++ {
-				decision := idleFleetTestDecision(t, provider, theta, pools, idleFleetTestHead(test.otherUids, test.otherScore, idle))
-				row, err := deriveOwnerRecycleMeasuredRow(stage.authority, artifact, decision)
-				if err != nil {
-					t.Fatalf("tempo %d: %v", tempo, err)
-				}
-				raw, err := json.Marshal(row)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if bytes.Contains(raw, []byte("excluded")) || idleFleetTestExcludedUids(t, row) != nil {
-					t.Fatalf("tempo %d: an accepted row changed its wire: %s", tempo, raw)
-				}
-				hash.Write(raw)
-				idle.Mul(idle, big.NewRat(3, 4))
+		hash := sha256.New()
+		idle := new(big.Rat).Set(test.idleStart)
+		for tempo := 0; tempo < test.leftOutTempo; tempo++ {
+			decision := idleFleetTestDecision(t, provider, theta, pools, idleFleetTestHead(test.otherUids, test.otherScore, idle))
+			row, err := deriveOwnerRecycleMeasuredRow(stage.authority, artifact, decision)
+			if err != nil {
+				t.Fatalf("%s: tempo %d: %v", test.name, tempo, err)
 			}
-			if got := hex.EncodeToString(hash.Sum(nil)); got != test.acceptedRowsHash {
-				t.Fatalf("accepted rows hash %s, want %s", got, test.acceptedRowsHash)
+			raw, err := json.Marshal(row)
+			if err != nil {
+				t.Fatal(err)
 			}
-		})
+			if bytes.Contains(raw, []byte("excluded")) || idleFleetTestExcludedUids(t, row) != nil {
+				t.Fatalf("%s: tempo %d: an accepted row changed its wire: %s", test.name, tempo, raw)
+			}
+			hash.Write(raw)
+			idle.Mul(idle, big.NewRat(3, 4))
+		}
+		if got := hex.EncodeToString(hash.Sum(nil)); got != test.acceptedRowsHash {
+			t.Fatalf("%s: accepted rows hash %s, want %s", test.name, got, test.acceptedRowsHash)
+		}
 	}
 }
 
@@ -567,5 +556,147 @@ func TestTreasuryRowExclusionReachesTheJournal(t *testing.T) {
 	}
 	if line := output.String(); !strings.Contains(line, "domain=steering code=head_fleets_excluded native_epoch=26100 epoch_known=true attempt=2") {
 		t.Fatalf("journal line %q", line)
+	}
+}
+
+// From E_c capture the flag's shares replace theta and an operator's CTF pool
+// joins the row (CAPTURETHEFLAG.md §2.1), and an idle fleet must not refuse that
+// row either. It is left out and named once it rounds to zero, a tempo or two
+// later than at theta: the head channel is 5/100 of the row (7,282 wire units)
+// with the CTF pool weighted, and 5/90 (8,091) with the ctf setting off. Every
+// other share stays exact, and a lost pool still refuses.
+func TestCaptureTheFlagTreasuryRowSurvivesIdleFleetDecay(t *testing.T) {
+	fixture := newTreasuryProductionTestFixture(t)
+	stage, provider := fixture.stage(t)
+	source := fixture.operator.measurement.provider.artifact
+	registrations := map[uint16]OwnerRecycleRegistration{}
+	for _, registration := range stage.authority.observation.Snapshot.Registrations {
+		registrations[registration.Uid] = registration
+	}
+	const poolUid, ctfPoolUid = uint16(109), uint16(50)
+	if _, spare := registrations[ctfPoolUid]; !spare || slices.Contains(stage.proof.Row.TreasuryUids, ctfPoolUid) || source.Pools[0].NoID != 9 || source.Pools[0].UID != poolUid {
+		t.Fatal("treasury fixture census changed")
+	}
+	masked := map[uint16]bool{}
+	for _, uid := range provider.MaskedUIDs {
+		masked[uid] = true
+	}
+	// Operator 9's configured entry from epoch 8. Its CTF pool is weighted only
+	// under support, as newReleaseCaptureTheFlag resolves it.
+	withCtf := func(support bool) *ReleaseMeasurementArtifact {
+		artifact := cloneReleaseMeasurementArtifact(t, source)
+		artifact.CaptureTheFlag = &ReleaseCaptureTheFlag{Support: support, Pools: []ReleasePoolMeasurement{},
+			Entries: []ReleaseAmendmentEntry{ctfTestWire(t, ctfTestEntry(t, artifact.ChainID, artifact.Netuid, 9, 8, nil))}}
+		if support {
+			artifact.CaptureTheFlag.Pools = []ReleasePoolMeasurement{{NoID: 9, UID: ctfPoolUid, PoolHotkey: releaseHex32(registrations[ctfPoolUid].Hotkey)}}
+		}
+		return artifact
+	}
+	// One tempo's decision as assembleReleaseMeasurement makes it from E_c.
+	decide := func(pools, ctf, head []ExactWeightInput) *VerifiedReleaseMeasurement {
+		selection, err := selectHeadFleets(head, 200)
+		if err != nil {
+			t.Fatal(err)
+		}
+		decision := *provider
+		decision.EligibleHead = append(slices.Clone(selection.Selected), selection.Rejected...)
+		decision.SelectedHead, decision.RejectedHead, decision.Ctf = selection.Selected, selection.Rejected, ctf
+		decision.Pools = make([]VerifiedReleasePool, len(pools))
+		for index, pool := range pools {
+			decision.Pools[index] = VerifiedReleasePool{NoID: uint64(9 + index), UID: pool.UID, Eligible: true, Score: pool.Score}
+		}
+		decision.UIDs, decision.Scores, err = BuildWeightVectorCtf(pools, ctf, selection.Selected, ctfTestShares, masked)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return &decision
+	}
+	pools := []ExactWeightInput{{UID: poolUid, Score: big.NewRat(1, 1)}}
+	weighted := []ExactWeightInput{{UID: ctfPoolUid, Score: big.NewRat(1, 1)}}
+	for _, test := range []struct {
+		name         string
+		support      bool
+		ctf          []ExactWeightInput
+		otherUids    []uint16
+		otherScore   *big.Rat
+		poolShare    *big.Rat
+		ctfShare     *big.Rat
+		headShare    *big.Rat
+		leftOutTempo int
+	}{
+		{name: "CTF pool weighted, one other fleet at EMA 1", support: true, ctf: weighted, otherUids: []uint16{145}, otherScore: big.NewRat(1, 1),
+			poolShare: big.NewRat(4, 100), ctfShare: big.NewRat(1, 100), headShare: big.NewRat(5, 100), leftOutTempo: 34},
+		{name: "CTF pool weighted, 199 other fleets at EMA 3", support: true, ctf: weighted, otherUids: idleFleetTestOtherUids(), otherScore: big.NewRat(3, 1),
+			poolShare: big.NewRat(4, 100), ctfShare: big.NewRat(1, 100), headShare: big.NewRat(5, 100), leftOutTempo: 15},
+		{name: "ctf off, one other fleet at EMA 1", support: false, ctf: []ExactWeightInput{}, otherUids: []uint16{145}, otherScore: big.NewRat(1, 1),
+			poolShare: big.NewRat(4, 90), ctfShare: new(big.Rat), headShare: big.NewRat(5, 90), leftOutTempo: 34},
+	} {
+		artifact := withCtf(test.support)
+		idle := new(big.Rat).Set(test.otherScore)
+		for tempo := 0; tempo <= test.leftOutTempo+4; tempo++ {
+			row, err := deriveOwnerRecycleMeasuredRow(stage.authority, artifact, decide(pools, test.ctf, idleFleetTestHead(test.otherUids, test.otherScore, idle)))
+			if err != nil {
+				t.Fatalf("%s: idle for %d tempos refused the whole row: %v", test.name, tempo, err)
+			}
+			pool, ctf, head := new(big.Rat), new(big.Rat), new(big.Rat)
+			for index, uid := range row.Uids {
+				score, err := decodeRationalJSON(row.Scores[index])
+				if err != nil {
+					t.Fatal(err)
+				}
+				if row.Values[index] == 0 {
+					t.Fatalf("%s: tempo %d: uid %d kept an exact share with a zero wire value", test.name, tempo, uid)
+				}
+				switch {
+				case slices.Contains(row.TreasuryUids, uid):
+					if score.Cmp(big.NewRat(9, 20)) != 0 {
+						t.Fatalf("%s: tempo %d: recipient %d share %s", test.name, tempo, uid, score)
+					}
+				case uid == poolUid:
+					pool.Add(pool, score)
+				case uid == ctfPoolUid:
+					ctf.Add(ctf, score)
+				default:
+					head.Add(head, score)
+				}
+			}
+			if pool.Cmp(test.poolShare) != 0 || ctf.Cmp(test.ctfShare) != 0 || head.Cmp(test.headShare) != 0 {
+				t.Fatalf("%s: tempo %d: pool %s, CTF %s, head %s", test.name, tempo, pool, ctf, head)
+			}
+			for _, uid := range test.otherUids {
+				if !slices.Contains(row.Uids, uid) {
+					t.Fatalf("%s: tempo %d: busy fleet %d left the row", test.name, tempo, uid)
+				}
+			}
+			leftOut := tempo >= test.leftOutTempo
+			if slices.Contains(row.Uids, idleFleetTestUid) == leftOut {
+				t.Fatalf("%s: tempo %d: idle fleet in row %v, want left out from tempo %d", test.name, tempo, row.Uids, test.leftOutTempo)
+			}
+			if excluded := idleFleetTestExcludedUids(t, row); leftOut != slices.Equal(excluded, []uint16{idleFleetTestUid}) || !leftOut && excluded != nil {
+				t.Fatalf("%s: tempo %d: row names %v as left out", test.name, tempo, excluded)
+			}
+			idle.Mul(idle, big.NewRat(3, 4))
+		}
+	}
+	// A lost pool is a real loss beside capture the flag too.
+	tiny := append(slices.Clone(pools), ExactWeightInput{UID: 68, Score: big.NewRat(1, 1_000_000_000)})
+	belowHalf := []ExactWeightInput{{UID: 145, Score: big.NewRat(1, 1)}, {UID: idleFleetTestUid, Score: big.NewRat(1, 1_000_000_000)}}
+	if row, err := deriveOwnerRecycleMeasuredRow(stage.authority, withCtf(true), decide(tiny, weighted, belowHalf)); err == nil || !strings.Contains(err.Error(), "quantization loses") || !reflect.DeepEqual(row, OwnerRecycleMeasuredRow{}) {
+		t.Fatalf("a tiny pool beside capture the flag was admitted: %+v %v", row, err)
+	}
+	// So is a lost CTF pool, even where its operator's pool keeps a unit: at
+	// 1/10,001 of each channel the pool rounds to 1 and its CTF pool to 0. The
+	// idle fleet beside it could leave, and the row still refuses.
+	const smallPoolUid, smallCtfPoolUid = uint16(68), uint16(51)
+	if masked[smallPoolUid] || masked[smallCtfPoolUid] {
+		t.Fatal("treasury fixture masks changed")
+	}
+	small := append(slices.Clone(pools), ExactWeightInput{UID: smallPoolUid, Score: big.NewRat(1, 10_000)})
+	if row, err := deriveOwnerRecycleMeasuredRow(stage.authority, withCtf(true), decide(small, weighted, belowHalf)); err != nil || !slices.Contains(row.Uids, smallPoolUid) || !slices.Equal(idleFleetTestExcludedUids(t, row), []uint16{idleFleetTestUid}) {
+		t.Fatalf("a small pool beside capture the flag: row %v, error %v", row.Uids, err)
+	}
+	smallCtf := append(slices.Clone(weighted), ExactWeightInput{UID: smallCtfPoolUid, Score: big.NewRat(1, 10_000)})
+	if row, err := deriveOwnerRecycleMeasuredRow(stage.authority, withCtf(true), decide(small, smallCtf, belowHalf)); err == nil || !strings.Contains(err.Error(), "quantization loses") || !reflect.DeepEqual(row, OwnerRecycleMeasuredRow{}) {
+		t.Fatalf("a CTF pool below half a wire unit was left out: %+v %v", row, err)
 	}
 }

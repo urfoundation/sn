@@ -4,6 +4,7 @@ package miner
 
 import (
 	"context"
+	"os"
 	"sync"
 
 	"github.com/urnetwork/connect"
@@ -118,12 +119,21 @@ func observeProviderExtenderIdentity(output *providerDiagnostics, provider uint6
 
 // Only changed scalar facts are offered. SDK error/address strings are never
 // formatted or retained, and exporter calls occur after the state lock releases.
+// The one reason it adds is a closed vocabulary (extender_standing.go), with
+// the guidance that says the fix.
 type providerExtenderStatusListener struct {
 	stateLock   sync.Mutex
 	observed    bool
 	last        providerExtenderObservation
 	diagnostics *providerDiagnostics
 	provider    uint64
+	// where the status file reads this slot's standing, nil for none
+	standings *minerExtenderStandings
+	// the command that lets this miner bind tcp 443, empty for none
+	bindFix string
+	// the run's port mapping, which the extender slot's listener alone feeds
+	// (connect/EXTENDER.md S10); nil on every other slot
+	portMapping *minerPortMappingHolder
 }
 
 // The provider borrows its enclosing run's explicitly supplied output budget.
@@ -131,12 +141,24 @@ func newProviderExtenderStatusListener(output *providerDiagnostics, provider uin
 	return &providerExtenderStatusListener{diagnostics: output, provider: provider}
 }
 
+// withStanding also keeps the slot's standing for the status file, and has
+// the log's guidance name `bindFix` as the fix for a refused bind.
+func (self *providerExtenderStatusListener) withStanding(standings *minerExtenderStandings, bindFix string) *providerExtenderStatusListener {
+	self.standings, self.bindFix = standings, bindFix
+	return self
+}
+
 // A nil observation is unknown, separate from a known disabled extender.
 func (self *providerExtenderStatusListener) ExtenderProvideStatusChanged(status *sdk.ExtenderProvideStatus) {
 	observation := providerExtenderObservation{}
+	standing := minerExtenderStandingOf(status)
 	if status != nil {
-		observation = providerExtenderObservation{Known: true, Enabled: status.Enabled, Listening: status.Listening, ListenFailed: status.ListenError != "", ActivatedV4: status.ActivatedV4, ActivatedV6: status.ActivatedV6, ActivationFailed: status.LastActivationError != "", Revoked: status.RevokedTime != 0}
+		observation = providerExtenderObservation{Known: true, Enabled: status.Enabled, Listening: status.Listening, ListenFailed: status.ListenError != "", ActivatedV4: status.ActivatedV4, ActivatedV6: status.ActivatedV6, ActivationFailed: status.LastActivationError != "", Revoked: status.RevokedTime != 0, Reason: standing.Reason, PortMapping: status.PortMapping}
 	}
+	self.standings.set(self.provider, standing)
+	// the status file keeps the router port mapping's state, method and ports,
+	// a closed vocabulary and numbers, never the router's words
+	self.portMapping.observe(status)
 	changed := func() bool {
 		self.stateLock.Lock()
 		defer self.stateLock.Unlock()
@@ -147,6 +169,6 @@ func (self *providerExtenderStatusListener) ExtenderProvideStatusChanged(status 
 		return true
 	}()
 	if changed {
-		self.diagnostics.observe(providerExtenderObserved, self.provider, true, nil, 0, &observation)
+		self.diagnostics.observeGuided(providerExtenderObserved, self.provider, true, nil, 0, &observation, "", minerExtenderGuidance(observation.Reason, self.bindFix, os.Geteuid()))
 	}
 }

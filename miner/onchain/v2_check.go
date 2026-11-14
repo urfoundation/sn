@@ -4,8 +4,11 @@ package onchain
 // §4.2 G2): an independent watcher of a pool's pending root. It reads the
 // pending root, the latest finalized root F and the covered epochs'
 // fundedThrough from vault2 at the finalized block, fetches the published
-// objects, and runs ledger.Verify (without head bindings, for which a
-// watcher has no archive state).
+// objects, and runs ledger.Verify without head bindings, leaving check 6 to
+// the auditors. For an operator's capture the flag pool, vault2 pool
+// 2^32 + n, it runs ctf.Verify instead, with the chain facts, head bindings,
+// signed amendments and drand pulses v2_ctf.go reads; the accounts are
+// protected the same way.
 //
 // The watcher protects the accounts of the newest finalized root whose
 // objects it fetched and verified: F, or when F's objects are missing or do
@@ -39,6 +42,8 @@ import (
 
 	docopt "github.com/docopt/docopt-go"
 
+	"github.com/urfoundation/sn/amendment"
+	"github.com/urfoundation/sn/ctf"
 	"github.com/urfoundation/sn/ledger"
 	"github.com/urfoundation/sn/merkle"
 	"github.com/urfoundation/sn/stabi"
@@ -131,19 +136,32 @@ func v2ReadObject(ctx context.Context, objects ledger.Fetcher, ref ledger.Ref, l
 	return data, nil
 }
 
+// v2HeaderAccounts names the account chunks of a root's canonical header:
+// v2PoolAccounts for an operator's pool, v2CtfAccounts for its capture the
+// flag pool.
+type v2HeaderAccounts func(header []byte) ([]ledger.Ref, error)
+
+func v2PoolAccounts(data []byte) ([]ledger.Ref, error) {
+	header, err := ledger.DecodeHeader(data)
+	if err != nil {
+		return nil, err
+	}
+	return header.Accounts, nil
+}
+
 // v2ReadAccounts reads a root's published accounts: its canonical header
 // and account chunks, each checked against its reference, and their tree.
-func v2ReadAccounts(ctx context.Context, objects ledger.Fetcher, ledgerHash [32]byte) ([]merkle.LedgerAccount, *merkle.LedgerSumTree, error) {
+func v2ReadAccounts(ctx context.Context, objects ledger.Fetcher, ledgerHash [32]byte, accountsOf v2HeaderAccounts) ([]merkle.LedgerAccount, *merkle.LedgerSumTree, error) {
 	data, err := v2ReadObject(ctx, objects, ledgerHash, ledger.MaxHeaderBytes)
 	if err != nil {
 		return nil, nil, err
 	}
-	header, err := ledger.DecodeHeader(data)
+	refs, err := accountsOf(data)
 	if err != nil {
 		return nil, nil, fmt.Errorf("header %v: %w", ledger.Ref(ledgerHash), err)
 	}
-	chunks := make([][]byte, len(header.Accounts))
-	for j, ref := range header.Accounts {
+	chunks := make([][]byte, len(refs))
+	for j, ref := range refs {
 		if chunks[j], err = v2ReadObject(ctx, objects, ref, ledger.ChunkRows*ledger.AccountRowBytes); err != nil {
 			return nil, nil, err
 		}
@@ -194,8 +212,19 @@ func cmdV2Check(ctx context.Context, opts docopt.Opts) error {
 	if err != nil {
 		return err
 	}
+	ctfNoID, isCtf := amendment.CtfNoID(noID)
+	if !isCtf && noID >= ctf.PoolIDBase {
+		return fmt.Errorf("--no_id: %d is neither an operator's pool, below 2^32, nor a capture the flag pool 2^32 + n with 1 <= n < 2^32", noID)
+	}
 	api, err := parseAPIURL(strOpt(opts, "--api_url"))
 	if err != nil {
+		return err
+	}
+	sources := v2CtfSources{amendments: strOpt(opts, "--amendments_url")}
+	if _, err := parseHTTPURL("--amendments_url", sources.amendments); err != nil {
+		return err
+	}
+	if sources.drand, err = parseHTTPURL("--drand_url", strOpt(opts, "--drand_url")); err != nil {
 		return err
 	}
 	wantChainID, gasLimit, err := parseChainAndGas(opts)
@@ -240,12 +269,15 @@ func cmdV2Check(ctx context.Context, opts docopt.Opts) error {
 	// A watcher has neither vault1 nor the pool's surplus history: it takes
 	// the header's recovery components as declared (§16 step 6) and checks
 	// their rows, allocation and fit within the funding; the auditors check
-	// them against the chain.
+	// them against the chain. It takes the header's extender components as
+	// declared too (WHITEPAPER.md §8.6.4) and checks their census and share
+	// rows; which epochs the signed amendment entry covers is the auditors'
+	// check.
 	in := ledger.VerifyInput{
 		NoID: noID, FirstEpoch: state.firstEpoch, Seq: pending.Seq,
 		Pending:       v2LedgerRoot(pending.Epoch, pending.Root, pending.Total, pending.LeafCount, pending.LedgerHash),
 		FundedThrough: state.funded, Fetcher: objects, Custody: ledger.NewMemoryCustody(),
-		MaxFetchBytes: ledger.DefaultMaxFetchBytes, RecoveriesUnchecked: true,
+		MaxFetchBytes: ledger.DefaultMaxFetchBytes, RecoveriesUnchecked: true, ExtendersUnchecked: true,
 	}
 	if latest := state.latest; latest != nil {
 		fmt.Printf("  finalized root:    index %d, epoch %d, root 0x%x, total %s, %d accounts\n", state.latestIndex, latest.Epoch, latest.Root, formatAlpha(latest.Total), latest.LeafCount)
@@ -254,21 +286,35 @@ func cmdV2Check(ctx context.Context, opts docopt.Opts) error {
 	} else {
 		fmt.Printf("  finalized root:    none; the pending root is the pool's first\n")
 	}
-	res, err := ledger.Verify(ctx, in)
-	if err != nil {
-		return fmt.Errorf("verify the pending root: %w", err)
-	}
-	reportV2Audit(res)
-	if state.latest == nil {
-		return nil
-	}
-	a := &v2Assessment{
-		protected: v2Protected{index: state.latestIndex, accounts: res.PreviousAccounts, tree: res.Previous},
-		tree:      res.Tree, reproduced: res.Reproduced, faults: res.Faults, action: res.Action(),
-	}
-	if res.Previous == nil {
-		if a, err = v2Fallback(ctx, reader, objects, noID, state); err != nil {
-			return err
+	// failed is a capture the flag audit that could not run, or that refused
+	// the root with nothing to challenge or demand: the check acts on the
+	// accounts all the same, then fails.
+	var a *v2Assessment
+	var failed error
+	if isCtf {
+		if a, failed, err = v2CheckCtf(ctx, reader, objects, sources, chainID, ctfNoID, noID, state, in.Previous); err != nil {
+			return v2AlsoFailed(err, failed)
+		}
+		if a == nil {
+			return failed
+		}
+	} else {
+		res, err := ledger.Verify(ctx, in)
+		if err != nil {
+			return fmt.Errorf("verify the pending root: %w", err)
+		}
+		reportV2Audit(res)
+		if state.latest == nil {
+			return nil
+		}
+		a = &v2Assessment{
+			protected: v2Protected{index: state.latestIndex, accounts: res.PreviousAccounts, tree: res.Previous},
+			tree:      res.Tree, reproduced: res.Reproduced, faults: res.Faults, action: res.Action(),
+		}
+		if res.Previous == nil {
+			if a, err = v2Fallback(ctx, reader, objects, noID, state, v2PoolAccounts); err != nil {
+				return err
+			}
 		}
 	}
 	reportV2Accounts(a)
@@ -280,19 +326,28 @@ func cmdV2Check(ctx context.Context, opts docopt.Opts) error {
 	switch a.action {
 	case ledger.ActionChallenge:
 		if !challenge {
-			return fmt.Errorf("pending root seq %d faults %d accounts of finalized root %d; --challenge deletes it", pending.Seq, len(a.faults), a.protected.index)
+			return v2AlsoFailed(fmt.Errorf("pending root seq %d faults %d accounts of finalized root %d; --challenge deletes it", pending.Seq, len(a.faults), a.protected.index), failed)
 		}
-		return v2Challenge(ctx, sender, noID, state, a)
+		return v2AlsoFailed(v2Challenge(ctx, sender, noID, state, a), failed)
 	case ledger.ActionDemand:
 		if !demand {
-			return fmt.Errorf("pending root seq %d leaves the accounts of finalized root %d unverifiable; --demand sends the demand set", pending.Seq, a.protected.index)
+			return v2AlsoFailed(fmt.Errorf("pending root seq %d leaves the accounts of finalized root %d unverifiable; --demand sends the demand set", pending.Seq, a.protected.index), failed)
 		}
-		return v2Demand(ctx, sender, noID, state, a, head.Number)
+		return v2AlsoFailed(v2Demand(ctx, sender, noID, state, a, head.Number), failed)
 	}
 	if a.protected.index != state.latestIndex {
-		return fmt.Errorf("finalized root %d's objects are missing or do not rebuild it: the accounts added after root %d cannot be checked", state.latestIndex, a.protected.index)
+		return v2AlsoFailed(fmt.Errorf("finalized root %d's objects are missing or do not rebuild it: the accounts added after root %d cannot be checked", state.latestIndex, a.protected.index), failed)
 	}
-	return nil
+	return failed
+}
+
+// v2AlsoFailed adds a capture the flag audit that failed to err, which is
+// returned as it is otherwise.
+func v2AlsoFailed(err, failed error) error {
+	if failed == nil {
+		return err
+	}
+	return errors.Join(err, failed)
 }
 
 // v2LedgerRoot is a vault2 root as ledger.Verify takes it.
@@ -302,10 +357,8 @@ func v2LedgerRoot(epoch uint64, root [32]byte, total *big.Int, leafCount uint64,
 
 // v2Fallback protects, when the latest finalized root's objects are missing
 // or do not rebuild it, the newest older root whose objects do, and reads
-// the pending root's published accounts against it: a fault they show is
-// challenged when they reproduce the pending root, and a pending root they
-// do not reproduce is demanded.
-func v2Fallback(ctx context.Context, r *v2Reader, objects ledger.Fetcher, noID uint64, state *v2State) (*v2Assessment, error) {
+// the pending root's published accounts against it (v2AssessPending).
+func v2Fallback(ctx context.Context, r *v2Reader, objects ledger.Fetcher, noID uint64, state *v2State, accountsOf v2HeaderAccounts) (*v2Assessment, error) {
 	a := &v2Assessment{action: ledger.ActionRefuse}
 	found := false
 	for k := state.latestIndex; k > 0 && !found; {
@@ -314,7 +367,7 @@ func v2Fallback(ctx context.Context, r *v2Reader, objects ledger.Fetcher, noID u
 		if err != nil {
 			return nil, fmt.Errorf("roots(%d,%d): %w", noID, k, err)
 		}
-		accounts, tree, err := v2ReadAccounts(ctx, objects, root.LedgerHash)
+		accounts, tree, err := v2ReadAccounts(ctx, objects, root.LedgerHash, accountsOf)
 		if err == nil && !v2Rebuilds(tree, root.Root, root.Total, root.LeafCount) {
 			err = errors.New("its published accounts do not rebuild it")
 		}
@@ -328,7 +381,14 @@ func v2Fallback(ctx context.Context, r *v2Reader, objects ledger.Fetcher, noID u
 		return nil, fmt.Errorf("no finalized root of pool %d has objects that rebuild it: its accounts cannot be checked, challenged or demanded", noID)
 	}
 	fmt.Printf("  fallback:          finalized root %d's objects are missing or do not rebuild it; protecting finalized root %d, the newest whose objects do\n", state.latestIndex, a.protected.index)
-	accounts, tree, err := v2ReadAccounts(ctx, objects, state.pending.LedgerHash)
+	return v2AssessPending(ctx, objects, state, accountsOf, a)
+}
+
+// v2AssessPending reads the pending root's published accounts against the
+// root a protects: a fault they show is challenged when they reproduce the
+// pending root, and a pending root they do not reproduce is demanded.
+func v2AssessPending(ctx context.Context, objects ledger.Fetcher, state *v2State, accountsOf v2HeaderAccounts, a *v2Assessment) (*v2Assessment, error) {
+	accounts, tree, err := v2ReadAccounts(ctx, objects, state.pending.LedgerHash, accountsOf)
 	if err != nil {
 		fmt.Printf("  pending accounts:  unavailable: %v\n", err)
 	} else {

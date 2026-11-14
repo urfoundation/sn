@@ -2,9 +2,10 @@
 
 // The settlement v2 audit keeps what it audits in durable custody
 // (VERSION2-FINAL.md §9.2): every ledger object it fetched, by sha256; per
-// pool epoch, the chunks of the provider rows it found valid and every null
-// declaration it accepted; and one record per pending root with the finding
-// and the decision. Files live under <state_dir>/settlement-v2-ledger and are
+// pool epoch, the chunks of the provider rows it found valid, its extender
+// component found valid (WHITEPAPER.md §8.6.4) and every null declaration it
+// accepted; and one record per pending root with the finding and the
+// decision. Files live under <state_dir>/settlement-v2-ledger and are
 // written like the rest of the validator's state: atomically, owner-only.
 package validator
 
@@ -16,6 +17,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 
 	"github.com/ethereum/go-ethereum/common/hexutil"
 
@@ -44,6 +46,17 @@ type settlementV2NullRecord struct {
 	NoID   uint64 `json:"no_id"`
 	Epoch  uint64 `json:"epoch"`
 	Seq    uint64 `json:"seq"`
+}
+
+// The record of one epoch's valid extender component (WHITEPAPER.md §8.6.4):
+// Z, as a decimal string, and the census and share-row chunks.
+type settlementV2ExtendersRecord struct {
+	Schema string   `json:"schema"`
+	NoID   uint64   `json:"no_id"`
+	Epoch  uint64   `json:"epoch"`
+	Bytes  string   `json:"bytes"`
+	Census []string `json:"census"`
+	Rows   []string `json:"rows"`
 }
 
 // settlementV2AuditRoot identifies the pending root an audit record is about.
@@ -93,12 +106,12 @@ type settlementV2AuditFault struct {
 }
 
 // observe records an audit's finding at the pinned block.
-func (self *settlementV2AuditRecord) observe(block uint64, res *ledger.Result) {
-	self.Block, self.Check, self.Error, self.Missing, self.Faults = block, res.Check.String(), "", nil, settlementV2AuditFaults(res.Faults)
-	if res.Err != nil {
-		self.Error = res.Err.Error()
+func (self *settlementV2AuditRecord) observe(block uint64, res *settlementV2Finding) {
+	self.Block, self.Check, self.Error, self.Missing, self.Faults = block, res.check, "", nil, settlementV2AuditFaults(res.faults)
+	if res.err != nil {
+		self.Error = res.err.Error()
 	}
-	for _, ref := range res.Missing {
+	for _, ref := range res.missing {
 		self.Missing = append(self.Missing, ref.String())
 	}
 }
@@ -211,6 +224,49 @@ func (self *settlementV2Custody) KeepNull(ctx context.Context, noID, epoch, seq 
 	return self.writeJSON(self.path("nulls", fmt.Sprintf("%d-%d-%d.json", noID, epoch, seq)), record)
 }
 
+// Returns the extender component of the epoch that an audit found
+// valid.
+func (self *settlementV2Custody) ValidExtenders(ctx context.Context, noID, epoch uint64) (*ledger.HeaderExtenders, bool, error) {
+	var record settlementV2ExtendersRecord
+	path := self.path("extenders", fmt.Sprintf("%d-%d.json", noID, epoch))
+	ok, err := self.readJSON(path, &record)
+	if !ok {
+		return nil, false, err
+	}
+	if record.Schema != settlementV2CustodySchema || record.NoID != noID || record.Epoch != epoch || record.Census == nil || record.Rows == nil {
+		return nil, false, fmt.Errorf("settlement v2 custody %s is not pool %d epoch %d's extender component", path, noID, epoch)
+	}
+	component := &ledger.HeaderExtenders{}
+	if component.Bytes, err = strconv.ParseUint(record.Bytes, 10, 64); err != nil {
+		return nil, false, fmt.Errorf("settlement v2 custody %s: %w", path, err)
+	}
+	for _, list := range []struct {
+		from []string
+		to   *[]ledger.Ref
+	}{{record.Census, &component.Census}, {record.Rows, &component.Rows}} {
+		*list.to = make([]ledger.Ref, len(list.from))
+		for i, text := range list.from {
+			if (*list.to)[i], err = ledger.ParseRef(text); err != nil {
+				return nil, false, fmt.Errorf("settlement v2 custody %s: %w", path, err)
+			}
+		}
+	}
+	return component, true, nil
+}
+
+// Records the epoch's extender component as valid.
+func (self *settlementV2Custody) KeepValidExtenders(ctx context.Context, noID, epoch uint64, component *ledger.HeaderExtenders) error {
+	record := settlementV2ExtendersRecord{Schema: settlementV2CustodySchema, NoID: noID, Epoch: epoch, Bytes: strconv.FormatUint(component.Bytes, 10),
+		Census: make([]string, len(component.Census)), Rows: make([]string, len(component.Rows))}
+	for i, ref := range component.Census {
+		record.Census[i] = ref.String()
+	}
+	for i, ref := range component.Rows {
+		record.Rows[i] = ref.String()
+	}
+	return self.writeJSON(self.path("extenders", fmt.Sprintf("%d-%d.json", noID, epoch)), record)
+}
+
 // auditRecord returns the record of the pending root, or a new one. vault2
 // never reuses a seq, so a record of another root under its seq is refused.
 func (self *settlementV2Custody) auditRecord(noID uint64, pending stabi.ISTSettlementVault2Pending) (*settlementV2AuditRecord, error) {
@@ -230,18 +286,19 @@ func (self *settlementV2Custody) auditRecord(noID uint64, pending stabi.ISTSettl
 
 // accounts returns a finalized root's accounts and their tree from custody
 // alone, or nil when custody does not hold every object of the root or they
-// do not rebuild it.
-func (self *settlementV2Custody) accounts(ctx context.Context, root ledger.Root) ([]merkle.LedgerAccount, *merkle.LedgerSumTree, error) {
+// do not rebuild it. headerAccounts names the account chunks of the pool's
+// header.
+func (self *settlementV2Custody) accounts(ctx context.Context, root ledger.Root, headerAccounts func([]byte) ([]ledger.Ref, error)) ([]merkle.LedgerAccount, *merkle.LedgerSumTree, error) {
 	data, ok, err := self.Object(ctx, root.LedgerHash)
 	if err != nil || !ok {
 		return nil, nil, err
 	}
-	header, err := ledger.DecodeHeader(data)
+	refs, err := headerAccounts(data)
 	if err != nil {
 		return nil, nil, nil
 	}
-	chunks := make([][]byte, len(header.Accounts))
-	for j, ref := range header.Accounts {
+	chunks := make([][]byte, len(refs))
+	for j, ref := range refs {
 		if chunks[j], ok, err = self.Object(ctx, ref); err != nil || !ok {
 			return nil, nil, err
 		}

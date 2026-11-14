@@ -1,6 +1,6 @@
 module github.com/urfoundation/sn
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/ChainSafe/go-schnorrkel v1.1.0
@@ -39,6 +39,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.24.4 // indirect
 	github.com/blendle/zapdriver v1.3.1 // indirect
+	github.com/btcsuite/btcutil v1.0.3-0.20201208143702-a53e38424cce // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/coinbase/cdp-sdk/go v0.0.0-20261022213558-658e227219e3 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
@@ -210,6 +211,11 @@ replace github.com/urnetwork/sdk => ../sdk
 replace github.com/pion/sctp => ../connect/sctp
 
 replace github.com/urnetwork/server => ../server
+
+// Server builds pgx from its own fork, and server main calls the fork's
+// pgxpool.Conn.ReleaseWithIdleReturn. Dependency replaces are not inherited,
+// so select the same source here, or SN cannot compile against server main.
+replace github.com/jackc/pgx/v5 => ../server/third_party/pgx
 
 // The server module also imports Warp; dependency replaces are not inherited.
 replace github.com/urnetwork/warp => ../warp

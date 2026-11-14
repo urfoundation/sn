@@ -111,7 +111,8 @@ forms with unchanged behavior and bytes; the launch uses the new one-operator, o
   tranches. The owner-recycle preview planner still refuses an empty allocation.
 - **Head fleet below one wire unit.** On the same path, a selected head fleet whose share rounds to zero in `u16` is
   left out of that tempo's row and named in `excluded_head_uids`, and the other fleets take its share. Every verifier
-  rederives it. A lost pool still refuses the row.
+  rederives it. The rule holds from capture the flag's `E_c` too, at its head share. A lost pool, or a lost CTF
+  pool, still refuses the row.
 - **Bootstrap.** A fresh preparation uses `urnetwork-mainnet-bootstrap-chain-config-v5` with one UR role, `sole`
   ([BOOTSTRAP-CHAIN.md](BOOTSTRAP-CHAIN.md)). The passive root seat may share the sole hotkey only under the same
   coldkey. The two-unit `activate-validators` tooling refuses v5 and is not the launch path: the validator runs as

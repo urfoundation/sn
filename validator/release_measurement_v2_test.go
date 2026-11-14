@@ -267,7 +267,9 @@ func (self *releaseMeasurementV2TestFixture) options(t testing.TB) ReleaseMeasur
 		Expected: releaseMeasurementV2Decision(artifact), Policy: artifact.Policy,
 		ControlledNOIDs: slices.Clone(artifact.ControlledNOIDs), Bindings: slices.Clone(artifact.Bindings),
 		Pools: slices.Clone(artifact.Pools), DepositAudits: slices.Clone(artifact.DepositAudits),
-		Operators: map[uint64]ReleaseMeasurementV2OperatorOptions{}, MaxOperators: 2,
+		// A configuration without a ctf setting supports capture the flag.
+		CtfSupport: true,
+		Operators:  map[uint64]ReleaseMeasurementV2OperatorOptions{}, MaxOperators: 2,
 		MaxHeadEntries: 32, MaxArtifactBytes: 1024 * 1024, MaxControlBytes: 1024 * 1024,
 	}
 	for _, input := range artifact.Inputs {

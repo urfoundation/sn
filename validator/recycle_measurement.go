@@ -194,6 +194,7 @@ func ownerRecycleMeasurementLimit(ctx context.Context, authority *OwnerRecycleMe
 	}
 	if options.Expected != authority.expected || !reflect.DeepEqual(options.Policy, authority.config.Policy) ||
 		!slices.Equal(options.ControlledNOIDs, authority.config.ControlledNOIDs) ||
+		options.CtfSupport != releaseCtfSupported(&authority.config) || !slices.Equal(options.AmendmentFallback, authority.config.AmendmentFallback) ||
 		(options.ReplayPolicy != nil && (!isOwnerRecycleProductionConfig(&authority.config) || !reflect.DeepEqual(*options.ReplayPolicy, options.Policy))) {
 		return 0, errors.New("owner-recycle measurement replay authority differs from its exact approved decision")
 	}
@@ -278,6 +279,13 @@ func deriveOwnerRecycleMeasuredRow(authority *OwnerRecycleMeasurementAuthority, 
 			return empty, err
 		}
 	}
+	if ctf := artifact.CaptureTheFlag; ctf != nil {
+		for _, pool := range ctf.Pools {
+			if err := checkProvider(pool.UID, pool.PoolHotkey); err != nil {
+				return empty, err
+			}
+		}
+	}
 	for _, binding := range artifact.Bindings {
 		if binding.LiveUIDFound {
 			if err := checkProvider(binding.LiveUID, binding.Hotkey); err != nil {
@@ -300,7 +308,7 @@ func deriveOwnerRecycleMeasuredRow(authority *OwnerRecycleMeasurementAuthority, 
 	// The selector that owns the reserve-only row owns this treasury rule too.
 	// Every row accepted above keeps its exact bytes: this runs only on a refusal.
 	if errors.Is(err, errOwnerRecycleQuantizationLoss) && treasuryReserveFallbackConfig(&authority.config) {
-		row, excludedHeadUids, err = completeTreasuryRowWithoutUnquantizableHead(row, artifact.Policy, verified, owners)
+		row, excludedHeadUids, err = completeTreasuryRowWithoutUnquantizableHead(row, artifact, verified, owners)
 	}
 	if err != nil {
 		return empty, err
@@ -336,10 +344,15 @@ func deriveOwnerRecycleMeasuredRow(authority *OwnerRecycleMeasurementAuthority, 
 // seats, EMA and the head result are untouched. A lost pool, or a top fleet that
 // is lost alone and with it the whole channel, still refuses.
 //
+// Each prefix is rebuilt as the measurement built its provider row: by theta,
+// or from E_c by capture the flag's shares with its CTF channel
+// (assembleReleaseMeasurement). No head fleet moves the pool or CTF share, and
+// a CTF pool that rounds to zero is a lost pool.
+//
 // Leaving a fleet out never lowers another fleet's wire value, so whether a
 // prefix loses a fleet is monotonic and a binary search keeps the rebuilds few
 // however many fleets are idle. Every prefix kept passed the shared arithmetic.
-func completeTreasuryRowWithoutUnquantizableHead(refused *OwnerRecyclePreview, policy protocol.Policy, verified *VerifiedReleaseMeasurement, owners map[uint16]bool) (*OwnerRecyclePreview, []uint16, error) {
+func completeTreasuryRowWithoutUnquantizableHead(refused *OwnerRecyclePreview, artifact *ReleaseMeasurementArtifact, verified *VerifiedReleaseMeasurement, owners map[uint16]bool) (*OwnerRecyclePreview, []uint16, error) {
 	pools := make([]ExactWeightInput, 0, len(verified.Pools))
 	for _, pool := range verified.Pools {
 		pools = append(pools, ExactWeightInput{UID: pool.UID, Score: pool.Score})
@@ -348,8 +361,18 @@ func completeTreasuryRowWithoutUnquantizableHead(refused *OwnerRecyclePreview, p
 	for _, uid := range verified.MaskedUIDs {
 		masked[uid] = true
 	}
+	ctf, err := verifiedReleaseCaptureTheFlag(artifact)
+	if err != nil {
+		return nil, nil, err
+	}
+	providerRow := func(head []ExactWeightInput) ([]uint16, []*big.Rat, error) {
+		if ctf != nil {
+			return BuildWeightVectorCtf(pools, verified.Ctf, head, ctf.shares, masked)
+		}
+		return BuildWeightVectorExact(pools, head, artifact.Policy.Steering.Theta, masked)
+	}
 	seated := verified.SelectedHead
-	uids, scores, err := BuildWeightVectorExact(pools, seated, policy.Steering.Theta, masked)
+	uids, scores, err := providerRow(seated)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -357,12 +380,12 @@ func completeTreasuryRowWithoutUnquantizableHead(refused *OwnerRecyclePreview, p
 		return nil, nil, errors.New("treasury row's pool and head projections do not reproduce its provider row")
 	}
 	build := func(seats int) (*OwnerRecyclePreview, error) {
-		uids, scores, err := BuildWeightVectorExact(pools, seated[:seats], policy.Steering.Theta, masked)
+		uids, scores, err := providerRow(seated[:seats])
 		if err != nil {
 			return nil, err
 		}
 		row := &OwnerRecyclePreview{ProposalHash: refused.ProposalHash, FinalizedHash: refused.FinalizedHash, OwnerUids: refused.OwnerUids, MaskedOwnerUids: refused.MaskedOwnerUids}
-		return row, completeOwnerRecycleRow(row, policy, uids, scores, owners, false)
+		return row, completeOwnerRecycleRow(row, artifact.Policy, uids, scores, owners, false)
 	}
 	// SelectedHead is in rank order. The top unmasked fleet must keep the channel.
 	kept := slices.IndexFunc(seated, func(fleet ExactWeightInput) bool { return !masked[fleet.UID] }) + 1
@@ -398,6 +421,8 @@ func completeTreasuryRowWithoutUnquantizableHead(refused *OwnerRecyclePreview, p
 // reproduce an empty allocation. A missing provider row alone is no proof: any
 // positive unmasked pool or head weight refuses the reserve-only row. Every
 // pool score counts; ineligible and controlled pools carry zero or a mask.
+// Capture the flag changes no answer here: its channel is empty whenever the
+// pool channel is (BuildWeightVectorCtf, rule 3).
 func requireEmptyProviderAllocation(verified *VerifiedReleaseMeasurement, theta protocol.Rational) error {
 	if verified == nil {
 		return errors.New("treasury reserve-only row lacks its verified provider measurement")
