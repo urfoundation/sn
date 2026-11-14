@@ -15,6 +15,14 @@ selection of previously reviewed bytes; it is not a signature or a replacement
 for the external approval process. Do not obtain it automatically from the
 endpoint or from a newly generated observation.
 
+Without a usable document a command refuses before it reads a key or reaches a
+network, and a document that doesn't name the runtime an endpoint reports is
+refused at that read. Either way the command prints why, with a link to the list
+of published documents, and exits 1. With no document given, or a runtime past
+the document's, the message starts "no reviewed fleet runtime authority document
+is published for the chain's current runtime". Every `provider fleet` refusal is
+a message and exit 1, never a panic.
+
 The document is a strict JSON object, at most 16 KiB, with these fields:
 
 | Field | Required meaning |

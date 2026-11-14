@@ -27,6 +27,46 @@ const fleetMainnetRuntimeAuthoritySchema = "urnetwork-mainnet-fleet-runtime-auth
 const fleetMainnetRuntimeReviewScope = "urnetwork-fleet-register-commitment-frontier-v1"
 const fleetMainnetAuthorityLimit = 16 * 1024
 
+// Lists the published documents and says how one is reviewed, approved and
+// passed. Every authority refusal names it.
+const fleetMainnetRuntimeAuthorityReadme = "https://github.com/urfoundation/sn/blob/main/mainnet/fleet-runtime-authority/README.md"
+
+// A mainnet fleet command refused for want of a usable reviewed document for
+// the chain's current runtime. The text is what an operator reads: the reason,
+// where published documents are listed, then the cause, which errors.Is and
+// errors.As still reach.
+type fleetRuntimeAuthorityError struct {
+	reason string
+	cause  error
+}
+
+// The cause goes last and indented, under the link, as a terminal shows it.
+func (self *fleetRuntimeAuthorityError) Error() string {
+	message := self.reason + "\n  See " + fleetMainnetRuntimeAuthorityReadme
+	if self.cause != nil {
+		message += "\n  " + strings.ReplaceAll(self.cause.Error(), "\n", "\n  ")
+	}
+	return message
+}
+
+// Keeps the cause reachable for errors.Is and errors.As.
+func (self *fleetRuntimeAuthorityError) Unwrap() error {
+	return self.cause
+}
+
+// A runtime the document doesn't name is what a runtime upgrade looks like
+// from here. Other errors, and testnet manifests, pass through unchanged.
+func explainFleetMainnetRuntimeRefusal(manifest *protocol.FleetManifest, err error) error {
+	var unreviewed *crv4.UnreviewedRuntimeError
+	if err == nil || manifest == nil || manifest.ChainID != 964 || !errors.As(err, &unreviewed) {
+		return err
+	}
+	return &fleetRuntimeAuthorityError{
+		reason: fmt.Sprintf("no reviewed fleet runtime authority document is published for the chain's current runtime, %s %d, or the one given is out of date, so mainnet fleet commands refuse", unreviewed.Version.SpecName, unreviewed.Version.SpecVersion),
+		cause:  err,
+	}
+}
+
 // The review digest identifies the independent source-to-Wasm and consumed
 // interface audit. Matching an Rpc response does not create that provenance.
 // There is deliberately no shipped production genesis, source or runtime pin.
@@ -58,6 +98,7 @@ func fleetAuthorityHex(value string, size int, prefix string) bool {
 
 // Rejects scope drift before any key, journal or network access. Chain945
 // keeps its existing release/provisional path; no other network inherits it.
+// Each refusal says which input to fix and names the published documents.
 func loadFleetMainnetRuntimeAuthority(opts docopt.Opts, manifest *protocol.FleetManifest) (*fleetMainnetRuntimeAuthority, error) {
 	path := fleetOpt(opts, "--mainnet-runtime-authority")
 	expected := fleetOpt(opts, "--mainnet-runtime-authority-sha256")
@@ -70,32 +111,45 @@ func loadFleetMainnetRuntimeAuthority(opts docopt.Opts, manifest *protocol.Fleet
 		}
 		return nil, nil
 	}
-	if manifest.ChainID != 964 || path == "" || !fleetAuthorityHex(expected, 32, "") || fleetOpt(opts, "--provisional-runtime-compatibility") != "" || fleetOpt(opts, "--runtime-observation-dir") != "" {
-		return nil, errors.New("mainnet runtime authority requires chain964, an independently reviewed document and SHA-256, without testnet provisional flags")
+	refuse := func(reason string, cause error) (*fleetMainnetRuntimeAuthority, error) {
+		return nil, &fleetRuntimeAuthorityError{reason: reason, cause: cause}
+	}
+	switch {
+	case manifest.ChainID == 945:
+		return refuse("a testnet fleet manifest (chain 945) takes no --mainnet-runtime-authority or --mainnet-runtime-authority-sha256", nil)
+	case manifest.ChainID != 964:
+		return refuse(fmt.Sprintf("the fleet manifest's chain %d is neither mainnet (964) nor testnet (945)", manifest.ChainID), nil)
+	case fleetOpt(opts, "--provisional-runtime-compatibility") != "" || fleetOpt(opts, "--runtime-observation-dir") != "":
+		return refuse("a mainnet fleet manifest (chain 964) takes a reviewed fleet runtime authority document, not the testnet --provisional-runtime-compatibility or --runtime-observation-dir", nil)
+	case path == "":
+		return refuse("no reviewed fleet runtime authority document is published for the chain's current runtime, or none was given, so mainnet fleet commands refuse.\n"+
+			"  Once one is published, pass it with --mainnet-runtime-authority=<absolute path> --mainnet-runtime-authority-sha256=<its SHA-256>", nil)
+	case !fleetAuthorityHex(expected, 32, ""):
+		return refuse("--mainnet-runtime-authority-sha256 must be the published SHA-256 of the fleet runtime authority document: 64 lowercase hex digits", nil)
 	}
 	file, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("mainnet runtime authority: %w", err)
+		return refuse("the fleet runtime authority document can't be read", err)
 	}
 	raw, readErr := io.ReadAll(io.LimitReader(file, fleetMainnetAuthorityLimit+1))
 	if err := errors.Join(readErr, file.Close()); err != nil {
-		return nil, err
+		return refuse("the fleet runtime authority document can't be read", err)
 	}
 	digest := sha256.Sum256(raw)
 	if len(raw) > fleetMainnetAuthorityLimit || hex.EncodeToString(digest[:]) != expected {
-		return nil, errors.New("mainnet runtime authority bytes differ from the reviewed SHA-256 or exceed the size bound")
+		return refuse("the fleet runtime authority document differs from --mainnet-runtime-authority-sha256 or is over 16 KiB: pass the published document with its published SHA-256", nil)
 	}
 	if err := protocol.ValidateUniqueJsonKeys(raw); err != nil {
-		return nil, fmt.Errorf("mainnet runtime authority: %w", err)
+		return refuse("the fleet runtime authority document is malformed", err)
 	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	var authority fleetMainnetRuntimeAuthority
 	if err := decoder.Decode(&authority); err != nil {
-		return nil, fmt.Errorf("mainnet runtime authority: %w", err)
+		return refuse("the fleet runtime authority document is malformed", err)
 	}
 	if err := authority.validate(manifest); err != nil {
-		return nil, err
+		return refuse("the fleet runtime authority document is not a reviewed document for this fleet manifest", err)
 	}
 	authority.document = append([]byte(nil), raw...)
 	return &authority, nil
