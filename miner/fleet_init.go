@@ -1,8 +1,10 @@
 // `provider fleet init` builds a new canonical fleet manifest from flags, so a
 // head-tier operator does not have to hand-write the compact, member-sorted
-// JSON that protocol.ParseFleetManifest requires (support inbox 7992). It
-// prints exactly what `provider fleet manifest` prints, so the output saved to
-// a file feeds back into `fleet manifest/publish/sign --manifest`.
+// JSON that protocol.ParseFleetManifest requires (support inbox 7992). Its
+// stdout is the manifest alone, so `provider fleet init ... > fleet.json`
+// saves a file every `--manifest` command accepts. The commitment and member
+// count that `provider fleet manifest` prints after the manifest go to stderr,
+// as `fleet sign` keeps its labels off stdout.
 //
 // The command reads only local files: no RPC, no API, no network. With
 // --client_seed_file it uses only the seed's public key; seeds are never
@@ -31,8 +33,11 @@ const fleetInitDefaultNetuid = uint64(25)
 // fleetInitRandom fills the default fleet id; tests pass their own reader.
 var fleetInitRandom io.Reader = rand.Reader
 
-// printFleetManifest is the shared output of `fleet manifest` and `fleet init`.
-func printFleetManifest(out io.Writer, manifest *protocol.FleetManifest) error {
+// The shared output of `fleet manifest` and `fleet init`: the canonical
+// manifest line to out, then its commitment and member count to info. fleet
+// manifest passes stdout for both; fleet init passes stderr for info, so its
+// stdout saved to a file is a manifest file.
+func printFleetManifest(out, info io.Writer, manifest *protocol.FleetManifest) error {
 	canonical, err := manifest.Canonical()
 	if err != nil {
 		return err
@@ -41,7 +46,10 @@ func printFleetManifest(out io.Writer, manifest *protocol.FleetManifest) error {
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(out, "%s\ncommitment_sha256: 0x%x\nmembers: %d\n", canonical, hash, len(manifest.Members))
+	if _, err := fmt.Fprintf(out, "%s\n", canonical); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(info, "commitment_sha256: 0x%x\nmembers: %d\n", hash, len(manifest.Members))
 	return err
 }
 
@@ -165,10 +173,12 @@ func fleetInitManifest(opts docopt.Opts, random io.Reader) (*protocol.FleetManif
 	return protocol.ParseFleetManifest(canonical)
 }
 
-func fleetInit(opts docopt.Opts, out io.Writer, random io.Reader) error {
+// Writes the manifest alone to stdout and its commitment and member count to
+// stderr, so a redirected stdout is the --manifest file.
+func fleetInit(opts docopt.Opts, stdout, stderr io.Writer, random io.Reader) error {
 	manifest, err := fleetInitManifest(opts, random)
 	if err != nil {
 		return err
 	}
-	return printFleetManifest(out, manifest)
+	return printFleetManifest(stdout, stderr, manifest)
 }

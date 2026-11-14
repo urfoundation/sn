@@ -31,7 +31,9 @@ const fleetCliTestReadme = "https://github.com/urfoundation/sn/blob/main/mainnet
 
 var fleetCliTestClientId = [16]byte{0x59}
 
-// The child: Run with the arguments its parent encoded. Otherwise nothing.
+// The child: Run with the arguments its parent encoded, then exit 0 as the
+// provider's main does, so a command's stdout is all the child prints there.
+// Otherwise nothing.
 func TestFleetCliChild(t *testing.T) {
 	encoded := os.Getenv("SN_TEST_FLEET_CLI_CHILD")
 	if encoded == "" {
@@ -42,6 +44,7 @@ func TestFleetCliChild(t *testing.T) {
 		t.Fatal(err)
 	}
 	Run(args)
+	os.Exit(0)
 }
 
 // Runs one command line through Run in a child, stderr on a pipe. The child

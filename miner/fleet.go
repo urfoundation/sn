@@ -171,9 +171,10 @@ func closeFleetNative(chain *crv4.Chain) {
 // On mainnet, a refusal for a runtime the authority document doesn't name
 // says that no reviewed document covers the chain's current runtime.
 func fleetCommand(opts docopt.Opts) error {
-	// init creates the manifest the other fleet commands load.
+	// init creates the manifest the other fleet commands load: stdout is the
+	// manifest file, its commitment and member count go to stderr.
 	if mustBoolOpt(opts, "init") {
-		return fleetInit(opts, os.Stdout, fleetInitRandom)
+		return fleetInit(opts, os.Stdout, os.Stderr, fleetInitRandom)
 	}
 	// storage prepares what the writes below need, from no fleet at all.
 	if mustBoolOpt(opts, "storage") {
@@ -187,7 +188,7 @@ func fleetCommand(opts docopt.Opts) error {
 	err = func() error {
 		switch {
 		case mustBoolOpt(opts, "manifest"):
-			return printFleetManifest(os.Stdout, manifest)
+			return printFleetManifest(os.Stdout, os.Stdout, manifest)
 		case mustBoolOpt(opts, "register"):
 			return fleetRegister(ctx, opts, manifest)
 		case mustBoolOpt(opts, "publish"):
