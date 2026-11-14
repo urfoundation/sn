@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // A later collection invocation has no launch flags. Recover the immutable

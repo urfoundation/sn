@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urfoundation/sn/ss58"
+	"github.com/urfoundation/sn/v2026/ss58"
 )
 
 // Wraps the established semantic fake and mutates one requested response.

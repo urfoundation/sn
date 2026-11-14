@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urnetwork/server"
+	"github.com/urnetwork/server/v2026"
 )
 
 // The ordinary signed campaign fixture supplies the complete actual handoff.

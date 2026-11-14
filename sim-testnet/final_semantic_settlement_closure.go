@@ -18,7 +18,7 @@ import (
 	"strings"
 	"time"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Merges exact signed records without permitting conflicting overlap.
