@@ -625,6 +625,9 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 		if err != nil {
 			return err
 		}
+		if excluded := uint64(len(productionStage.proof.Row.ExcludedHeadUids)); excluded != 0 {
+			releaseDiagnostic(ctx, "steering", "head_fleets_excluded", nativeState.SubnetEpochIndex, true, excluded)
+		}
 		verifiedMeasurement, err = ownerRecycleProductionRowDecision(verifiedMeasurement, productionStage.proof.Row)
 		if err != nil {
 			return err

@@ -1434,7 +1434,11 @@ receives it for future network improvements; `ur‑reserve` is a 2‑of‑3 nati
 owner's hotkeys and separate from the buyback reserve (§7.4). An empty tier cedes its share to the other
 (`cede_to_nonempty`); with no provider weight at all the row is reserve-only, the recipients sharing it
 equally. A missing or masked recipient, or an entry over the cap, refuses the row rather than clipping or
-repairing it. Changing `μ` takes a newly signed treasury policy, and the current validator admits only 1/10;
+repairing it. A selected head fleet whose share rounds to zero in `u16`, below half a unit (under 1/8,738 of the
+head at θ = 3/10 with two recipients and a pool), is left out of that tempo's row and named in it, and the other
+fleets take its share: an idle fleet's EMA decays by 3/4 a tempo and never reaches zero, and it must not stop the
+row for everyone. It keeps its seat and EMA and returns with its first tempo back; with no emission it also
+faces the deregistration tournament of §8.4. Changing `μ` takes a newly signed treasury policy, and the current validator admits only 1/10;
 without a treasury policy (testnet) `μ = 1`. At θ = 3/10, one pool and one head fleet, the row (pool, head,
 the two recipients) is [7/100, 3/100, 9/20, 9/20], u16 [10194, 4369, 65535, 65535].
 
