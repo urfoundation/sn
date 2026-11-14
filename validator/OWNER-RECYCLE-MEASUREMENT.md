@@ -116,7 +116,10 @@ owner destinations. Shared production quantization rejects lost recipients and
 signed-cap violations; native minimum weight count is checked too. No cap repair,
 zero-provider fallback, reserve credit or final-incentive claim is inferred. The
 treasury capsule's reserve-only row is the only zero-provider row, and only
-treasury authority can produce it.
+treasury authority can produce it. Treasury authority alone also leaves out a
+selected head fleet that rounds to zero and names it in `excluded_head_uids`
+([treasury production](TREASURY-PRODUCTION.md)); an owner-recycle row still
+refuses that loss, and so does the preview planner.
 
 The following remain explicit blockers:
 

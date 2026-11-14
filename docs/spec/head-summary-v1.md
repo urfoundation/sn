@@ -97,6 +97,11 @@ implemented by `protocol/headscore`):
 `selected_head_uids` and `rejected_head_uids`. An empty head is a valid summary
 with three empty arrays; the validator still sends it every tempo.
 
+`selected` is a head seat, not a positive weight. On the mainnet treasury row a
+selected fleet whose exact share rounds to zero in `u16` is left out of that
+tempo's weights and named in the row's `excluded_head_uids`; its entry here does
+not change.
+
 ## Canonical encoding and signature
 
 The canonical encoding is the JSON above with the members in the listed order,

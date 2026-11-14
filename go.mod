@@ -212,6 +212,11 @@ replace github.com/pion/sctp => ../connect/sctp
 
 replace github.com/urnetwork/server => ../server
 
+// Server builds pgx from its own fork, and server main calls the fork's
+// pgxpool.Conn.ReleaseWithIdleReturn. Dependency replaces are not inherited,
+// so select the same source here, or SN cannot compile against server main.
+replace github.com/jackc/pgx/v5 => ../server/third_party/pgx
+
 // The server module also imports Warp; dependency replaces are not inherited.
 replace github.com/urnetwork/warp => ../warp
 
