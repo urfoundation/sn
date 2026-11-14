@@ -5,6 +5,18 @@ package validator
 import (
 	"context"
 	"errors"
+	"net/http"
+	"time"
+)
+
+// One origin is many API instances behind its load balancer, and each instance
+// keeps its own reserved upload lane and authority cache. An instance whose lane
+// did not start or whose refresh failed can refuse an upload its siblings accept.
+// A new request can reach a sibling. The bound keeps a refusal from every
+// instance what it was: a hard failure after a few seconds, not a wait.
+const (
+	releaseReservedUploadRefusalAttempts = 4
+	releaseReservedUploadRefusalDelay    = time.Second
 )
 
 // Immutable routing and limits are safe for concurrent operations. The session
@@ -18,6 +30,8 @@ type releaseAttemptUploadV2 struct {
 	bounds             AttemptCutV2Bounds
 	maxTransitionBytes uint64
 	writer             *HTTPAttemptStreamV2Writer
+	// the wait between retries of a refused reserved upload; nil is the real one
+	refusalWait releaseSnapshotRetryWait
 }
 
 // Admission does not fetch a credential or perform network I/O. The getter is
@@ -94,5 +108,42 @@ func (self *releaseAttemptUploadV2) writeWithSigner(ctx context.Context, kind, h
 		resultErr = errors.Join(resultErr, ctx.Err(), self.ctx.Err())
 		cancel()
 	}()
-	return self.writer.write(operationCtx, kind, hash, raw, signer)
+	if signer == nil {
+		return self.writer.write(operationCtx, kind, hash, raw, nil)
+	}
+	wait := self.refusalWait
+	if wait == nil {
+		wait = waitReleaseSnapshotRetry
+	}
+	for attempt := uint64(1); ; attempt++ {
+		err := self.writer.write(operationCtx, kind, hash, raw, signer)
+		if attempt >= releaseReservedUploadRefusalAttempts || !releaseUploadForbidden(err) {
+			return err
+		}
+		releaseDiagnostic(operationCtx, "operator", "publication_unavailable_retrying", 0, false, attempt, releaseDiagnosticFacts{cause: releaseDiagnosticUnavailable, operatorId: self.noID, operatorKnown: true})
+		// An interrupted retry has no verdict yet, so the refusal is not its answer.
+		if err := wait(operationCtx, releaseReservedUploadRefusalDelay); err != nil {
+			return err
+		}
+	}
+}
+
+// One upload's plain 403 and nothing else. The status alone decides, never the
+// answer's text, and a joined close failure or cancellation keeps its own verdict.
+func releaseUploadForbidden(err error) bool {
+	for range 16 {
+		switch cause := err.(type) {
+		case *attemptStreamHttpStatusError:
+			return cause.upload && cause.status == http.StatusForbidden
+		case interface{ Unwrap() []error }:
+			causes := cause.Unwrap()
+			if len(causes) != 1 {
+				return false
+			}
+			err = causes[0]
+		default:
+			return false
+		}
+	}
+	return false
 }
