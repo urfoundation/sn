@@ -10,7 +10,7 @@ import (
 	"reflect"
 	"strings"
 
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 func (e *Executor) evidenceRelayAdmissionEntries() ([]JournalEntry, uint64, error) {

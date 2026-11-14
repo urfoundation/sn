@@ -17,9 +17,9 @@ import (
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urfoundation/sn/crv4"
-	"github.com/urfoundation/sn/ss58"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/crv4"
+	"github.com/urfoundation/sn/v2026/ss58"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 func TestFinalSemanticArchiveActionPostconditionUsesExactV4JournalObject(t *testing.T) {

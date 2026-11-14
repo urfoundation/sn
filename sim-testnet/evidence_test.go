@@ -16,8 +16,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urnetwork/server"
-	"github.com/urnetwork/server/startifact"
+	"github.com/urnetwork/server/v2026"
+	"github.com/urnetwork/server/v2026/startifact"
 )
 
 type forbiddenScenarioCommitSupervisedAPITransport struct {

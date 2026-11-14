@@ -18,7 +18,7 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urnetwork/server/model"
+	"github.com/urnetwork/server/v2026/model"
 	"golang.org/x/sys/unix"
 	"gopkg.in/yaml.v3"
 )

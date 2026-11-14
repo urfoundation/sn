@@ -18,8 +18,8 @@ import (
 	"testing"
 
 	gojwt "github.com/golang-jwt/jwt/v5"
-	validatorcomponent "github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/connect"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/connect/v2026"
 )
 
 func TestPolicyRolloverGenerationV2RolesSeparateOnlyValidatorClients(t *testing.T) {

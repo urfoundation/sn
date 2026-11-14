@@ -20,8 +20,8 @@ import (
 	nativeTypes "github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/ethereum/go-ethereum/common"
 	ethTypes "github.com/ethereum/go-ethereum/core/types"
-	"github.com/urfoundation/sn/stabi"
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/stabi"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 func validateEvidenceRelayContinuationCapacity(cfg *ResolvedConfig, bounds validatorcomponent.ReleaseEvidenceV2Bounds, span uint64, observed validatorcomponent.StoppedAttemptLedgerCapacity) error {

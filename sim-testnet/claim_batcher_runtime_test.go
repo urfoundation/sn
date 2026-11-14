@@ -6,7 +6,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 
-	"github.com/urfoundation/sn/miner/onchain"
+	"github.com/urfoundation/sn/v2026/miner/onchain"
 )
 
 // CL-1, CL-5: the claim tools refuse a batcher whose code is not

@@ -19,10 +19,10 @@ import (
 
 	gsrpcTypes "github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urnetwork/connect"
+	"github.com/urnetwork/connect/v2026"
 
-	"github.com/urfoundation/sn/payoutartifact"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/payoutartifact"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 type staticScenarioProbe struct {

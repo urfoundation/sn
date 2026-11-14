@@ -10,7 +10,7 @@ import (
 	"slices"
 	"time"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Readiness owns no accepted epoch. Original signed references and actual
