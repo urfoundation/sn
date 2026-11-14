@@ -1476,7 +1476,10 @@ zeroes its CTF pool too. The cede rules apply in this order:
 On SN25 with no head fleet, the row (pool, CTF, the two recipients) is [9/100, 1/100, 9/20, 9/20], about u16
 [13107, 1456, 65535, 65535]. Once fleets are weighted it is pool 4/100, CTF 1/100, head 5/100 and the
 recipients 9/20 each. The pool, CTF and head entries stay far under the 32768 cap, the recipients stay at 9/20
-each as before, and the treasury policy (μ = 1/10, cap 32768) is unchanged. In epoch 4 the providers' share funded the pool with 1,195.84 α, all of `μ`. At that
+each as before, and the treasury policy (μ = 1/10, cap 32768) is unchanged. A selected head fleet that rounds to
+zero in `u16` is still left out of the row and named in it, as above: with the head at 5/100, under about
+1/14,563 of the head with the CTF channel weighted, or 1/16,181 with it empty; a CTF pool that rounds to zero
+refuses the row, as a pool does. In epoch 4 the providers' share funded the pool with 1,195.84 α, all of `μ`. At that
 scale the CTF pools get about 119.58 α an epoch and the pool about 1,076.26 α. Once fleets are weighted, the
 pool gets about 478.34 α and the head about 597.92 α.
 
