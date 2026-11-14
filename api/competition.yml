@@ -2551,10 +2551,26 @@ components:
           properties:
             schema: {const: 2}
             incident_class: {const: operator_authorized_distributed_infrastructure_v1}
+            distributed:
+              not: {required: [patch_retry]}
+              properties:
+                reason: {enum: [retention_budget_exhausted, closed_legacy_prelaunch]}
             previous_failure:
               properties:
                 kind: {const: infrastructure}
                 code: {const: evaluation_time_budget_exhausted}
+        - required: [incident_class, distributed]
+          properties:
+            schema: {const: 2}
+            incident_class: {const: operator_requested_patch_retry}
+            distributed:
+              required: [patch_retry]
+              properties:
+                reason: {const: operator_requested_patch_retry}
+            previous_failure:
+              properties:
+                kind: {const: infrastructure}
+                code: {const: executor_process_failed}
       properties:
         schema: {type: integer, enum: [1, 2]}
         environment:
@@ -2581,7 +2597,7 @@ components:
         previous_terminal_sha256: {$ref: "#/components/schemas/Sha256"}
         incident_class:
           type: string
-          enum: [operator_authorized_heartbeat_budget_v1, operator_authorized_backing_service_v1, operator_authorized_interrupted_budget_v1, operator_authorized_distributed_infrastructure_v1]
+          enum: [operator_authorized_heartbeat_budget_v1, operator_authorized_backing_service_v1, operator_authorized_interrupted_budget_v1, operator_authorized_distributed_infrastructure_v1, operator_requested_patch_retry]
           description: Optional explicit operator incident exception. Older archive recoveries omit it. A backing-service exception retains the original submission/run_unstable failure. An interrupted-budget exception binds separately retained operator-stop evidence and real claim/terminal history, not a fabricated heartbeat diagnosis. No exception reclassifies the old result or makes all unstable or expired runs eligible.
         previous_failure:
           $ref: "#/components/schemas/CompetitionEvaluationFailure"
@@ -2612,7 +2628,11 @@ components:
       additionalProperties: false
       description: |
         Separate schema-2 authority for an explicitly approved distributed
-        terminal-infrastructure incident. Before queuing the cycle, the backend
+        terminal-infrastructure incident or separately qualified operator-requested
+        unchanged-patch retry. The latter retains the original generic executor
+        failure verbatim and binds explicit operator applicability evidence; the
+        native process failure alone is not a patch-specific diagnosis.
+        Before queuing the cycle, the backend
         requires the evaluation hold, all frozen hosts and database slots idle,
         unchanged supervisor/host fences, and authenticated closure of the exact
         original run. Native inventories remain private; only their digest is
@@ -2623,7 +2643,7 @@ components:
       required: [schema, reason, original_host_id, original_slot_id, original_fencing_token, original_run_id, original_started_at, original_deadline_at, source_lock_sha256, evaluator_image_digest, policy_approval_sha256, closure_evidence_sha256, native_proof_sha256]
       properties:
         schema: {type: integer, const: 1}
-        reason: {type: string, enum: [retention_budget_exhausted, closed_legacy_prelaunch]}
+        reason: {type: string, enum: [retention_budget_exhausted, closed_legacy_prelaunch, operator_requested_patch_retry]}
         original_host_id: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"}
         original_slot_id: {type: integer, minimum: 1}
         original_fencing_token: {type: integer, minimum: 1}
@@ -2635,6 +2655,18 @@ components:
         policy_approval_sha256: {$ref: "#/components/schemas/Sha256"}
         closure_evidence_sha256: {$ref: "#/components/schemas/Sha256"}
         native_proof_sha256: {$ref: "#/components/schemas/Sha256"}
+        patch_retry:
+          $ref: "#/components/schemas/CompetitionOperatorRequestedPatchRetry"
+
+    CompetitionOperatorRequestedPatchRetry:
+      type: object
+      additionalProperties: false
+      description: Explicit retained operator diagnosis of this unchanged patch, not a new admission, fee, patch repair or infrastructure reclassification.
+      required: [schema, patch_sha256, applicability_evidence_sha256]
+      properties:
+        schema: {type: integer, const: 1}
+        patch_sha256: {$ref: "#/components/schemas/Sha256"}
+        applicability_evidence_sha256: {$ref: "#/components/schemas/Sha256"}
 
     CompetitionEvaluationStatus:
       type: string
