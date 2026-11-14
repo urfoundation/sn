@@ -493,8 +493,11 @@ func Run(args []string) {
 			panic(err)
 		}
 	} else if fleet_, _ := opts.Bool("fleet"); fleet_ {
+		// a refusal is an answer, not a crash: its message and exit 1, whatever
+		// stderr is. As a panic it became a stack trace off a terminal
 		if err := fleetCommand(opts); err != nil {
-			panic(err)
+			writeCliError(os.Stderr, err.Error())
+			os.Exit(1)
 		}
 	} else if auth_, _ := opts.Bool("auth"); auth_ {
 		if _, err := opts.String("--operator"); err == nil {

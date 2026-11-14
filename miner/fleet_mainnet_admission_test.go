@@ -4,11 +4,13 @@ package miner
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/docopt/docopt-go"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/miner/onchain"
 	"github.com/urfoundation/sn/protocol"
 )
@@ -24,7 +26,7 @@ func TestFleetMainnetCommandsRequireAuthorityBeforeSideEffects(t *testing.T) {
 		{name: "bind", run: fleetBind}, {name: "status", run: fleetStatus}, {name: "revoke", run: fleetRevoke},
 	} {
 		err := command.run(t.Context(), docopt.Opts{}, manifest)
-		if err == nil || !strings.Contains(err.Error(), "mainnet runtime authority") {
+		if err == nil || !strings.Contains(err.Error(), "no reviewed fleet runtime authority document is published for the chain's current runtime") || !strings.Contains(err.Error(), fleetMainnetRuntimeAuthorityReadme) {
 			t.Errorf("%s reached another operation before refusing missing mainnet runtime authority: %v", command.name, err)
 		}
 	}
@@ -226,5 +228,50 @@ func TestFleetMainnetEvmUpgradeAtReceiptNeverRebroadcasts(t *testing.T) {
 	}
 	if fixture.count("eth_sendRawTransaction") != 1 || fixture.count("eth_getTransactionReceipt") != 1 {
 		t.Fatal("receipt refusal retried an uncertain transaction")
+	}
+}
+
+// The usual refusal once a document is published: the runtime upgraded past it.
+// It names the runtime the chain runs and keeps the read's typed cause.
+func TestFleetStatusNamesRuntimeNoDocumentCovers(t *testing.T) {
+	fixture := newFleetMainnetTestFixture(t)
+	fixture.stateLock.Lock()
+	fixture.version.SpecVersion++
+	fixture.stateLock.Unlock()
+	fixture.opts["status"] = true
+	err := fleetCommand(fixture.opts)
+	var unreviewed *crv4.UnreviewedRuntimeError
+	if err == nil || !errors.As(err, &unreviewed) || unreviewed.Version.SpecVersion != 8002 {
+		t.Fatalf("status did not refuse the unreviewed runtime: %v", err)
+	}
+	if !strings.HasPrefix(err.Error(), fleetCliTestNoDocument+", synthetic-subtensor 8002, or the one given is out of date") || !strings.Contains(err.Error(), "\n  See "+fleetMainnetRuntimeAuthorityReadme+"\n") {
+		t.Fatalf("refusal does not say what to do: %v", err)
+	}
+	if fixture.count("eth_call") != 0 {
+		t.Fatal("refused status reached the coordinator")
+	}
+}
+
+// Only a mainnet manifest's unreviewed runtime gets the document guidance. The
+// testnet release pin and every other error keep their own words.
+func TestExplainFleetMainnetRuntimeRefusalNamesOnlyMainnetUpgrades(t *testing.T) {
+	unreviewed := &crv4.UnreviewedRuntimeError{Version: crv4.RuntimeVersionIdentity{SpecName: "synthetic-subtensor", SpecVersion: 8002, TransactionVersion: 1, StateVersion: 1}}
+	other := errors.New("synthetic read failure")
+	for _, c := range []struct {
+		chainId uint64
+		err     error
+		explain bool
+	}{
+		{chainId: 964, err: unreviewed, explain: true},
+		{chainId: 964, err: errors.Join(other, unreviewed), explain: true},
+		{chainId: 945, err: unreviewed},
+		{chainId: 964, err: other},
+		{chainId: 964},
+	} {
+		got := explainFleetMainnetRuntimeRefusal(&protocol.FleetManifest{ChainID: c.chainId}, c.err)
+		var refusal *fleetRuntimeAuthorityError
+		if errors.As(got, &refusal) != c.explain || (!c.explain && got != c.err) || (c.explain && !errors.Is(got, c.err)) {
+			t.Errorf("chain %d, %v: got %v", c.chainId, c.err, got)
+		}
 	}
 }
