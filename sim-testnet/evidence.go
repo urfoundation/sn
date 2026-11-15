@@ -1457,8 +1457,17 @@ func validatePublishedEvidenceStorageKeys(published PublishedEvidence, envelope 
 			return "", fmt.Errorf("published evidence %s storage segment is noncanonical", label)
 		}
 	}
-	contentSuffix := path.Join("st", "v1", "evidence", "content", "sha256", hashHex+".json")
-	if !publishedEvidenceKeyHasSuffix(published.ContentKey, contentSuffix) {
+	// operators write the sharded content key; a receipt from before that
+	// layout names the legacy flat key
+	contentSuffixes, err := startifact.EvidenceContentKeySuffixes(envelope.ContentHash)
+	if err != nil {
+		return "", err
+	}
+	contentCanonical := false
+	for _, contentSuffix := range contentSuffixes {
+		contentCanonical = contentCanonical || publishedEvidenceKeyHasSuffix(published.ContentKey, contentSuffix)
+	}
+	if !contentCanonical {
 		return "", errors.New("published evidence content or history key is outside its canonical signed scope")
 	}
 	historySuffix := func(candidate string) string {
