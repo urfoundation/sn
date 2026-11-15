@@ -25,7 +25,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/urnetwork/server"
-	"github.com/urnetwork/server/startifact"
 	"gopkg.in/yaml.v3"
 )
 
@@ -1439,18 +1438,15 @@ func publishAndReadBackFinalSemanticEnvelope(ctx context.Context, store server.B
 	return prepared.VerifyPublished(ctx, store, published)
 }
 
+// Reads back an envelope an earlier run published: its content at the sharded
+// key operators write now or, published before that layout, at its legacy
+// flat key, and its history copy.
 func readBackFinalSemanticEnvelope(ctx context.Context, store server.BlobStore, envelope *ReleaseEvidenceEnvelope) error {
 	prepared, err := prepareDirectEvidencePublication(envelope)
 	if err != nil {
 		return err
 	}
-	contentKey, err := startifact.EvidenceContentKey(store, envelope.ContentHash)
-	if err != nil {
-		return err
-	}
-	hashHex := strings.TrimPrefix(strings.ToLower(envelope.ContentHash), "sha256:")
-	historyKey := filepath.ToSlash(filepath.Join(store.Prefix(), "st", "v1", "evidence", "history", envelope.DeploymentID, fmt.Sprint(envelope.Netuid), envelope.Kind, evidenceHistoryStorageRunID(envelope.RunID), hashHex+".json"))
-	return prepared.VerifyPublished(ctx, store, &startifact.Published{ContentHash: envelope.ContentHash, ContentKey: contentKey, HistoryKey: historyKey, Bucket: store.Bucket()})
+	return prepared.VerifyStored(ctx, store)
 }
 
 func verifyFinalSemanticOwnerEnvelope(cfg *ResolvedConfig, envelope *ReleaseEvidenceEnvelope, signer *ecdsa.PublicKey, kind, runID string) error {
