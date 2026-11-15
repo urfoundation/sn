@@ -3,7 +3,7 @@
 // an Is method, and the cause classifiers here and in the validator never call
 // a foreign Is or As, so they refused these values as opaque matchers. A dial
 // or lookup timeout then became a hard failure, and the validator crash-looped
-// for two hours while api.bringyour.com did not resolve (2026-11-13).
+// for two hours while the api's name did not resolve (2026-11-13).
 package crv4
 
 import (

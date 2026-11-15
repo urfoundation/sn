@@ -92,7 +92,7 @@ func releaseTransientTestRateLimit() *connect.HttpStatusError {
 	return &connect.HttpStatusError{StatusCode: http.StatusTooManyRequests, Status: "429 Too Many Requests", Body: []byte(releaseTransientTestRateLimitBody)}
 }
 
-// 2026-11-13: api.bringyour.com did not resolve for two hours. Dial and lookup
+// 2026-11-13: the api's name did not resolve for two hours. Dial and lookup
 // timeouts carry net's private deadline value, which implements Is, so every
 // classifier refused it as an opaque matcher. Each steering attempt counted as
 // hard, the tenth panicked, and each restart then panicked at its server-key
