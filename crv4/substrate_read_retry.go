@@ -48,7 +48,13 @@ func retryableSubstrateRpcReadTransport(err error, transportOrigin, allowReconne
 // Every recursive branch consumes the same allowance. Trusted leaves precede
 // custom-match rejection because standard errno values implement Is themselves.
 func retryableSubstrateRpcReadTransportBounded(err error, transportOrigin, allowReconnectMarker bool, depth int, budget *substrateReadCauseBudget) bool {
-	if !budget.admit(err, depth) || err == context.Canceled || err == gsrpcgeth.ErrClientQuit {
+	if !budget.admit(err, depth) {
+		return false
+	}
+	if standard, ok := StandardContextError(err); ok {
+		err = standard
+	}
+	if err == context.Canceled || err == gsrpcgeth.ErrClientQuit {
 		return false
 	}
 	if _, rpcError := err.(gsrpcgeth.Error); rpcError {

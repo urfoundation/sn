@@ -142,8 +142,10 @@ func TestReleaseClientKeyObservationServiceRetryKeepsReservationCap(t *testing.T
 	}
 }
 
-// Quota, conflict and unmarked admission refusals stay hard. A service status
-// cannot hide a hard close or owner cancellation in either public reader.
+// Quota, conflict and unmarked admission refusals get no second reservation.
+// A service status cannot hide a hard close or owner cancellation in either
+// public reader. A bare 429 is load, so the owner may try again later; every
+// other case here stays hard for the owner too.
 func TestReleaseClientKeyObservationServiceRetryPreservesHardFailures(t *testing.T) {
 	t.Parallel()
 	hardClose := errors.New("synthetic original close failed")
@@ -192,7 +194,8 @@ func TestReleaseClientKeyObservationServiceRetryPreservesHardFailures(t *testing
 				count = len(result)
 			}
 			cancel()
-			if err == nil || count != 0 || calls != 1 || closed != 1 || retryableClientKeyObservationHttpError(err) || transientReleaseSnapshotError(err) || test.closeErr != nil && !errors.Is(err, test.closeErr) || test.cancel && !errors.Is(err, context.Canceled) {
+			ownerRetry := test.status == http.StatusTooManyRequests && test.closeErr == nil && !test.cancel
+			if err == nil || count != 0 || calls != 1 || closed != 1 || retryableClientKeyObservationHttpError(err) || transientReleaseSnapshotError(err) != ownerRetry || test.closeErr != nil && !errors.Is(err, test.closeErr) || test.cancel && !errors.Is(err, context.Canceled) {
 				t.Fatalf("%s batch=%t lost its hard cause: count=%d calls=%d closed=%d error=%v", test.name, batch, count, calls, closed, err)
 			}
 		}

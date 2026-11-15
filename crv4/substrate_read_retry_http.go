@@ -148,7 +148,13 @@ func classifySubstrateReadHttpError(err error) (bool, bool) {
 // Physical subtrees borrow this same traversal budget; a nested marker never
 // restarts it or lets a timeout hide a sibling application or custody failure.
 func classifySubstrateReadHttpErrorBounded(err error, depth int, budget *substrateReadCauseBudget) (bool, bool) {
-	if !budget.admit(err, depth) || err == context.Canceled || err == gsrpcgeth.ErrClientQuit {
+	if !budget.admit(err, depth) {
+		return false, false
+	}
+	if standard, ok := StandardContextError(err); ok {
+		err = standard
+	}
+	if err == context.Canceled || err == gsrpcgeth.ErrClientQuit {
 		return false, false
 	}
 	switch err.(type) {

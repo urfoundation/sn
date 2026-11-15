@@ -131,7 +131,8 @@ func awaitProductionStartupStage(ctx context.Context, cfg *ReleaseConfig, progre
 			code = "startup_unavailable"
 		}
 		releaseDiagnostic(ctx, "startup", code, 0, false, 0, releaseDiagnosticFacts{cause: releaseDiagnosticReadCause(err)})
-		if err := waitReleaseSnapshotRetry(ctx, time.Duration(cfg.PollSeconds)*time.Second); err != nil {
+		delay := max(time.Duration(cfg.PollSeconds)*time.Second, releaseRateLimitPause(err, releaseSteeringSettingsFrom(ctx)))
+		if err := waitReleaseSnapshotRetry(ctx, delay); err != nil {
 			return err
 		}
 	}

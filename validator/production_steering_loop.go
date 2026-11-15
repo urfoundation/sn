@@ -149,6 +149,21 @@ func runReleaseProductionSteeringLoopWithCutWait(ctx context.Context, submit fun
 	}
 }
 
+// An attempt an upstream refused for load waits out its pause before the loop
+// sees its outcome, so the next attempt cannot follow at the poll interval.
+// The outcome is returned unchanged; a pause cut short by shutdown joins the
+// owner's error, which the loop then treats as shutdown.
+func paceReleaseSteeringAttempt(ctx context.Context, err error, settings ReleaseSteeringSettings, wait releaseSnapshotRetryWait) error {
+	pause := releaseRateLimitPause(err, settings)
+	if pause <= 0 {
+		return err
+	}
+	if waitErr := wait(ctx, pause); waitErr != nil {
+		return errors.Join(err, waitErr)
+	}
+	return err
+}
+
 // The deadline covers preparation as well as bounded retained reads. A poll
 // never consults fresh signing runtime before the durable intent owner does.
 func (self *ReleaseSteerer) runProductionSteering(ctx context.Context, poll time.Duration) error {
@@ -158,8 +173,9 @@ func (self *ReleaseSteerer) runProductionSteering(ctx context.Context, poll time
 	}
 	ticker := time.NewTicker(poll)
 	defer ticker.Stop()
+	settings := releaseSteeringSettingsFrom(ctx)
 	return runReleaseProductionSteeringLoopWithCutWait(ctx, func() error {
-		return runConfiguredReleaseSteeringOperation(ctx, self.SubmitOnce)
+		return paceReleaseSteeringAttempt(ctx, runConfiguredReleaseSteeringOperation(ctx, self.SubmitOnce), settings, waitReleaseSnapshotRetry)
 	}, func() bool {
 		select {
 		case <-ctx.Done():

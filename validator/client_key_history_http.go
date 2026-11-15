@@ -104,7 +104,7 @@ func (self *HTTPClientKeyHistoryReader) readAttempt(ctx context.Context, observa
 		}
 	}()
 	if response.StatusCode != http.StatusOK {
-		return nil, &clientKeyObservationHttpStatusError{status: response.StatusCode, operation: "history"}
+		return nil, &clientKeyObservationHttpStatusError{status: response.StatusCode, operation: "history", retryAfter: attemptStreamHttpRetryAfter(response.Header)}
 	}
 	if contentType := strings.ToLower(strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0])); contentType != "application/json" {
 		return nil, errors.New("client-key history response is not JSON")
