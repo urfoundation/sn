@@ -187,6 +187,7 @@ require (
 	github.com/tyler-smith/go-bip39 v1.1.0 // indirect
 	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/urnetwork/goidenticons v0.0.0 // indirect
+	github.com/urnetwork/operator-core v0.0.0 // indirect
 	github.com/urnetwork/proxy v0.0.0 // indirect
 	github.com/urnetwork/sidecar v0.0.0 // indirect
 	github.com/urnetwork/sidecar/smtpproof v0.0.0 // indirect
@@ -224,6 +225,8 @@ require (
 // both main modules. Go ignores dependency replacements, so SN declares this
 // source explicitly as Server does; a workspace override is not required.
 replace github.com/urnetwork/connect => ../connect
+
+replace github.com/urnetwork/operator-core => ../operator-core
 
 replace github.com/urnetwork/sdk => ../sdk
 
