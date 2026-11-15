@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // The measured predecessor history remains charged alongside both complete
