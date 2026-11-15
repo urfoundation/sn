@@ -12,6 +12,8 @@ import (
 	"syscall"
 
 	gethrpc "github.com/ethereum/go-ethereum/rpc"
+
+	"github.com/urfoundation/sn/crv4"
 )
 
 // Each classification owns its allowance; branches cannot reset it or use
@@ -33,6 +35,11 @@ func (self *attemptReadCauseBudget) admit(err error, depth int) bool {
 		if value.IsNil() {
 			return false
 		}
+	}
+	if _, standard := crv4.StandardContextError(err); standard {
+		// net's own deadline or cancellation value; callers judge it as the
+		// context error it stands for.
+		return true
 	}
 	switch cause := err.(type) {
 	case *os.PathError, *os.LinkError, *TrailFatalError:
@@ -65,6 +72,9 @@ func classifyAttemptBindingReadRetry(err error, bindingRead bool) (bool, bool) {
 func classifyAttemptBindingReadRetryBounded(err error, bindingRead bool, depth int, budget *attemptReadCauseBudget) (bool, bool) {
 	if !budget.admit(err, depth) {
 		return false, bindingRead
+	}
+	if standard, ok := crv4.StandardContextError(err); ok {
+		err = standard
 	}
 	if readErr, ok := err.(*attemptBindingReadError); ok {
 		return classifyAttemptBindingReadRetryBounded(readErr.cause, true, depth+1, budget)
@@ -139,6 +149,9 @@ func onlyAttemptContextError(err, want error) bool {
 func onlyAttemptContextErrorBounded(err, want error, depth int, budget *attemptReadCauseBudget) bool {
 	if !budget.admit(err, depth) {
 		return false
+	}
+	if standard, ok := crv4.StandardContextError(err); ok {
+		err = standard
 	}
 	if joined, ok := err.(interface{ Unwrap() []error }); ok {
 		causes := joined.Unwrap()

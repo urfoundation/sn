@@ -147,6 +147,9 @@ func classifyReleaseRetryBounded(err error, siblingCancellation, legacyText, tra
 			return false, false
 		}
 	}
+	if standard, ok := crv4.StandardContextError(err); ok {
+		err = standard
+	}
 	switch err.(type) {
 	case *os.PathError, *os.LinkError, *TrailFatalError, *releaseObservedHard, *releaseObservedRefusal:
 		return false, false
@@ -228,8 +231,16 @@ func classifyReleaseRetryBounded(err error, siblingCancellation, legacyText, tra
 	case interface{ Is(error) bool }, interface{ As(any) bool }:
 		return false, false
 	}
-	if _, observationStatus := err.(*clientKeyObservationHttpStatusError); observationStatus {
-		retryable := retryableClientKeyObservationHttpError(err)
+	if status, ok := err.(*clientKeyObservationHttpStatusError); ok {
+		// The reader never sends a second reservation after a 429, but the
+		// refusal is load, so the owner's next attempt may try again.
+		retryable := retryableClientKeyObservationHttpError(err) || status.status == http.StatusTooManyRequests
+		return retryable, retryable
+	}
+	if status, ok := err.(*connect.HttpStatusError); ok {
+		// An sdk API read (GET /key) answered by the api or its load balancer.
+		// Only the transient status classes retry; the body grants nothing.
+		retryable := status.StatusCode == http.StatusRequestTimeout || status.StatusCode == http.StatusTooEarly || status.StatusCode == http.StatusTooManyRequests || status.StatusCode >= 500 && status.StatusCode <= 599
 		return retryable, retryable
 	}
 	if status, ok := err.(*attemptStreamHttpStatusError); ok {
@@ -1229,7 +1240,7 @@ func runReleaseConfig(configPath, progressPath string, reference durablevolume.R
 	}
 	event := connect.NewEventWithContext(ctx)
 	event.SetOnSignals(syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
-	if err := RunReleaseWithNativeGapBridge(event.Ctx(), configPath, progressPath, bridge); err != nil {
+	if err := releaseProcessError(event.Ctx(), RunReleaseWithNativeGapBridge(event.Ctx(), configPath, progressPath, bridge)); err != nil {
 		panic(err)
 	}
 }

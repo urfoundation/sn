@@ -99,6 +99,9 @@ func receiptScanUnavailableBounded(err error, depth int, budget *substrateReadCa
 	if !budget.admit(err, depth) {
 		return false
 	}
+	if standard, ok := StandardContextError(err); ok {
+		err = standard
+	}
 	if IsSubstrateReadTransportCause(err) {
 		return RetryableSubstrateReadTransportError(err)
 	}

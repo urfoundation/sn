@@ -285,7 +285,7 @@ func runReleaseWithOperatorList(configPath, progressPath string, reference durab
 	releaseErr := RunReleaseWithNativeGapBridge(event.Ctx(), configPath, progressPath, bridge)
 	cancelList()
 	list.Close()
-	if releaseErr != nil {
-		panic(releaseErr)
+	if err := releaseProcessError(event.Ctx(), releaseErr); err != nil {
+		panic(err)
 	}
 }

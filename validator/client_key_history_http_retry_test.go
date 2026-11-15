@@ -127,11 +127,16 @@ func TestReleaseClientKeyObservationRetryRejectsMixedAndCanceledFailures(t *test
 	for _, failure := range []error{
 		nil, context.Canceled, errors.Join(context.DeadlineExceeded, errors.New("wrong signer")), errors.Join(context.DeadlineExceeded, io.ErrShortWrite),
 		&clientKeyObservationHttpStatusError{status: http.StatusUnauthorized, operation: "batch"},
-		&clientKeyObservationHttpStatusError{status: http.StatusTooManyRequests, operation: "batch"},
 	} {
 		if retryableClientKeyObservationHttpError(failure) || transientReleaseSnapshotError(failure) {
 			t.Errorf("hard observation became retryable: %v", failure)
 		}
+	}
+	// A 429 never gets the reader's immediate second reservation, but it is
+	// load: the steering and startup owners try again on a later attempt.
+	limited := &clientKeyObservationHttpStatusError{status: http.StatusTooManyRequests, operation: "batch"}
+	if retryableClientKeyObservationHttpError(limited) || !transientReleaseSnapshotError(limited) {
+		t.Errorf("a 429 changed its reader or owner verdict: %v", limited)
 	}
 	fixture := newReleaseClientKeyAuthorityV2TestFixture(t)
 	reader := newReleaseHeadV2ClientKeyReader(t, &fixture.cfg, fixture.domain.NoID)
