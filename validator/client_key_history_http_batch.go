@@ -123,7 +123,7 @@ func (self *HTTPClientKeyHistoryReader) readBatchAttempt(ctx context.Context, ba
 		return nil, protocol.ErrClientKeyObservationBatchWork
 	}
 	if response.StatusCode != http.StatusOK {
-		return nil, &clientKeyObservationHttpStatusError{status: response.StatusCode, operation: "batch"}
+		return nil, &clientKeyObservationHttpStatusError{status: response.StatusCode, operation: "batch", retryAfter: attemptStreamHttpRetryAfter(response.Header)}
 	}
 	if contentType := strings.ToLower(strings.TrimSpace(strings.Split(response.Header.Get("Content-Type"), ";")[0])); contentType != "application/json" || len(response.Header.Values("Content-Type")) != 1 {
 		return nil, errors.New("client-key batch response is not unambiguous Json")

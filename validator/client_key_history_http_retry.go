@@ -16,10 +16,15 @@ import (
 const clientKeyObservationRetryDelay = 250 * time.Millisecond
 
 // Only explicit transient service statuses authorize the second reservation.
-// Authentication, quota, input admission and semantic failures remain hard.
+// Authentication, quota, input admission and semantic failures remain hard for
+// the reader: a 429 never gets the immediate second reservation. The steering
+// and startup owners still treat a 429 as load and try again on a later
+// attempt, after its Retry-After (releaseRateLimitPause).
 type clientKeyObservationHttpStatusError struct {
 	status    int
 	operation string
+	// The response's one positive integer Retry-After, or zero.
+	retryAfter time.Duration
 }
 
 // Keep the failing boundary visible without destroying typed retry ownership.

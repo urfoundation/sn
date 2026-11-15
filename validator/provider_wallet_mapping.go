@@ -217,7 +217,7 @@ func readWalletMappingOriginals[T any](ctx context.Context, client *http.Client,
 		}
 	}()
 	if response.StatusCode != http.StatusOK {
-		return nil, &clientKeyObservationHttpStatusError{status: response.StatusCode, operation: "wallet mapping"}
+		return nil, &clientKeyObservationHttpStatusError{status: response.StatusCode, operation: "wallet mapping", retryAfter: attemptStreamHttpRetryAfter(response.Header)}
 	}
 	if response.ContentLength > maximum {
 		return nil, protocol.ErrWalletMappingCapacity

@@ -388,14 +388,8 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 	}
 	preparingProduction := isOwnerRecycleProductionConfig(self.cfg)
 	defer func() {
-		var wait *productionSteeringReadWait
-		if preparingProduction && resultErr != nil && !errors.As(resultErr, &wait) && !errors.Is(ctx.Err(), context.Canceled) {
-			cause := observeProductionSteeringRead(resultErr, evidenceReadContextError(ctx) == context.DeadlineExceeded)
-			if retryableProductionSteeringRead(cause) {
-				resultErr = &productionSteeringReadWait{phase: productionReadPreparation, cause: cause}
-			} else {
-				resultErr = cause
-			}
+		if preparingProduction {
+			resultErr = productionPreparationFailure(ctx, resultErr)
 		}
 	}()
 	var nativeHash types.Hash

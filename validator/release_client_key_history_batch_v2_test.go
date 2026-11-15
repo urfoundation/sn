@@ -163,8 +163,9 @@ func TestReleaseClientKeyHistoryBatchAdmissionFallbackReservesEachClientTwice(t 
 	}
 }
 
-// Quota and input refusals stay hard. Transient service responses and work
-// fallback share the same two-reservation ceiling without returning a prefix.
+// Quota and input refusals get no second reservation. Transient service
+// responses and work fallback share the same two-reservation ceiling without
+// returning a prefix.
 func TestReleaseClientKeyHistoryBatchFailureDoesNotRetryBeyondAdmission(t *testing.T) {
 	for _, status := range []int{http.StatusServiceUnavailable, http.StatusTooManyRequests, http.StatusRequestEntityTooLarge} {
 		fixture := newReleaseClientKeyAuthorityV2TestFixture(t)
