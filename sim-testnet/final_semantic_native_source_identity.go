@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Projects one ordinary registration only from the approved plan, exact
