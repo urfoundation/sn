@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/urfoundation/sn/protocol"
+	"github.com/urfoundation/sn/v2026/protocol"
 )
 
 func finalFleetLifecycleRenewalApproval(plan *SetupPlan, files map[string][]byte) (*SetupPlan, error) {

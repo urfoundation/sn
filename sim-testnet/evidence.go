@@ -23,10 +23,10 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urnetwork/server"
-	"github.com/urnetwork/server/startifact"
+	"github.com/urnetwork/server/v2026"
+	"github.com/urnetwork/server/v2026/startifact"
 
-	"github.com/urfoundation/sn/payoutartifact"
+	"github.com/urfoundation/sn/v2026/payoutartifact"
 )
 
 const (
