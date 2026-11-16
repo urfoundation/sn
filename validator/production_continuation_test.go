@@ -47,7 +47,13 @@ type productionContinuationNativeTestClient struct {
 	weightReads map[uint64]int
 	// A weight-row read at one of these heights fails with its error.
 	weightErrorKVs map[uint64]error
-	call           func(context.Context, any, string, ...any) error
+	// When set, the pool's answer to the broadcast with this 1-based count;
+	// otherwise every broadcast loses its acknowledgement.
+	submitAnswer func(int) error
+	// When set, the self UID's LastUpdate at each selected fixture height; every
+	// other UID reads 90, as in the fixture's stored row.
+	lastUpdateAt func(uint64) uint64
+	call         func(context.Context, any, string, ...any) error
 }
 
 // The weight fallback's reserve-shaped row: one target the intent does not
@@ -72,6 +78,9 @@ func (self *productionContinuationNativeTestClient) Subscribe(ctx context.Contex
 		return nil, errors.New("continuation broadcast differs from the original signed transaction")
 	}
 	self.broadcasts = append(self.broadcasts, encoded)
+	if self.submitAnswer != nil {
+		return nil, self.submitAnswer(len(self.broadcasts))
+	}
 	return nil, context.DeadlineExceeded
 }
 
@@ -96,6 +105,7 @@ func installProductionContinuationNative(t *testing.T, fixture *productionContin
 	commitmentKey := key("Commitments", "CommitmentOf", netuid, public[:])
 	lastKey := key("Commitments", "LastCommitment", netuid, public[:])
 	weightsKey := key(crv4.PalletName, "Weights", netuid, binary.LittleEndian.AppendUint16(nil, fixture.intent.SelfUID))
+	lastUpdateKey := key(crv4.PalletName, "LastUpdate", netuid)
 	ciphertext, err := codec.HexDecodeString(prepared.CiphertextHex)
 	if err != nil {
 		t.Fatal(err)
@@ -198,6 +208,18 @@ func installProductionContinuationNative(t *testing.T, fixture *productionContin
 				for index, uid := range prepared.UIDs {
 					row = binary.LittleEndian.AppendUint16(row, uid)
 					row = binary.LittleEndian.AppendUint16(row, prepared.Values[index])
+				}
+				return assign(codec.HexEncodeToString(row))
+			}
+			if args[0] == lastUpdateKey && self.lastUpdateAt != nil && selected != 0 {
+				count := max(int(fixture.intent.SelfUID)+1, 8)
+				row := releaseNativeValidatorTestCompact(t, uint64(count))
+				for uid := range count {
+					written := uint64(90)
+					if uid == int(fixture.intent.SelfUID) {
+						written = self.lastUpdateAt(selected)
+					}
+					row = binary.LittleEndian.AppendUint64(row, written)
 				}
 				return assign(codec.HexEncodeToString(row))
 			}

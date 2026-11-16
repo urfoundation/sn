@@ -98,7 +98,10 @@ func (self *ReleaseSteerer) reconcileProductionPendingV2(ctx context.Context, cu
 		return false, self.intents.markFailedV2(ctx, current.VectorHash, cause)
 	}
 	if nonce < current.Prepared.AccountNonce {
-		return false, fmt.Errorf("steering nonce gap at scanned block %d: finalized %d, prepared %d", number, nonce, current.Prepared.AccountNonce)
+		// An earlier transaction of this hotkey, typically the weight
+		// fallback's, is not final yet. The bytes cannot land before it; the
+		// next poll reads the boundary again.
+		return false, &productionPendingNonceWait{nativeEpoch: state.SubnetEpochIndex, extrinsicHash: current.Prepared.ExtrinsicHash, prepared: current.Prepared.AccountNonce, gap: true, finalized: nonce}
 	}
 	// Under the signed successor opt-in, a runtime replaced before inclusion
 	// must not strand the validator. Both artifacts passed the producer purpose
@@ -176,7 +179,7 @@ func (self *ReleaseSteerer) reconcileProductionPendingV2(ctx context.Context, cu
 	}
 	result, err := crv4.SubmitPrepared(ctx, &native, current.Prepared)
 	if err != nil {
-		return false, self.recordReleasePendingError(current.VectorHash, err)
+		return false, self.productionPendingSubmissionFailure(current, state.SubnetEpochIndex, err)
 	}
 	if err := self.productionRead(ctx, productionReadReceipt, current, func(readCtx context.Context) error {
 		return authenticateHistoricalNativeRuntimeAtContext(readCtx, &native, self.cfg, result.FinalizedBlockHash)

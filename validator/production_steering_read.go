@@ -330,11 +330,12 @@ func (self *productionSteeringReadWait) Unwrap() error { return self.cause }
 
 // A fresh preparation failure whose every cause is a retryable upstream read
 // waits for the next poll and spends no steering failure. Any other failure is
-// returned observed, so the loop counts it as hard. An existing wait and the
-// owner's cancellation pass through unchanged.
+// returned observed, so the loop counts it as hard. An existing wait, a held
+// epoch and the owner's cancellation pass through unchanged.
 func productionPreparationFailure(ctx context.Context, err error) error {
 	var wait *productionSteeringReadWait
-	if err == nil || errors.As(err, &wait) || errors.Is(ctx.Err(), context.Canceled) {
+	var hold *productionSteeringEpochHold
+	if err == nil || errors.As(err, &wait) || errors.As(err, &hold) || errors.Is(ctx.Err(), context.Canceled) {
 		return err
 	}
 	cause := observeProductionSteeringRead(err, evidenceReadContextError(ctx) == context.DeadlineExceeded)
