@@ -188,7 +188,7 @@ func releaseProcessError(ctx context.Context, err error) error {
 				return wait.cause == nil || retryableProductionSteeringRead(wait.cause)
 			case *productionOperatorAuthenticationPending:
 				return !wait.hard
-			case *productionPreparationPending, *productionSteeringTransition:
+			case *productionPreparationPending, *productionSteeringTransition, *productionPendingNonceWait, *productionSteeringEpochHold:
 				return true
 			}
 			return productionSteeringCutWait(cause)

@@ -325,6 +325,15 @@ func (self *releaseErrorObservation) capture(err error, depth int) error {
 		copy := *cause
 		copy.cause = self.optional(cause.cause, depth+1)
 		observed.value = &copy
+	case *productionPendingNonceWait:
+		self.notDeadline()
+		copy := *cause
+		copy.cause = self.optional(cause.cause, depth+1)
+		observed.value = &copy
+	case *productionSteeringEpochHold:
+		self.notDeadline()
+		copy := *cause
+		observed.value = &copy
 	case *productionNativeGapHold:
 		self.notDeadline()
 		copy := *cause
