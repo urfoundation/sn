@@ -19,11 +19,6 @@ import (
 
 const attemptStreamV2DescriptorBytes = 104
 
-// Data objects a production seal uploads at once. Over a lossy path each
-// upload holds its own HTTP/1.1 connection, so a few in flight multiply what
-// one connection's loss-limited window carries.
-const attemptStreamV2WriteInFlight = 3
-
 // The source synchronously visits rows in increasing original ledger sequence.
 // Rows are borrowed only during the call. Records must be contiguous; completed
 // proofs retain their original, possibly gapped, terminal record coordinates.
@@ -49,10 +44,11 @@ type AttemptStreamV2WriteOptions struct {
 	Spool         io.ReadWriteSeeker
 	WriteData     AttemptStreamV2ObjectWriter
 	WriteMetadata AttemptStreamV2ObjectWriter
-	// Data objects uploading at once while later chunks are built. Zero or one
-	// uploads each chunk before building the next. More requires a WriteData
-	// that is safe for concurrent calls. Either way every data object has
-	// succeeded before any page or the manifest is written.
+	// Data objects uploading while later chunks are built. Zero uploads each
+	// chunk before building the next. One overlaps one upload with building;
+	// more upload side by side and require a WriteData that is safe for
+	// concurrent calls. Either way every data object has succeeded before any
+	// page or the manifest is written.
 	InFlight int
 }
 
@@ -75,12 +71,12 @@ type attemptStreamV2Writer struct {
 // Data uploads in flight. The first failure cancels the others, and every
 // upload is joined before the stream returns on any path.
 type attemptStreamV2Uploads struct {
-	ctx    context.Context
-	cancel context.CancelFunc
-	slots  chan struct{}
-	group  sync.WaitGroup
-	lock   sync.Mutex
-	err    error
+	ctx       context.Context
+	cancel    context.CancelFunc
+	slots     chan struct{}
+	group     sync.WaitGroup
+	stateLock sync.Mutex
+	err       error
 }
 
 func newAttemptStreamV2Uploads(ctx context.Context, inFlight int) *attemptStreamV2Uploads {
@@ -89,17 +85,17 @@ func newAttemptStreamV2Uploads(ctx context.Context, inFlight int) *attemptStream
 }
 
 func (self *attemptStreamV2Uploads) failed() error {
-	self.lock.Lock()
-	defer self.lock.Unlock()
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
 	return self.err
 }
 
 func (self *attemptStreamV2Uploads) fail(err error) {
-	self.lock.Lock()
+	self.stateLock.Lock()
 	if self.err == nil {
 		self.err = err
 	}
-	self.lock.Unlock()
+	self.stateLock.Unlock()
 	self.cancel()
 }
 
@@ -199,7 +195,7 @@ func WriteAttemptStreamV2(ctx context.Context, kind string, source AttemptStream
 		return AttemptStreamV2Reference{}, AttemptStreamV2Census{}, err
 	}
 	writer := &attemptStreamV2Writer{ctx: ctx, kind: kind, options: options, descriptorsPerPage: capacity}
-	if options.InFlight > 1 {
+	if options.InFlight > 0 {
 		writer.uploads = newAttemptStreamV2Uploads(ctx, options.InFlight)
 		// No upload outlives the stream, whatever its outcome.
 		defer writer.uploads.abandon()

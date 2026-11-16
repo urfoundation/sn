@@ -38,10 +38,12 @@ type releaseUploadRefusalFixture struct {
 	bodies         [][]byte
 	waits          []time.Duration
 	credentials    atomic.Int32
-	// public reads of the object between attempts, which find nothing unless
-	// stored is set: then the object reads back as the bytes it was given
+	// public heads and reads of the object between attempts, which find
+	// nothing unless stored is set: then the object reads back as those bytes
 	probes atomic.Int32
 	stored atomic.Pointer[[]byte]
+	// an api from before heads of objects answers them 405
+	headUnsupported atomic.Bool
 }
 
 func newReleaseUploadRefusalFixture(t *testing.T, answers func(request int) (int, string)) *releaseUploadRefusalFixture {
@@ -90,14 +92,21 @@ func newReleaseUploadRefusalFixture(t *testing.T, answers func(request int) (int
 }
 
 func (self *releaseUploadRefusalFixture) roundTrip(request *http.Request) (*http.Response, error) {
-	if request.Method == http.MethodGet {
+	if request.Method == http.MethodGet || request.Method == http.MethodHead {
 		self.probes.Add(1)
+		if request.Method == http.MethodHead && self.headUnsupported.Load() {
+			return &http.Response{StatusCode: http.StatusMethodNotAllowed, Header: http.Header{"Allow": {"GET, POST"}}, Body: http.NoBody}, nil
+		}
 		stored := self.stored.Load()
 		if stored == nil {
 			return &http.Response{StatusCode: http.StatusNotFound, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("Not found."))}, nil
 		}
 		header := http.Header{"Content-Type": {request.Header.Get("Accept")}}
-		return &http.Response{StatusCode: http.StatusOK, Header: header, ContentLength: int64(len(*stored)), Body: io.NopCloser(bytes.NewReader(*stored))}, nil
+		body := io.NopCloser(bytes.NewReader(*stored))
+		if request.Method == http.MethodHead {
+			body = http.NoBody
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: header, ContentLength: int64(len(*stored)), Body: body}, nil
 	}
 	body, err := io.ReadAll(request.Body)
 	if err != nil {

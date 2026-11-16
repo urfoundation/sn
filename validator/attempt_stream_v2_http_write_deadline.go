@@ -19,41 +19,6 @@ import (
 	"time"
 )
 
-const (
-	// The slowest whole upload accepted: a 4 MiB object gets 286 seconds, and a
-	// reserved one no longer than its signed consent.
-	attemptStreamV2HttpWriteFloorBytesPerSecond = 16 << 10
-	// How often an owner looks at its body's progress.
-	attemptStreamV2HttpWriteWatchInterval = time.Second
-)
-
-// Upload timing a test may shorten. The zero value is production's.
-type attemptUploadTiming struct {
-	stall               time.Duration
-	interval            time.Duration
-	floorBytesPerSecond int
-}
-
-func (self attemptUploadTiming) values() (time.Duration, time.Duration, int) {
-	stall, interval, floor := self.stall, self.interval, self.floorBytesPerSecond
-	if stall <= 0 {
-		stall = attemptStreamV2HttpWriteIoTimeout
-	}
-	if interval <= 0 {
-		interval = attemptStreamV2HttpWriteWatchInterval
-	}
-	if floor <= 0 {
-		floor = attemptStreamV2HttpWriteFloorBytesPerSecond
-	}
-	return stall, interval, floor
-}
-
-// The whole request's cap for a body of size bytes.
-func (self attemptUploadTiming) cap(size int) time.Duration {
-	stall, _, floor := self.values()
-	return stall + time.Duration(size)*time.Second/time.Duration(floor)
-}
-
 // When the transport last took bytes from the request body, and whether it has
 // taken them all. A connection whose send buffer is full takes nothing, so this
 // follows the network's progress.
@@ -111,8 +76,7 @@ type attemptUploadWatch struct {
 	release func()
 }
 
-func watchAttemptUpload(parent context.Context, body *attemptUploadBody, limit time.Duration, timing attemptUploadTiming) *attemptUploadWatch {
-	stall, interval, _ := timing.values()
+func watchAttemptUpload(parent context.Context, body *attemptUploadBody, limit time.Duration, settings AttemptUploadSettings) *attemptUploadWatch {
 	inner, cancel := context.WithCancelCause(parent)
 	ctx, cancelDeadline := context.WithTimeout(inner, limit)
 	self := &attemptUploadWatch{ctx: ctx, parent: parent, stopped: make(chan struct{}), done: make(chan struct{})}
@@ -122,17 +86,15 @@ func watchAttemptUpload(parent context.Context, body *attemptUploadBody, limit t
 	}
 	go func() {
 		defer close(self.done)
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
 		for {
 			select {
 			case <-self.stopped:
 				return
 			case <-ctx.Done():
 				return
-			case <-ticker.C:
+			case <-time.After(settings.WatchInterval):
 			}
-			if !body.progress.sent.Load() && time.Since(time.Unix(0, body.progress.moved.Load())) >= stall {
+			if !body.progress.sent.Load() && time.Since(time.Unix(0, body.progress.moved.Load())) >= settings.StallTimeout {
 				cancel(context.DeadlineExceeded)
 				return
 			}

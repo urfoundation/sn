@@ -186,7 +186,7 @@ func TestReleaseAPIHTTPClientsUseHealthCheckedTransport(t *testing.T) {
 			t.Errorf("%s client does not use the shared API transport with redirects refused", name)
 		}
 	}
-	if writer.client.Transport != releaseAPIUploadHTTPTransport || writer.client.CheckRedirect == nil {
+	if writer.client.Transport != releaseApiUploadHttpTransport || writer.client.CheckRedirect == nil {
 		t.Error("attempt writer client does not use the upload transport with redirects refused")
 	}
 	artifact, err := NewHTTPArtifactReader("https://api.example", "sn25-mainnet-20261007-01", 25)
