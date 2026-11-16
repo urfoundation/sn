@@ -21,14 +21,6 @@ const (
 	releaseAPIHTTPIdleConnTimeout     = 90 * time.Second
 	releaseAPIHTTP2SendPingTimeout    = 15 * time.Second
 	releaseAPIHTTP2PingTimeout        = 10 * time.Second
-	// Uploads in flight to one origin: a seal's pipelined data objects plus
-	// its metadata, each on its own HTTP/1.1 connection.
-	releaseAPIUploadIdleConnsPerHost = 8
-	// An idle upload connection closes before the load balancer's one-minute
-	// keepalive would close it under a new request.
-	releaseAPIUploadIdleConnTimeout = 45 * time.Second
-	// Fewer, larger writes per upload than the 4 KiB default.
-	releaseAPIUploadWriteBufferBytes = 64 << 10
 )
 
 // Shared like http.DefaultTransport, which these API clients used before, so
@@ -56,12 +48,13 @@ func newReleaseAPIHTTPTransport() *http.Transport {
 // it drains that buffer, so a body moves at most one buffer per round trip,
 // and less once losses stall the connection. Uploads measured about 100 KB/s
 // that way, against 275 to 850 KB/s over HTTP/1.1, where TCP alone paces the
-// body and its window grows. Reads keep HTTP/2.
-var releaseAPIUploadHTTPTransport = newReleaseAPIUploadHTTPTransport()
+// body and its window grows. Reads keep HTTP/2. Shared like the read
+// transport, so an origin's idle upload connections stay pooled across owners.
+var releaseApiUploadHttpTransport = newReleaseApiUploadHttpTransport(DefaultAttemptUploadSettings())
 
-// The shared transport's proxy, dial, TLS and pool settings with HTTP/1.1
-// only. Idle connections stay pooled per host for one seal's parallel uploads.
-func newReleaseAPIUploadHTTPTransport() *http.Transport {
+// The shared transport's proxy, dial and TLS settings with HTTP/1.1 only, and
+// the upload settings' pool and write buffer.
+func newReleaseApiUploadHttpTransport(settings AttemptUploadSettings) *http.Transport {
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	return &http.Transport{
@@ -69,11 +62,11 @@ func newReleaseAPIUploadHTTPTransport() *http.Transport {
 		DialContext:           (&net.Dialer{Timeout: releaseAPIHTTPDialTimeout, KeepAlive: releaseAPIHTTPKeepAlive}).DialContext,
 		Protocols:             protocols,
 		MaxIdleConns:          100,
-		MaxIdleConnsPerHost:   releaseAPIUploadIdleConnsPerHost,
-		IdleConnTimeout:       releaseAPIUploadIdleConnTimeout,
+		MaxIdleConnsPerHost:   settings.IdleConnsPerHost,
+		IdleConnTimeout:       settings.IdleConnTimeout,
 		TLSHandshakeTimeout:   releaseAPIHTTPTLSHandshakeTimeout,
 		ExpectContinueTimeout: 1 * time.Second,
-		WriteBufferSize:       releaseAPIUploadWriteBufferBytes,
+		WriteBufferSize:       settings.WriteBufferBytes,
 	}
 }
 

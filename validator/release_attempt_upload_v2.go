@@ -23,17 +23,13 @@ const (
 // An upload a lossy or briefly unavailable path cut short is sent again: its
 // own deadline, a transport failure, or an answer of 408, 425, 429 or 5xx from
 // the api or its load balancer. Objects are content-addressed and the api
-// stores them put-if-absent, so a repeat is safe. Before repeating, the public
-// reader is asked whether the exact bytes already landed, which a lost
-// acknowledgement leaves behind. Waits grow exponentially with jitter, honor a
-// Retry-After up to the cap, and end with the caller. Any other answer keeps
-// its verdict at once. On 2026-11-16 each cut-off upload instead failed its
-// whole seal, and the steering loop started the seal over.
-const (
-	releaseAttemptUploadAttempts    = 6
-	releaseAttemptUploadBackoffBase = 2 * time.Second
-	releaseAttemptUploadBackoffCap  = time.Minute
-)
+// stores them put-if-absent, so a repeat is safe. Before repeating, the origin
+// is asked whether the object is already stored, which a lost acknowledgement
+// leaves behind. Waits grow exponentially with jitter, honor a Retry-After up
+// to the cap, and end with the caller; the writer's AttemptUploadSettings hold
+// the bounds. Any other answer keeps its verdict at once. On 2026-11-16 each
+// cut-off upload instead failed its whole seal, and the steering loop started
+// the seal over.
 
 // Immutable routing and limits are safe for concurrent operations. The session
 // owner cancels on logout, failed token persistence or runtime shutdown; each
@@ -147,7 +143,7 @@ func (self *releaseAttemptUploadV2) writeWithSigner(ctx context.Context, kind, h
 			delay = releaseReservedUploadRefusalDelay
 		case releaseAttemptUploadTransient(err):
 			failures++
-			if failures >= releaseAttemptUploadAttempts {
+			if failures >= uint64(max(self.writer.settings.Attempts, 1)) {
 				return err
 			}
 			cause := releaseDiagnosticUnavailable
@@ -179,21 +175,30 @@ func (self *releaseAttemptUploadV2) backoff(failures uint64, err error) time.Dur
 	if jitter == nil {
 		jitter = rand.Int64N
 	}
-	ceiling := min(releaseAttemptUploadBackoffBase<<min(failures-1, 8), releaseAttemptUploadBackoffCap)
+	settings := self.writer.settings
+	ceiling := max(min(settings.BackoffBase<<min(failures-1, 8), settings.BackoffCap), 2)
 	delay := ceiling/2 + time.Duration(jitter(int64(ceiling-ceiling/2)))
 	if status := releaseUploadStatus(err); status != nil {
 		delay = max(delay, status.retryAfter)
 	}
-	return min(delay, releaseAttemptUploadBackoffCap)
+	return min(delay, max(settings.BackoffCap, ceiling))
 }
 
-// Whether the object is already stored at this origin: the public reader
-// answers its content address with the typed content and exact length. The
-// publisher reads every object back in full once its write returns, so this
-// takes only the answer's head, within one stall window. Absence or any
-// failure says nothing, and the upload is sent again.
+// Whether the object is already stored at this origin. Its head answers with
+// the typed content and exact length at its content address; an api with no
+// head of objects (before 2026-11) answers the same in a GET's head, whose body
+// is left unread. The publisher reads every object back in full once its
+// write returns. Absence or any failure says nothing, and the object goes again.
 func (self *releaseAttemptUploadV2) landed(ctx context.Context, kind, hash string, size int) bool {
 	writer := self.writer
+	probe, cancel := context.WithTimeout(ctx, writer.settings.ProbeTimeout)
+	defer cancel()
+	switch writer.head(probe, kind, hash, size) {
+	case attemptObjectStored:
+		return true
+	case attemptObjectAbsent:
+		return false
+	}
 	limit := writer.metadataBytes
 	switch kind {
 	case AttemptStreamV2Records:
@@ -201,8 +206,6 @@ func (self *releaseAttemptUploadV2) landed(ctx context.Context, kind, hash strin
 	case AttemptStreamV2Proofs:
 		limit = writer.proofBytes
 	}
-	probe, cancel := context.WithTimeout(ctx, attemptStreamV2HttpWriteIoTimeout)
-	defer cancel()
 	reader := &HTTPAttemptStreamV2Reader{endpoint: writer.endpoint, metadataBytes: writer.metadataBytes, recordBytes: writer.recordBytes, proofBytes: writer.proofBytes, client: writer.client}
 	body, err := reader.open(probe, kind, hash, uint64(size), limit)
 	if err != nil {

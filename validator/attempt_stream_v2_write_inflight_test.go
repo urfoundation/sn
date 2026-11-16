@@ -15,7 +15,7 @@ import (
 // Counts the data uploads running at once, and how many had finished when the
 // first page or manifest was written. The fixture's own sinks run under a lock.
 type attemptStreamV2InFlightObserver struct {
-	lock            sync.Mutex
+	stateLock       sync.Mutex
 	calls           int
 	active          int
 	peak            int
@@ -28,22 +28,22 @@ type attemptStreamV2InFlightObserver struct {
 func (self *attemptStreamV2InFlightObserver) wrap(fixture *attemptStreamV2WriteFixture, hold func(ctx context.Context, call int) error) {
 	data, metadata := fixture.options.WriteData, fixture.options.WriteMetadata
 	fixture.options.WriteData = func(ctx context.Context, hash string, raw []byte) error {
-		self.lock.Lock()
+		self.stateLock.Lock()
 		call := self.calls
 		self.calls++
 		self.active++
 		self.peak = max(self.peak, self.active)
-		self.lock.Unlock()
+		self.stateLock.Unlock()
 		defer func() {
-			self.lock.Lock()
+			self.stateLock.Lock()
 			self.active--
-			self.lock.Unlock()
+			self.stateLock.Unlock()
 		}()
 		if err := hold(ctx, call); err != nil {
 			return err
 		}
-		self.lock.Lock()
-		defer self.lock.Unlock()
+		self.stateLock.Lock()
+		defer self.stateLock.Unlock()
 		if err := data(ctx, hash, raw); err != nil {
 			return err
 		}
@@ -51,8 +51,8 @@ func (self *attemptStreamV2InFlightObserver) wrap(fixture *attemptStreamV2WriteF
 		return nil
 	}
 	fixture.options.WriteMetadata = func(ctx context.Context, hash string, raw []byte) error {
-		self.lock.Lock()
-		defer self.lock.Unlock()
+		self.stateLock.Lock()
+		defer self.stateLock.Unlock()
 		if !self.pagesStarted {
 			self.pagesStarted = true
 			self.completedBefore, self.activeBefore = self.completed, self.active
@@ -62,8 +62,8 @@ func (self *attemptStreamV2InFlightObserver) wrap(fixture *attemptStreamV2WriteF
 }
 
 func (self *attemptStreamV2InFlightObserver) snapshot() (calls, active, peak, completed int) {
-	self.lock.Lock()
-	defer self.lock.Unlock()
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
 	return self.calls, self.active, self.peak, self.completed
 }
 
@@ -114,8 +114,7 @@ func TestAttemptStreamV2WriteUploadsInFlightTogether(t *testing.T) {
 	fixture.verify(t, AttemptStreamV2Records, reference, census, attemptStreamV2InFlightSequences)
 }
 
-// Zero or one in flight is the stream as it was: each upload done before the
-// next chunk is built.
+// Zero or one in flight never uploads two objects at once.
 func TestAttemptStreamV2WriteOneInFlightUploadsInTurn(t *testing.T) {
 	for _, inFlight := range []int{0, 1} {
 		fixture := newAttemptStreamV2WriteFixture(t)
@@ -209,4 +208,45 @@ func TestAttemptStreamV2WriteCancellationEndsUploadsInFlight(t *testing.T) {
 	if _, active, _, _ := observer.snapshot(); !errors.Is(err, context.Canceled) || reference != (AttemptStreamV2Reference{}) || active != 0 {
 		t.Fatalf("active=%d err=%v", active, err)
 	}
+}
+
+// One in flight builds beside its upload: the first chunk's upload waits until
+// the walk has gone on to row 5, past the next chunk's first rows, which a
+// stream that uploads each chunk before building the next never does.
+func TestAttemptStreamV2WriteOneInFlightBuildsBesideItsUpload(t *testing.T) {
+	fixture := newAttemptStreamV2WriteFixture(t)
+	fixture.options.InFlight = 1
+	visited := make(chan uint64, len(attemptStreamV2InFlightSequences))
+	observer := &attemptStreamV2InFlightObserver{}
+	observer.wrap(fixture, func(ctx context.Context, call int) error {
+		if call != 0 {
+			return nil
+		}
+		for {
+			select {
+			case sequence := <-visited:
+				if 5 <= sequence {
+					return nil
+				}
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(10 * time.Second):
+				return errors.New("the walk waited for the upload")
+			}
+		}
+	})
+	source := func(ctx context.Context, visit func(uint64, []byte) error) error {
+		return attemptStreamV2WriteRows(attemptStreamV2InFlightSequences...)(ctx, func(sequence uint64, row []byte) error {
+			visited <- sequence
+			return visit(sequence, row)
+		})
+	}
+	reference, census, err := WriteAttemptStreamV2(t.Context(), AttemptStreamV2Records, source, fixture.options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, active, peak, completed := observer.snapshot(); peak != 1 || completed != 8 || active != 0 || observer.completedBefore != 8 {
+		t.Fatalf("peak=%d completed=%d active=%d before pages=%d", peak, completed, active, observer.completedBefore)
+	}
+	fixture.verify(t, AttemptStreamV2Records, reference, census, attemptStreamV2InFlightSequences)
 }

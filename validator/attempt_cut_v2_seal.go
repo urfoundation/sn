@@ -43,8 +43,9 @@ type AttemptCutV2SealOptions struct {
 	WriteMetadata    AttemptStreamV2ObjectWriter
 	ReadMetadata     AttemptStreamV2MetadataReader
 	OpenData         AttemptStreamV2DataOpener
-	// Record or proof objects uploading at once (AttemptStreamV2WriteOptions'
-	// InFlight). Above one, WriteRecords and WriteProofs must be safe for
+	// Record or proof objects uploading while the walk builds later chunks
+	// (AttemptStreamV2WriteOptions' InFlight). Above zero WriteRecords and
+	// WriteProofs run beside the walk; above one they must also be safe for
 	// concurrent calls.
 	UploadsInFlight int
 }

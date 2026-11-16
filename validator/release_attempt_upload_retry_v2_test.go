@@ -30,8 +30,9 @@ func TestAttemptUploadTransientAnswersGoAgainWithinTheBound(t *testing.T) {
 		if !errors.As(err, &answer) || answer.status != status || !answer.upload {
 			t.Fatalf("status %d: the last answer was lost: %v", status, err)
 		}
-		if fixture.requests() != releaseAttemptUploadAttempts || len(fixture.waits) != releaseAttemptUploadAttempts-1 || int(fixture.probes.Load()) != releaseAttemptUploadAttempts-1 {
-			t.Fatalf("status %d: requests=%d waits=%d probes=%d, want %d attempts", status, fixture.requests(), len(fixture.waits), fixture.probes.Load(), releaseAttemptUploadAttempts)
+		attempts := fixture.owner.writer.settings.Attempts
+		if fixture.requests() != attempts || len(fixture.waits) != attempts-1 || int(fixture.probes.Load()) != attempts-1 {
+			t.Fatalf("status %d: requests=%d waits=%d probes=%d, want %d attempts", status, fixture.requests(), len(fixture.waits), fixture.probes.Load(), attempts)
 		}
 		if !transientReleaseSnapshotError(err) || !retryableProductionSteeringRead(observeProductionSteeringRead(err, false)) {
 			t.Fatalf("status %d: an exhausted transient answer became hard: %v", status, err)
@@ -126,7 +127,8 @@ func TestAttemptUploadBackoffGrowsWithJitterAndHonorsRetryAfter(t *testing.T) {
 	}
 	fixture.owner.jitter = nil
 	for failures := uint64(1); failures <= 12; failures++ {
-		ceiling := min(releaseAttemptUploadBackoffBase<<min(failures-1, 8), releaseAttemptUploadBackoffCap)
+		settings := fixture.owner.writer.settings
+		ceiling := min(settings.BackoffBase<<min(failures-1, 8), settings.BackoffCap)
 		for range 64 {
 			if got := fixture.owner.backoff(failures, errors.New("lost")); got < ceiling/2 || got >= ceiling {
 				t.Fatalf("failure %d: wait %s is outside [%s, %s)", failures, got, ceiling/2, ceiling)
@@ -137,7 +139,7 @@ func TestAttemptUploadBackoffGrowsWithJitterAndHonorsRetryAfter(t *testing.T) {
 	for _, hint := range []struct {
 		seconds string
 		want    time.Duration
-	}{{"7", 7 * time.Second}, {"3600", releaseAttemptUploadBackoffCap}} {
+	}{{"7", 7 * time.Second}, {"3600", fixture.owner.writer.settings.BackoffCap}} {
 		header := http.Header{"Retry-After": {hint.seconds}}
 		answer := &attemptStreamHttpStatusError{status: http.StatusServiceUnavailable, upload: true, retryAfter: attemptStreamHttpRetryAfter(header)}
 		if got := fixture.owner.backoff(1, errors.Join(answer, nil)); got != hint.want {
@@ -254,7 +256,7 @@ func TestReleaseSealUploadsDataObjectsInFlight(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if options.UploadsInFlight != attemptStreamV2WriteInFlight || attemptStreamV2WriteInFlight < 2 {
+		if options.UploadsInFlight != DefaultAttemptUploadSettings().InFlight || options.UploadsInFlight < 1 {
 			t.Fatalf("%d replicas: %d uploads in flight", len(replicas), options.UploadsInFlight)
 		}
 	}
@@ -285,7 +287,7 @@ func TestAttemptUploadDeadlineStopsAtTheSignedConsent(t *testing.T) {
 		t.Fatal(err)
 	}
 	consent := time.Duration(fixture.signer.maximumIntentSeconds) * time.Second
-	span := attemptUploadTiming{}.cap(len(data))
+	span := DefaultAttemptUploadSettings().requestCap(len(data))
 	if len(remaining) != 2 || remaining[0] > consent || remaining[0] < consent-5*time.Second || remaining[1] > span || remaining[1] < span-5*time.Second || span <= consent {
 		t.Fatalf("deadlines %v, want the consent's %s then the cap's %s", remaining, consent, span)
 	}

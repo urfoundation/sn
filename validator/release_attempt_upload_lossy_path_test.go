@@ -17,15 +17,19 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/klauspost/compress/zstd"
 )
 
 // Kernel socket buffers small enough that a body moves at the pace its reader
 // takes it, as it does on a loss-limited path, not at loopback speed.
-const releaseLossyPathSocketBytes = 16 << 10
+const releaseLossyPathSocketBytes = 16 * 1024
 
 func releaseLossyPathSocketControl(option int) func(string, string, syscall.RawConn) error {
 	return func(_, _ string, raw syscall.RawConn) error {
@@ -41,11 +45,15 @@ func releaseLossyPathSocketControl(option int) func(string, string, syscall.RawC
 // validator: TLS offering HTTP/2 and HTTP/1.1, an upload body taken a little at
 // a time, then 204 with the object's ETag once all of it arrived.
 type releaseLossyPathServer struct {
-	endpoint *httptest.Server
-	lock     sync.Mutex
-	// each request's HTTP major version, and each completely received body
-	protos []int
-	bodies [][]byte
+	endpoint  *httptest.Server
+	stateLock sync.Mutex
+	// each request's HTTP major version, each completely received object, and
+	// each request's bytes on the wire
+	protos    []int
+	bodies    [][]byte
+	wireBytes []int
+	// acknowledgements advertise zstd request bodies, which the server decodes
+	advertiseZstd atomic.Bool
 }
 
 func newReleaseLossyPathServer(t *testing.T, step int, interval time.Duration) *releaseLossyPathServer {
@@ -54,10 +62,15 @@ func newReleaseLossyPathServer(t *testing.T, step int, interval time.Duration) *
 	// An HTTP/1.1 handler does not see its client leave while it still reads
 	// the body; the test's end stops it.
 	stop := make(chan struct{})
+	zstdDecoder, err := zstd.NewReader(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(zstdDecoder.Close)
 	endpoint := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		self.lock.Lock()
+		self.stateLock.Lock()
 		self.protos = append(self.protos, r.ProtoMajor)
-		self.lock.Unlock()
+		self.stateLock.Unlock()
 		var body bytes.Buffer
 		buffer := make([]byte, step)
 		for {
@@ -78,10 +91,23 @@ func newReleaseLossyPathServer(t *testing.T, step int, interval time.Duration) *
 				return
 			}
 		}
-		self.lock.Lock()
-		self.bodies = append(self.bodies, body.Bytes())
-		self.lock.Unlock()
-		w.Header().Set("ETag", `"`+attemptHex32(sha256.Sum256(body.Bytes()))+`"`)
+		object := body.Bytes()
+		if r.Header.Get("Content-Encoding") == "zstd" {
+			decoded, err := zstdDecoder.DecodeAll(object, nil)
+			if err != nil || strconv.Itoa(len(decoded)) != r.Header.Get(attemptUploadDecodedLengthHeader) {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+			object = decoded
+		}
+		self.stateLock.Lock()
+		self.bodies = append(self.bodies, object)
+		self.wireBytes = append(self.wireBytes, body.Len())
+		self.stateLock.Unlock()
+		if self.advertiseZstd.Load() {
+			w.Header().Set("Accept-Encoding", "zstd")
+		}
+		w.Header().Set("ETag", `"`+attemptHex32(sha256.Sum256(object))+`"`)
 		w.WriteHeader(http.StatusNoContent)
 	}))
 	listener, err := (&net.ListenConfig{Control: releaseLossyPathSocketControl(syscall.SO_RCVBUF)}).Listen(t.Context(), "tcp", "127.0.0.1:0")
@@ -111,16 +137,22 @@ func (self *releaseLossyPathServer) attach(t *testing.T, writer *HTTPAttemptStre
 }
 
 func (self *releaseLossyPathServer) received() ([]int, [][]byte) {
-	self.lock.Lock()
-	defer self.lock.Unlock()
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
 	return append([]int(nil), self.protos...), append([][]byte(nil), self.bodies...)
+}
+
+func (self *releaseLossyPathServer) wire() []int {
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	return append([]int(nil), self.wireBytes...)
 }
 
 // A records object as large as the production chunk bound allows.
 func releaseLossyPathWriter(t *testing.T, origin string) *HTTPAttemptStreamV2Writer {
 	t.Helper()
 	bounds, _ := attemptReplayV2TestBounds()
-	bounds.Records.MaxChunkBytes = 4 << 20
+	bounds.Records.MaxChunkBytes = 4 * 1024 * 1024
 	writer, err := NewHTTPAttemptStreamV2Writer(origin, bounds, func() string { return "synthetic-session" })
 	if err != nil {
 		t.Fatal(err)
@@ -134,10 +166,10 @@ func releaseLossyPathWriter(t *testing.T, origin string) *HTTPAttemptStreamV2Wri
 func TestAttemptUploadOverALossyPathCompletes(t *testing.T) {
 	t.Parallel()
 	// 8 KiB every 250 ms is 32 KiB/s: 1.25 MiB takes about 40 seconds.
-	server := newReleaseLossyPathServer(t, 8<<10, 250*time.Millisecond)
+	server := newReleaseLossyPathServer(t, 8*1024, 250*time.Millisecond)
 	writer := releaseLossyPathWriter(t, server.endpoint.URL)
 	server.attach(t, writer)
-	data := bytes.Repeat([]byte("{\"lossy\":\"path\"}\n"), (5<<18)/17)
+	data := bytes.Repeat([]byte("{\"lossy\":\"path\"}\n"), (5*256*1024)/17)
 	hash := attemptHex32(sha256.Sum256(data))
 	started := time.Now()
 	err := writer.Write(t.Context(), AttemptStreamV2Records, hash, data)
@@ -146,7 +178,7 @@ func TestAttemptUploadOverALossyPathCompletes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a slow upload that kept moving failed after %s (protocols %v): %v", elapsed.Round(time.Second), protos, err)
 	}
-	if elapsed <= attemptStreamV2HttpWriteIoTimeout {
+	if elapsed <= DefaultAttemptUploadSettings().StallTimeout {
 		t.Fatalf("the path took the body in %s, not slower than the old fixed deadline; the test lost its shape", elapsed.Round(time.Second))
 	}
 	if len(protos) != 1 || protos[0] != 1 {
@@ -163,15 +195,18 @@ func TestAttemptUploadOverALossyPathCompletes(t *testing.T) {
 func TestAttemptUploadCutShortIsSentAgain(t *testing.T) {
 	t.Parallel()
 	fixture := newReleaseUploadRefusalFixture(t, func(int) (int, string) { return http.StatusNoContent, "" })
-	var lock sync.Mutex
+	var stateLock sync.Mutex
 	resets := 0
 	fixture.owner.writer.client.Transport = attemptStreamV2HTTPTestTransport(func(request *http.Request) (*http.Response, error) {
-		lock.Lock()
-		reset := request.Method == http.MethodPost && resets == 0
-		if reset {
+		reset := func() bool {
+			stateLock.Lock()
+			defer stateLock.Unlock()
+			if request.Method != http.MethodPost || resets != 0 {
+				return false
+			}
 			resets++
-		}
-		lock.Unlock()
+			return true
+		}()
 		if reset {
 			if _, err := io.Copy(io.Discard, request.Body); err != nil {
 				return nil, err
@@ -218,15 +253,43 @@ func TestAttemptUploadLostAcknowledgementIsNotSentAgain(t *testing.T) {
 // Nothing above may let an upload outlive the caller that owns it.
 func TestAttemptUploadOverALossyPathEndsWithItsCaller(t *testing.T) {
 	t.Parallel()
-	server := newReleaseLossyPathServer(t, 8<<10, 250*time.Millisecond)
+	server := newReleaseLossyPathServer(t, 8*1024, 250*time.Millisecond)
 	writer := releaseLossyPathWriter(t, server.endpoint.URL)
 	server.attach(t, writer)
-	data := bytes.Repeat([]byte("{\"lossy\":\"path\"}\n"), (5<<18)/17)
+	data := bytes.Repeat([]byte("{\"lossy\":\"path\"}\n"), (5*256*1024)/17)
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Second)
 	defer cancel()
 	started := time.Now()
 	err := writer.Write(ctx, AttemptStreamV2Records, attemptHex32(sha256.Sum256(data)), data)
 	if !errors.Is(err, context.DeadlineExceeded) || ctx.Err() == nil || time.Since(started) > 10*time.Second {
 		t.Fatalf("the caller's deadline did not end the upload: elapsed=%s err=%v", time.Since(started).Round(time.Millisecond), err)
+	}
+}
+
+// The same path with an api that takes zstd. The validator learns that from
+// one small object's acknowledgement, and a records object then carries a
+// fraction of its bytes over the path. Each object used to take the path's
+// full time for every byte.
+func TestAttemptUploadOverALossyPathSendsFewerBytes(t *testing.T) {
+	t.Parallel()
+	server := newReleaseLossyPathServer(t, 8*1024, 250*time.Millisecond)
+	server.advertiseZstd.Store(true)
+	writer := releaseLossyPathWriter(t, server.endpoint.URL)
+	server.attach(t, writer)
+	small := []byte("{\"learn\":true}\n")
+	if err := writer.Write(t.Context(), "metadata", attemptHex32(sha256.Sum256(small)), small); err != nil {
+		t.Fatal(err)
+	}
+	data := attemptUploadEncodingRecords(5 * 256 * 1024)
+	started := time.Now()
+	err := writer.Write(t.Context(), AttemptStreamV2Records, attemptHex32(sha256.Sum256(data)), data)
+	elapsed := time.Since(started)
+	_, bodies := server.received()
+	wire := server.wire()
+	if err != nil || len(bodies) != 2 || !bytes.Equal(bodies[1], data) {
+		t.Fatalf("the compressed upload failed after %s: %v", elapsed.Round(time.Second), err)
+	}
+	if wire[1]*4 > len(data) || elapsed >= DefaultAttemptUploadSettings().StallTimeout {
+		t.Fatalf("%d of %d bytes crossed the path in %s", wire[1], len(data), elapsed.Round(time.Second))
 	}
 }
