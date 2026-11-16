@@ -925,6 +925,24 @@ func (c *Chain) WeightsAtContext(ctx context.Context, netuid, validatorUID uint1
 	return row, nil
 }
 
+// LastUpdateAtContext reads SubtensorModule.LastUpdate for one UID of netuid's
+// main mechanism at one exact authenticated block: the block at which that UID
+// last wrote weights, by a commit or a direct set. A UID past the stored vector,
+// or an absent vector, has never written and reads zero.
+func (c *Chain) LastUpdateAtContext(ctx context.Context, netuid, uid uint16, blockHash types.Hash) (uint64, error) {
+	if blockHash == (types.Hash{}) {
+		return 0, errors.New("crv4: last update block hash is zero")
+	}
+	var updates []types.U64
+	if _, err := c.storageGetContext(ctx, &updates, blockHash, "LastUpdate", encodeNetuid(netuid)); err != nil {
+		return 0, err
+	}
+	if int(uid) >= len(updates) {
+		return 0, nil
+	}
+	return uint64(updates[uid]), nil
+}
+
 // WeightsAtFinalized reads one validator UID's applied weight row at the
 // canonical finalized head. It is used to distinguish a finalized CRv4 commit
 // from a commit whose timelock payload has actually been revealed and applied.
@@ -1194,6 +1212,11 @@ func (c *Chain) SubmitRawAndWatchFinalizedRuntime(ctx context.Context, encoded s
 		statuses, codec.HexEncodeToString(raw),
 	)
 	if err != nil {
+		// A refusal that leaves these bytes' fate to the chain is typed, so
+		// an owner keeping them can wait for finality instead of failing.
+		if refusal := submissionRefusal(txHash, err); refusal != nil {
+			return nil, refusal
+		}
 		return nil, fmt.Errorf("crv4: submit/watch %s: %w", txHash.Hex(), err)
 	}
 	defer sub.Unsubscribe()
@@ -1244,7 +1267,8 @@ func (c *Chain) SubmitRawAndWatchFinalizedRuntime(ctx context.Context, encoded s
 				}
 				return &FinalizedExtrinsic{ExtrinsicHash: txHash, BlockHash: status.AsFinalized, BlockNumber: receipt.number}, nil
 			case status.IsDropped, status.IsInvalid, status.IsUsurped, status.IsFinalityTimeout, status.IsRetracted:
-				return nil, fmt.Errorf("crv4: extrinsic %s failed before finality: %+v", txHash.Hex(), status)
+				// None of these is a chain verdict on the bytes.
+				return nil, submissionWatchEnded(txHash, status)
 			}
 		}
 	}

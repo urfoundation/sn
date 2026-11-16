@@ -98,7 +98,18 @@ func (self *ReleaseSteerer) reconcileProductionPendingV2(ctx context.Context, cu
 		return false, self.intents.markFailedV2(ctx, current.VectorHash, cause)
 	}
 	if nonce < current.Prepared.AccountNonce {
-		return false, fmt.Errorf("steering nonce gap at scanned block %d: finalized %d, prepared %d", number, nonce, current.Prepared.AccountNonce)
+		// The bytes cannot land before the earlier nonce does. While a
+		// transaction holds it in the best chain or the pool, typically the
+		// weight fallback's, the next poll reads the boundary again; with
+		// nothing there the gap stays hard, as before.
+		next, err := self.productionNextIndex(ctx, current)
+		if err != nil {
+			return false, err
+		}
+		if next <= nonce {
+			return false, fmt.Errorf("steering nonce gap at scanned block %d: finalized %d, prepared %d, and no earlier transaction is pending (next index %d)", number, nonce, current.Prepared.AccountNonce, next)
+		}
+		return false, &productionPendingNonceWait{nativeEpoch: state.SubnetEpochIndex, extrinsicHash: current.Prepared.ExtrinsicHash, prepared: current.Prepared.AccountNonce, next: next, gap: true, finalized: nonce}
 	}
 	// Under the signed successor opt-in, a runtime replaced before inclusion
 	// must not strand the validator. Both artifacts passed the producer purpose
@@ -176,7 +187,7 @@ func (self *ReleaseSteerer) reconcileProductionPendingV2(ctx context.Context, cu
 	}
 	result, err := crv4.SubmitPrepared(ctx, &native, current.Prepared)
 	if err != nil {
-		return false, self.recordReleasePendingError(current.VectorHash, err)
+		return false, self.productionPendingSubmissionFailure(ctx, current, state.SubnetEpochIndex, err)
 	}
 	if err := self.productionRead(ctx, productionReadReceipt, current, func(readCtx context.Context) error {
 		return authenticateHistoricalNativeRuntimeAtContext(readCtx, &native, self.cfg, result.FinalizedBlockHash)

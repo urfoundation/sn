@@ -71,6 +71,8 @@ func runReleaseProductionSteeringLoopWithCutWait(ctx context.Context, submit fun
 		}
 		readWait := releaseErrorMarker[*productionSteeringReadWait](err)
 		originalPending := releaseErrorMarker[*productionPendingReconciliation](err)
+		nonceWait := releaseErrorMarker[*productionPendingNonceWait](err)
+		epochHold := releaseErrorMarker[*productionSteeringEpochHold](err)
 		transition := releaseErrorMarker[*productionSteeringTransition](err)
 		preparation := releaseErrorMarker[*productionPreparationPending](err)
 		authentication := releaseErrorMarker[*productionOperatorAuthenticationPending](err)
@@ -100,6 +102,19 @@ func runReleaseProductionSteeringLoopWithCutWait(ctx context.Context, submit fun
 		case originalPending != nil && (originalPending.cause == nil || retryableProductionSteeringRead(originalPending.cause)) && releaseOnlyErrors(err, originalPending):
 			progress.observeSteering(originalPending.nativeEpoch, true, "receipt_pending", originalPending.cause == nil)
 			releaseDiagnostic(ctx, "steering", "receipt_pending", originalPending.nativeEpoch, true, 0, releaseDiagnosticFacts{phase: productionReadReceipt, cause: releaseDiagnosticReadCause(originalPending.cause)})
+		case nonceWait != nil && releaseOnlyErrors(err, nonceWait):
+			// The signed bytes stay pending on their nonce, typically held by
+			// the weight fallback's transaction, and finality decides them.
+			// The wait neither spends nor restores the failure budget.
+			progress.observeSteering(nonceWait.nativeEpoch, true, "receipt_pending", true)
+			releaseDiagnostic(ctx, "steering", "nonce_wait", nonceWait.nativeEpoch, true, 0, releaseDiagnosticFacts{phase: productionReadReceipt})
+			releaseDiagnosticCauses(ctx, "steering", "nonce_wait", 0, err)
+		case epochHold != nil && releaseOnlyErrors(err, epochHold):
+			// The epoch's weights are already written as decided, so its work
+			// is complete; the next native epoch brings the next decision.
+			failures, pendingErr = 0, nil
+			progress.observeSteering(epochHold.nativeEpoch, true, "epoch_wait", true)
+			releaseDiagnostic(ctx, "steering", "epoch_wait", epochHold.nativeEpoch, true, 0)
 		case transition != nil && releaseOnlyErrors(err, transition):
 			outcome := "working"
 			if transition.revealWait {
