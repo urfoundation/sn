@@ -43,13 +43,12 @@ func newReleaseAPIHTTPTransport() *http.Transport {
 
 // Uploads into the api go over HTTP/1.1. On 2026-11-16 the path into the api's
 // site lost packets at about 90 ms RTT (the den1 to sjc2 to fmt2 Hurricane
-// Electric segment). Over HTTP/2 the load balancer gives an upload stream the
-// receive window of its 64 KiB client body buffer and opens it again only as
-// it drains that buffer, so a body moves at most one buffer per round trip,
-// and less once losses stall the connection. Uploads measured about 100 KB/s
-// that way, against 275 to 850 KB/s over HTTP/1.1, where TCP alone paces the
-// body and its window grows. Reads keep HTTP/2. Shared like the read
-// transport, so an origin's idle upload connections stay pooled across owners.
+// Electric segment), and uploads measured about 100 KB/s over HTTP/2 against
+// 275 to 850 KB/s over HTTP/1.1. The load balancer's HTTP/2 window was not the
+// limit: it takes a buffered upload body without flow control (nginx opens the
+// stream window to its maximum). Over HTTP/1.1 TCP alone paces each upload on
+// its own connection. Reads keep HTTP/2. Shared like the read transport, so an
+// origin's idle upload connections stay pooled across owners.
 var releaseApiUploadHttpTransport = newReleaseApiUploadHttpTransport(DefaultAttemptUploadSettings())
 
 // The shared transport's proxy, dial and TLS settings with HTTP/1.1 only, and
