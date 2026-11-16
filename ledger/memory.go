@@ -60,7 +60,7 @@ func (c *MemoryCustody) ValidExtenders(ctx context.Context, noID, epoch uint64) 
 	if !ok {
 		return nil, false, nil
 	}
-	return &HeaderExtenders{Bytes: component.Bytes, Census: slices.Clone(component.Census), Rows: slices.Clone(component.Rows)}, true, nil
+	return component.Clone(), true, nil
 }
 
 // Holds a copy of the epoch's valid extender component.
@@ -68,6 +68,6 @@ func (c *MemoryCustody) KeepValidExtenders(ctx context.Context, noID, epoch uint
 	if c.Extenders == nil {
 		c.Extenders = map[PoolEpoch]*HeaderExtenders{}
 	}
-	c.Extenders[PoolEpoch{NoID: noID, Epoch: epoch}] = &HeaderExtenders{Bytes: component.Bytes, Census: slices.Clone(component.Census), Rows: slices.Clone(component.Rows)}
+	c.Extenders[PoolEpoch{NoID: noID, Epoch: epoch}] = component.Clone()
 	return nil
 }

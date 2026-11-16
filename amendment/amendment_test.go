@@ -21,7 +21,7 @@ const (
 	testCarry = "0x5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed"
 	// The lines of the design: WHITEPAPER.md §8.6.7's and CAPTURETHEFLAG.md §2.4's,
 	// with testCarry in place of the carry contract.
-	extenderLine = "UR settlement amendment v1: chain 964, sn 25, no 1, from epoch 8, intra-platform and intra-network extenders, units egress prefix, free and paid, zeta 1"
+	extenderLine = "UR settlement amendment v1: chain 964, sn 25, no 1, from epoch 8, intra-platform and intra-network extenders, units egress prefix, free and paid, zeta 1, half by unit half by relay bytes"
 	ctfLine      = "UR settlement amendment v2: chain 964, sn 25, no 1, from epoch 8, capture the flag, ctf pool 4294967297, carry " + testCarry + ", shares pool 4/10 ctf 1/10 head 5/10, head cedes to pool, slots 5 providers 5 extenders, countries iso 3166-1 249, presence half epoch, units egress prefix, draw drand quicknet 60s after census"
 )
 
@@ -56,7 +56,7 @@ func signed(t testing.TB, key *ecdsa.PrivateKey, entry *Entry) *Entry {
 func TestTheDesignLinesParse(t *testing.T) {
 	extenders := mustParse(t, extenderLine)
 	want := &Entry{Version: V1, ChainID: 964, Netuid: 25, NoID: 1, FromEpoch: 8, Extender: &ExtenderTerms{
-		IntraPlatform: true, IntraNetwork: true, Units: UnitsEgressPrefix, FreeAndPaid: true, Zeta: Ratio{Num: 1, Den: 1},
+		IntraPlatform: true, IntraNetwork: true, Units: UnitsEgressPrefix, FreeAndPaid: true, Zeta: Ratio{Num: 1, Den: 1}, RelayShare: Ratio{Num: 1, Den: 2},
 	}}
 	if *extenders.Extender != *want.Extender || extenders.Ctf != nil || extenders.Version != want.Version || extenders.ChainID != 964 || extenders.Netuid != 25 || extenders.NoID != 1 || extenders.FromEpoch != 8 {
 		t.Fatalf("%+v %+v", extenders, extenders.Extender)

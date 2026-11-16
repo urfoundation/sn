@@ -79,7 +79,7 @@ func newDepositExtenderTestFixture(t *testing.T) *depositExtenderTestFixture {
 // epoch 0's chunks, and a v3 header listing them.
 func (self *depositExtenderTestFixture) publishExtenderLedger(t *testing.T, rows []protocol.LedgerUsageRow, z uint64, census []ledger.CensusRow) {
 	t.Helper()
-	split, err := ledger.SplitExtenderPool(z, rows, census)
+	split, err := ledger.SplitExtenderPool(z, rows, census, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -336,7 +336,7 @@ func TestDepositUsageExtendersCommittedShareRowsMustBeCapped(t *testing.T) {
 	uncapped := func() []protocol.LedgerUsageRow {
 		// The split of Z = 3 GiB as if W_k were larger: rows summing to all of Z.
 		wide := []protocol.LedgerUsageRow{{ClientID: [16]byte{1}, Coldkey: [32]byte{1}, UsageBytes: 4 << 30}}
-		split, err := ledger.SplitExtenderPool(3<<30, wide, census)
+		split, err := ledger.SplitExtenderPool(3<<30, wide, census, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -385,7 +385,7 @@ func TestDepositUsageExtendersCommittedShareRowsMustBeCapped(t *testing.T) {
 func TestDepositUsageExtendersMalformedComponentIsInvalid(t *testing.T) {
 	census := depositExtenderTestCensus()
 	rows := depositUsageTestRows()
-	split, err := ledger.SplitExtenderPool(depositExtenderTestZ, rows, census)
+	split, err := ledger.SplitExtenderPool(depositExtenderTestZ, rows, census, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -455,7 +455,7 @@ func TestDepositUsageExtendersStatementVersionFollowsTheHeader(t *testing.T) {
 		fixture.publishLedger(t, depositUsageTestRows())
 		fixture.commitHeader(t)
 		fixture.census, fixture.censusRef, fixture.shareRef = depositExtenderTestCensus(), []ledger.Ref{ledger.RefOf([]byte("census"))}, []ledger.Ref{ledger.RefOf([]byte("rows"))}
-		split, err := ledger.SplitExtenderPool(fixture.z, fixture.rows, fixture.census)
+		split, err := ledger.SplitExtenderPool(fixture.z, fixture.rows, fixture.census, nil)
 		if err != nil {
 			t.Fatal(err)
 		}

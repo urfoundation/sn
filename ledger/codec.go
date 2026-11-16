@@ -300,17 +300,28 @@ type HeaderExtenders struct {
 	Bytes uint64
 	// The census chunks, CensusRowBytes-byte rows.
 	Census []Ref
+	// The relay row chunks, RelayRowBytes-byte rows; empty when no census
+	// client relayed in the epoch.
+	Relay []Ref
 	// The extender share row chunks, ProviderRowBytes-byte rows; empty when no
 	// extender is eligible or Z is 0.
 	Rows []Ref
 }
 
-// Reports the same bytes, census and share rows.
+// Reports the same bytes, census, relay and share rows.
 func (self *HeaderExtenders) Equal(other *HeaderExtenders) bool {
 	if self == nil || other == nil {
 		return self == other
 	}
-	return self.Bytes == other.Bytes && slices.Equal(self.Census, other.Census) && slices.Equal(self.Rows, other.Rows)
+	return self.Bytes == other.Bytes && slices.Equal(self.Census, other.Census) && slices.Equal(self.Relay, other.Relay) && slices.Equal(self.Rows, other.Rows)
+}
+
+// A copy that shares no slice with the component.
+func (self *HeaderExtenders) Clone() *HeaderExtenders {
+	if self == nil {
+		return nil
+	}
+	return &HeaderExtenders{Bytes: self.Bytes, Census: slices.Clone(self.Census), Relay: slices.Clone(self.Relay), Rows: slices.Clone(self.Rows)}
 }
 
 // HeaderRecovery is one recovery component of a covered epoch: the funding
@@ -347,6 +358,7 @@ type headerEpochJSON struct {
 type headerExtendersJson struct {
 	Bytes  uint64   `json:"bytes"`
 	Census []string `json:"census"`
+	Relay  []string `json:"relay"`
 	Rows   []string `json:"rows"`
 }
 
@@ -416,6 +428,8 @@ func (h *headerJSON) appendJSON(b []byte) []byte {
 				b = strconv.AppendUint(b, extenders.Bytes, 10)
 				b = append(b, `,"census":`...)
 				b = appendStrings(b, extenders.Census)
+				b = append(b, `,"relay":`...)
+				b = appendStrings(b, extenders.Relay)
 				b = append(b, `,"rows":`...)
 				b = appendStrings(b, extenders.Rows)
 				b = append(b, '}')
@@ -467,7 +481,7 @@ func EncodeHeader(h *Header) ([]byte, error) {
 			if h.Epochs[i].Null {
 				return nil, fmt.Errorf("%w: epoch %d", ErrHeaderExtenders, h.Epochs[i].Epoch)
 			}
-			raw.Epochs[i].Extenders = &headerExtendersJson{Bytes: extenders.Bytes, Census: refStrings(extenders.Census), Rows: refStrings(extenders.Rows)}
+			raw.Epochs[i].Extenders = &headerExtendersJson{Bytes: extenders.Bytes, Census: refStrings(extenders.Census), Relay: refStrings(extenders.Relay), Rows: refStrings(extenders.Rows)}
 		}
 	}
 	raw.Schema = raw.schema()
@@ -538,11 +552,14 @@ func DecodeHeader(data []byte) (*Header, error) {
 			if epoch.Null {
 				return nil, fmt.Errorf("%w: epoch %d", ErrHeaderExtenders, epoch.Epoch)
 			}
-			if entry.Census == nil || entry.Rows == nil {
+			if entry.Census == nil || entry.Relay == nil || entry.Rows == nil {
 				return nil, ErrHeaderNull
 			}
 			extenders := &HeaderExtenders{Bytes: entry.Bytes}
 			if extenders.Census, err = parseRefs(entry.Census); err != nil {
+				return nil, err
+			}
+			if extenders.Relay, err = parseRefs(entry.Relay); err != nil {
 				return nil, err
 			}
 			if extenders.Rows, err = parseRefs(entry.Rows); err != nil {

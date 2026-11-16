@@ -1285,11 +1285,15 @@ A root that covers no such epoch keeps the v2 header byte for byte.
 exactly its covered epochs from `E_x` that are not declared unrecoverable carry a component, each
 census is well formed (chunk hashes, sorted and unique rows, flags that agree with each other, one
 counted record per provider client) with head-bound flags that agree with the chain's bindings at
-both boundaries, and the share rows are exactly the census's two-level even split of `Z'`: over the
+both boundaries, each list of relay rows is well formed (chunk hashes, sorted and unique client ids
+with positive relay bytes, each of a census client), and the share rows are exactly the split of
+`Z'`: half, `Z_r = floor(Z'/2)`, over the eligible extenders in proportion to their relay bytes, the
+leftover bytes to the largest remainders, when any of them relayed, and the rest by unit, over the
 units by unit hash, then over each unit's eligible extenders by client id, the remainder bytes to
-the lowest. An epoch's component, once found valid, is a fixed input like its provider rows. The
-census itself, which extenders are active, gated or declared, and their wallets, are the operator's
-attestation; the validator recomputes the arithmetic only. `snclaim v2 check` runs the same check
+the lowest (owner, 2026-11-16). An epoch's component, once found valid, is a fixed input like its
+provider rows. The census and the relay rows themselves, which extenders are active, gated or
+declared, what each relayed, and their wallets, are the operator's attestation; the validator
+recomputes the arithmetic only. `snclaim v2 check` runs the same check
 on each component as declared, without the amendments file.
 
 **`--amendments-fallback=<path>`** is the fallback the owner chose for an entry whose signing cannot
@@ -1299,7 +1303,7 @@ hash and needs no re-signed successor:
 
 - the file holds configured amendment lines, one per line, each exactly as the line grammar writes
   it, for example
-  `UR settlement amendment v1: chain 964, sn 25, no 1, from epoch 8, intra-platform and intra-network extenders, units egress prefix, free and paid, zeta 1`.
+  `UR settlement amendment v1: chain 964, sn 25, no 1, from epoch 8, intra-platform and intra-network extenders, units egress prefix, free and paid, zeta 1, half by unit half by relay bytes`.
   Blank lines and lines starting with `#` are passed over; any other line that is not a valid line
   for the deployment stops `validator run` at startup;
 - a configured line stands in only for a kind and operator with no signed entry in force at an

@@ -57,8 +57,9 @@
 // checks the schema, null only for providers, no extender component on an
 // unrecoverable epoch, the epoch count and every reference.
 // EncodeProviderChunks, DecodeProviderChunks, EncodeAccountChunks,
-// DecodeAccountChunks, EncodeCensusChunks and DecodeCensusChunks convert
-// chunk lists, checking the chunk shape and row encodings.
+// DecodeAccountChunks, EncodeCensusChunks, DecodeCensusChunks,
+// EncodeRelayChunks and DecodeRelayChunks convert chunk lists, checking the
+// chunk shape and row encodings.
 //
 // # The extender pool (WHITEPAPER.md §8.6.2)
 //
@@ -67,15 +68,18 @@
 // intra-platform and intra-network hop shares of its contracts, less
 // declared measurement and test traffic. SplitExtenderPool caps Z at W_k,
 // the epoch's eligible provider usage (ζ = 1), so extenders take at most
-// half of the epoch's amount, and splits the capped Z' evenly over the units
-// that hold an eligible extender, by unit hash, then evenly over each unit's
-// eligible extenders, by client id, the remainder bytes going to the lowest
-// at each level. A census row is eligible when it is active (E1) with no
-// other flag (E3, E4's head binding, E5) and has a coldkey (E4). With no
-// eligible extender Z is dropped and the epoch allocates as without the
-// amendment. The share rows enter the epoch's allocation beside its provider
-// rows, so a coldkey that holds both adds them. CheckCensusRows holds the
-// census rules a verifier can check without addresses.
+// half of the epoch's amount. Half of the capped Z', floor(Z'/2), goes to the
+// eligible extenders in proportion to their relay bytes, the leftover bytes to
+// the largest remainders, when any of them relayed; the rest goes evenly over
+// the units that hold an eligible extender, by unit hash, then evenly over
+// each unit's eligible extenders, by client id, the remainder bytes going to
+// the lowest at each level (owner, 2026-11-16). A census row is eligible when
+// it is active (E1) with no other flag (E3, E4's head binding, E5) and has a
+// coldkey (E4). With no eligible extender Z is dropped and the epoch
+// allocates as without the amendment. The share rows, one per extender with
+// both parts, enter the epoch's allocation beside its provider rows, so a
+// coldkey that holds both adds them. CheckCensusRows and CheckRelayRows hold
+// the census and relay rules a verifier can check without addresses.
 //
 // # Building a root (server)
 //
@@ -96,9 +100,9 @@
 //     chunks): Build refuses rows that encode differently (ErrFixedInputs).
 //     Leave Chunks nil to build an epoch the first time, or to rebuild it on
 //     an operator command. Extenders is set for exactly the epochs the
-//     extender pool amendment covers: Z, the census and, for an epoch built
-//     by an earlier root, the census chunks it was first built with
-//     (ErrFixedInputs again) and the Z it was built with;
+//     extender pool amendment covers: Z, the census, the relay rows and, for
+//     an epoch built by an earlier root, the census and relay chunks it was
+//     first built with (ErrFixedInputs again) and the Z it was built with;
 //   - FundedThrough: vault2's fundedThrough[k] for every covered epoch.
 //
 // It walks the epochs (§6.4): f_k = fundedThrough[k] − fundedThrough[k−1],

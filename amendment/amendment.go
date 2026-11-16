@@ -10,7 +10,7 @@
 // plain text signed by the price sheet's pinned key (WHITEPAPER.md §7.1), so a
 // person signing on a hardware wallet reads exactly what they approve:
 //
-//	UR settlement amendment v1: chain 964, sn 25, no 1, from epoch 8, intra-platform and intra-network extenders, units egress prefix, free and paid, zeta 1
+//	UR settlement amendment v1: chain 964, sn 25, no 1, from epoch 8, intra-platform and intra-network extenders, units egress prefix, free and paid, zeta 1, half by unit half by relay bytes
 //	UR settlement amendment v2: chain 964, sn 25, no 1, from epoch 8, capture the flag, ctf pool 4294967297, carry 0x…, shares pool 4/10 ctf 1/10 head 5/10, head cedes to pool, slots 5 providers 5 extenders, countries iso 3166-1 249, presence half epoch, units egress prefix, draw drand quicknet 60s after census
 //
 // Version 1 is the extender pool (WHITEPAPER.md §8.6.7), version 2 capture the flag
@@ -140,6 +140,10 @@ type ExtenderTerms struct {
 	FreeAndPaid bool
 	// Zeta caps Z at ζ times the epoch's eligible provider usage (decision 9).
 	Zeta Ratio
+	// RelayShare is the part of the capped pool split over the eligible extenders
+	// by the bytes each relayed in the epoch; the rest is split evenly by unit
+	// (owner, 2026-11-16, WHITEPAPER.md §8.6.3 S4).
+	RelayShare Ratio
 }
 
 // Shares divide the providers' share μ over one denominator (CAPTURETHEFLAG.md
@@ -186,6 +190,7 @@ var (
 		"units egress prefix",
 		"free and paid",
 		"zeta 1",
+		"half by unit half by relay bytes",
 	}
 	// The clauses of a version 2 line after its carry contract.
 	ctfClauses = []string{
@@ -200,7 +205,7 @@ var (
 )
 
 func extenderTerms() ExtenderTerms {
-	return ExtenderTerms{IntraPlatform: true, IntraNetwork: true, Units: UnitsEgressPrefix, FreeAndPaid: true, Zeta: Ratio{Num: 1, Den: 1}}
+	return ExtenderTerms{IntraPlatform: true, IntraNetwork: true, Units: UnitsEgressPrefix, FreeAndPaid: true, Zeta: Ratio{Num: 1, Den: 1}, RelayShare: Ratio{Num: 1, Den: 2}}
 }
 
 func ctfTerms(noID uint64, carry common.Address) CtfTerms {

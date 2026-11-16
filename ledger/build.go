@@ -80,11 +80,16 @@ type ExtenderInput struct {
 	// The epoch's census, sorted by client id and extender id
 	// (CheckCensusRows).
 	Census []CensusRow
+	// The epoch's relay rows, sorted by client id (CheckRelayRows): the bytes
+	// each census client carried as an extender in the epoch.
+	Relay []RelayRow
 	// When not nil, the census chunk references the epoch's extender component
 	// was first built with, and Bytes must be the Z it was first built with.
-	// Census must encode to exactly these chunks. Leave it nil the first time,
-	// or to rebuild on an operator command.
-	Chunks []Ref
+	// Census must encode to exactly these chunks, and Relay to exactly
+	// RelayChunks, the relay chunk references it was first built with. Leave
+	// both nil the first time, or to rebuild on an operator command.
+	Chunks      []Ref
+	RelayChunks []Ref
 }
 
 // BuildInput is a root's input.
@@ -124,16 +129,17 @@ type EpochAllocation struct {
 }
 
 // An epoch's extender component as built: the split, and the chunks the header
-// lists for its census and share rows.
+// lists for its census, relay and share rows.
 type ExtenderAllocation struct {
 	ExtenderSplit
 	Census []Ref
+	Relay  []Ref
 	Chunks []Ref
 }
 
 // The component as the header lists it.
 func (self *ExtenderAllocation) Header() *HeaderExtenders {
-	return &HeaderExtenders{Bytes: self.Bytes, Census: slices.Clone(self.Census), Rows: slices.Clone(self.Chunks)}
+	return &HeaderExtenders{Bytes: self.Bytes, Census: slices.Clone(self.Census), Relay: slices.Clone(self.Relay), Rows: slices.Clone(self.Chunks)}
 }
 
 // Objects holds ledger objects by reference.

@@ -51,7 +51,7 @@ const castTimeout = 2 * time.Minute
 // extendersLine and ctfLine are written out here, not built by the package, so the
 // tool is held to the lines the design gives.
 func extendersLine(noID, epoch uint64) string {
-	return fmt.Sprintf("UR settlement amendment v1: chain 964, sn 25, no %d, from epoch %d, intra-platform and intra-network extenders, units egress prefix, free and paid, zeta 1", noID, epoch)
+	return fmt.Sprintf("UR settlement amendment v1: chain 964, sn 25, no %d, from epoch %d, intra-platform and intra-network extenders, units egress prefix, free and paid, zeta 1, half by unit half by relay bytes", noID, epoch)
 }
 
 func ctfLine(noID, epoch uint64) string {
