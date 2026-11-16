@@ -386,6 +386,7 @@ var (
 	accountChunkRole   = role{check: CheckChunks, mismatch: ErrChunkHash, oversize: ErrChunkLength, limit: ChunkRows * AccountRowBytes}
 	providerChunkRole  = role{check: CheckChunks, mismatch: ErrChunkHash, oversize: ErrChunkLength, limit: ChunkRows * ProviderRowBytes}
 	censusChunkRole    = role{check: CheckChunks, mismatch: ErrChunkHash, oversize: ErrChunkLength, limit: ChunkRows * CensusRowBytes}
+	relayChunkRole     = role{check: CheckChunks, mismatch: ErrChunkHash, oversize: ErrChunkLength, limit: ChunkRows * RelayRowBytes}
 )
 
 type verifier struct {

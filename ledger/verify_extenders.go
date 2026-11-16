@@ -65,9 +65,10 @@ func (v *verifier) fixedExtenders(h *Header, held []bool) ([]bool, error) {
 
 // Checks a covered epoch's extender component against its provider rows and
 // returns its share rows: its census chunks (check 4), the census rules (11),
-// the census head flags against the epoch's bindings (6), then that the share
-// rows it lists are the split of its bytes, capped at the provider rows'
-// eligible usage, over the census (11), and that they are published (4).
+// the census head flags against the epoch's bindings (6), its relay chunks (4)
+// and the relay rules (11), then that the share rows it lists are the split
+// of its bytes, capped at the provider rows' eligible usage, over the census
+// and the relay rows (11), and that they are published (4).
 func (v *verifier) extenderRows(epoch *HeaderEpoch, providers []protocol.LedgerUsageRow) ([]protocol.LedgerUsageRow, error) {
 	extenders := epoch.Extenders
 	label := fmt.Sprintf("epoch %d census", epoch.Epoch)
@@ -92,7 +93,22 @@ func (v *verifier) extenderRows(epoch *HeaderEpoch, providers []protocol.LedgerU
 	if err := v.censusHeads(epoch.Epoch, census, label); err != nil {
 		return nil, err
 	}
-	split, err := SplitExtenderPool(extenders.Bytes, providers, census)
+	relayLabel := fmt.Sprintf("epoch %d relay", epoch.Epoch)
+	var relay []RelayRow
+	for j, ref := range extenders.Relay {
+		data, err := v.get(ref, &relayChunkRole)
+		if err != nil {
+			return nil, err
+		}
+		if err := checkChunk(len(data), RelayRowBytes, j, len(extenders.Relay)); err != nil {
+			return nil, fail(CheckChunks, fmt.Errorf("%s: %w", relayLabel, err))
+		}
+		relay = decodeRelayRows(relay, data)
+	}
+	if err := CheckRelayRows(relay, census); err != nil {
+		return nil, fail(CheckExtenders, fmt.Errorf("%s: %w", relayLabel, err))
+	}
+	split, err := SplitExtenderPool(extenders.Bytes, providers, census, relay)
 	if err != nil {
 		return nil, fail(CheckExtenders, fmt.Errorf("epoch %d: %w", epoch.Epoch, err))
 	}

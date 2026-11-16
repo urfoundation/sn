@@ -374,7 +374,7 @@ func TestExtenderPoolUnitSplit(t *testing.T) {
 		{weight: 0, want: map[int]uint64{}},
 		{weight: 3_000_000_000_001, want: map[int]uint64{32: 1_000_000_000_001, 31: 333_333_333_334, 33: 333_333_333_333, 36: 333_333_333_333, 35: 1_000_000_000_000}},
 	} {
-		split, err := SplitExtenderPool(c.weight, providers, census)
+		split, err := SplitExtenderPool(c.weight, providers, census, nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -404,7 +404,7 @@ func TestExtenderPoolUnitSplit(t *testing.T) {
 
 	// One extender alone in a block gets what three sharing a block get
 	// together.
-	split, err := SplitExtenderPool(900, providers, []CensusRow{active(1, 31, 3, 1), active(2, 32, 4, 1), active(3, 33, 5, 1), active(4, 34, 6, 2)})
+	split, err := SplitExtenderPool(900, providers, []CensusRow{active(1, 31, 3, 1), active(2, 32, 4, 1), active(3, 33, 5, 1), active(4, 34, 6, 2)}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -511,22 +511,23 @@ func TestCheckCensusRows(t *testing.T) {
 	}
 }
 
-// The header: an epoch's extender component is its last key, a header with
-// one is v3, and one without keeps the v2 bytes. Decoding refuses a schema
-// that does not match, a null census or share list, and a component on an
-// unrecoverable epoch.
+// The header: an epoch's extender component is its last key, its relay list
+// between its census and its share rows, a header with one is v3, and one
+// without keeps the v2 bytes. Decoding refuses a schema that does not match, a
+// null census, relay or share list, and a component on an unrecoverable
+// epoch.
 func TestExtenderHeaderCodec(t *testing.T) {
-	census, rows := RefOf([]byte("census")), RefOf([]byte("rows"))
+	census, relay, rows := RefOf([]byte("census")), RefOf([]byte("relay")), RefOf([]byte("rows"))
 	h := &Header{NoID: 1, Epoch: 8, Epochs: []HeaderEpoch{
 		{Epoch: 7, Providers: []Ref{RefOf([]byte("p7"))}},
-		{Epoch: 8, Providers: []Ref{RefOf([]byte("p8"))}, Recovery: []HeaderRecovery{{Epoch: 3, Amount: 5, Providers: []Ref{}}}, Extenders: &HeaderExtenders{Bytes: 42, Census: []Ref{census}, Rows: []Ref{rows}}},
+		{Epoch: 8, Providers: []Ref{RefOf([]byte("p8"))}, Recovery: []HeaderRecovery{{Epoch: 3, Amount: 5, Providers: []Ref{}}}, Extenders: &HeaderExtenders{Bytes: 42, Census: []Ref{census}, Relay: []Ref{relay}, Rows: []Ref{rows}}},
 	}, Accounts: []Ref{RefOf([]byte("a"))}}
 	data, err := EncodeHeader(h)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := fmt.Sprintf(`{"schema":"urnetwork-payout-ledger-v3","no_id":1,"epoch":8,"epochs":[{"epoch":7,"providers":["%s"]},{"epoch":8,"providers":["%s"],"recovery":[{"epoch":3,"amount":5,"providers":[]}],"extenders":{"bytes":42,"census":["%s"],"rows":["%s"]}}],"accounts":["%s"]}`,
-		RefOf([]byte("p7")), RefOf([]byte("p8")), census, rows, RefOf([]byte("a")))
+	want := fmt.Sprintf(`{"schema":"urnetwork-payout-ledger-v3","no_id":1,"epoch":8,"epochs":[{"epoch":7,"providers":["%s"]},{"epoch":8,"providers":["%s"],"recovery":[{"epoch":3,"amount":5,"providers":[]}],"extenders":{"bytes":42,"census":["%s"],"relay":["%s"],"rows":["%s"]}}],"accounts":["%s"]}`,
+		RefOf([]byte("p7")), RefOf([]byte("p8")), census, relay, rows, RefOf([]byte("a")))
 	if string(data) != want {
 		t.Fatalf("header\n%s\nwant\n%s", data, want)
 	}
@@ -534,7 +535,7 @@ func TestExtenderHeaderCodec(t *testing.T) {
 	if err != nil || !decoded.Epochs[1].Extenders.Equal(h.Epochs[1].Extenders) || decoded.Epochs[0].Extenders != nil {
 		t.Fatalf("decode: %v %+v", err, decoded)
 	}
-	component := fmt.Sprintf(`,"extenders":{"bytes":42,"census":["%s"],"rows":["%s"]}`, census, rows)
+	component := fmt.Sprintf(`,"extenders":{"bytes":42,"census":["%s"],"relay":["%s"],"rows":["%s"]}`, census, relay, rows)
 	recovery := `,"recovery":[{"epoch":3,"amount":5,"providers":[]}]`
 	for _, c := range []struct {
 		name string
@@ -544,12 +545,15 @@ func TestExtenderHeaderCodec(t *testing.T) {
 		{"v2 with a component", strings.Replace(want, "-v3", "-v2", 1), ErrHeaderSchema},
 		{"v3 without one", strings.Replace(want, component, "", 1), ErrHeaderSchema},
 		{"null census", strings.Replace(want, fmt.Sprintf(`"census":["%s"]`, census), `"census":null`, 1), ErrHeaderNull},
+		{"null relay", strings.Replace(want, fmt.Sprintf(`"relay":["%s"]`, relay), `"relay":null`, 1), ErrHeaderNull},
+		{"no relay", strings.Replace(want, fmt.Sprintf(`"relay":["%s"],`, relay), ``, 1), ErrHeaderNotCanonical},
+		{"relay after the share rows", strings.Replace(want, fmt.Sprintf(`"relay":["%s"],"rows":["%s"]`, relay, rows), fmt.Sprintf(`"rows":["%s"],"relay":["%s"]`, rows, relay), 1), ErrHeaderNotCanonical},
 		{"null rows", strings.Replace(want, fmt.Sprintf(`"rows":["%s"]`, rows), `"rows":null`, 1), ErrHeaderNull},
 		{"null component", strings.Replace(want, component, `,"extenders":null`, 1), ErrHeaderNotCanonical},
 		{"keys out of order", strings.Replace(want, fmt.Sprintf(`"bytes":42,"census":["%s"]`, census), fmt.Sprintf(`"census":["%s"],"bytes":42`, census), 1), ErrHeaderNotCanonical},
 		{"component before recovery", strings.Replace(want, recovery+component, component+recovery, 1), ErrHeaderNotCanonical},
 		{"unknown key", strings.Replace(want, `"bytes":42,`, `"bytes":42,"units":2,`, 1), ErrHeaderDecode},
-		{"a component on an unrecoverable epoch", `{"schema":"urnetwork-payout-ledger-v3","no_id":1,"epoch":8,"epochs":[{"epoch":8,"providers":null,"extenders":{"bytes":0,"census":[],"rows":[]}}],"accounts":[]}`, ErrHeaderExtenders},
+		{"a component on an unrecoverable epoch", `{"schema":"urnetwork-payout-ledger-v3","no_id":1,"epoch":8,"epochs":[{"epoch":8,"providers":null,"extenders":{"bytes":0,"census":[],"relay":[],"rows":[]}}],"accounts":[]}`, ErrHeaderExtenders},
 	} {
 		if _, err := DecodeHeader([]byte(c.data)); !errors.Is(err, c.want) {
 			t.Fatalf("%s: %v, want %v", c.name, err, c.want)

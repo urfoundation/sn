@@ -294,7 +294,7 @@ func TestCommittedExtenders(t *testing.T) {
 		{ClientID: [16]byte{23}, UsageBytes: 1_000_000_000_000},
 	}
 	const z = 1_000_000_000_001
-	split, err := ledger.SplitExtenderPool(z, providers, census)
+	split, err := ledger.SplitExtenderPool(z, providers, census, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
