@@ -25,7 +25,7 @@ import (
 	"testing"
 )
 
-const releaseGateStmonitorFixtureImport = "github.com/urnetwork/server/stmonitor/testfixture"
+const releaseGateStmonitorFixtureImport = "github.com/urnetwork/server/v2026/stmonitor/testfixture"
 
 // The test roots of one package's files that reach testfixture.New, directly
 // or through any function, method or package value of the package that names

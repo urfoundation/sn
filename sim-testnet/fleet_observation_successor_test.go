@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urfoundation/sn/protocol"
-	"github.com/urfoundation/sn/stabi"
+	"github.com/urfoundation/sn/v2026/protocol"
+	"github.com/urfoundation/sn/v2026/stabi"
 )
 
 // Build two complete signed generations around a sealed takeover handoff. The

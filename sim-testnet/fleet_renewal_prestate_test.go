@@ -11,8 +11,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	ethTypes "github.com/ethereum/go-ethereum/core/types"
-	"github.com/urfoundation/sn/protocol"
-	"github.com/urfoundation/sn/stabi"
+	"github.com/urfoundation/sn/v2026/protocol"
+	"github.com/urfoundation/sn/v2026/stabi"
 )
 
 // Historical source compaction may omit the earlier deterministic revoke
