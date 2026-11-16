@@ -42,8 +42,10 @@ info:
     newly persisted private_score/refresh/reevaluation/history fields. Do not
     roll an old binary back onto new state.
     Identical canonical patch bytes in one round map to one durable job. The
-    optional reevaluation marker identifies at most one separately authorized,
-    bounded recovery cycle of that same job after a proved evaluator defect.
+    optional reevaluation marker identifies a separately authorized, bounded
+    recovery cycle of that same job. The default remains one recovery; a schema-3
+    successor is accepted only for the backend's separately approved exact job,
+    binding the immutable first receipt and a new approval evidence digest.
     Its canonical receipt binds scope, the original terminal failure, incident
     evidence and the qualified fixed runtime; it is not a cryptographic signature
     or a new public authorization endpoint. Authorization provenance is the
@@ -463,7 +465,7 @@ paths:
         cannot read the job. Ownership is per credential, not per miner behind a
         shared credential; Apex must enforce its own miner-to-submission mapping.
         An optional reevaluation receipt identifies a separately authorized
-        single recovery cycle of this same job; it does not publish the old or
+        bounded recovery cycle of this same job; it does not publish the old or
         new outcome or extend the original execution budget.
         Responses, including failures, use Cache-Control no-store.
       parameters:
@@ -566,7 +568,7 @@ paths:
         full error text, arbitrary diagnostics and review decisions stay sealed.
         This additive feedback does not amend the round's frozen evaluator,
         scoring policy, source/OpenAPI evidence or public decision contract.
-        Optional reevaluation metadata is a same-job, single-cycle operator
+        Optional reevaluation metadata is a same-job, bounded-cycle operator
         recovery receipt, not a new admission, publication or reward decision.
         Anonymous readers, other credential owners and control-plane/operator
         roles are denied. Apex must map a shared credential's feedback to the
@@ -2571,8 +2573,29 @@ components:
               properties:
                 kind: {const: infrastructure}
                 code: {const: executor_process_failed}
+        - required: [incident_class, distributed, second_recovery]
+          properties:
+            schema: {const: 3}
+            cycle: {const: 2}
+            incident_class: {const: operator_requested_patch_retry}
+            distributed:
+              required: [patch_retry]
+              properties:
+                reason: {const: operator_requested_patch_retry}
+            previous_failure:
+              properties:
+                kind: {const: infrastructure}
+                code: {const: executor_process_failed}
+      allOf:
+        - if:
+            properties:
+              schema: {enum: [1, 2]}
+          then:
+            not: {required: [second_recovery]}
+            properties:
+              cycle: {const: 1}
       properties:
-        schema: {type: integer, enum: [1, 2]}
+        schema: {type: integer, enum: [1, 2, 3]}
         environment:
           type: string
           pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"
@@ -2589,8 +2612,8 @@ components:
         baseline_sha256: {$ref: "#/components/schemas/Sha256"}
         cycle:
           type: integer
-          const: 1
-          description: Exactly one recovery is permitted; original-cycle responses omit reevaluation.
+          enum: [1, 2]
+          description: One recovery by default. Cycle 2 requires schema 3, the backend's exact-job approval and immutable cycle-1 receipt. No third recovery is permitted. Original-cycle responses omit reevaluation.
         receipt_sha256: {$ref: "#/components/schemas/Sha256"}
         authorization_sha256: {$ref: "#/components/schemas/Sha256"}
         evidence_sha256: {$ref: "#/components/schemas/Sha256"}
@@ -2604,6 +2627,8 @@ components:
           description: Exact original message-free failure, constrained by incident_class above and bound by backend-verified operator authority. Neither a terminal code nor candidate-produced log content alone proves eligibility or authorizes another evaluation.
         distributed:
           $ref: "#/components/schemas/CompetitionDistributedJobReevaluationCycle"
+        second_recovery:
+          $ref: "#/components/schemas/CompetitionOperatorSecondRecovery"
         runtime_qualification_sha256: {$ref: "#/components/schemas/Sha256"}
         fixed_source_commit:
           type: string
@@ -2622,6 +2647,32 @@ components:
         execution_timeout_seconds:
           type: integer
           const: 10800
+
+    CompetitionOperatorSecondRecovery:
+      type: object
+      additionalProperties: false
+      description: |
+        Message-free projection of one append-only exact-job successor audit,
+        not reusable permission. The backend separately verifies this job's
+        approval and exact immutable prior receipt. The predecessor is always
+        schema 2/cycle 1, belongs to the same job/round/patch/frozen source, and
+        has its real first-claim timestamp. Every prior receipt and failure is
+        retained unchanged. This marker cannot authorize any other job, a third
+        cycle, a new admission, a fee, or publication.
+      required: [schema, job_id, previous_receipt_sha256, approval_evidence_sha256, previous_recovery]
+      properties:
+        schema: {type: integer, const: 1}
+        job_id: {type: string, format: uuid}
+        previous_receipt_sha256: {$ref: "#/components/schemas/Sha256"}
+        approval_evidence_sha256: {$ref: "#/components/schemas/Sha256"}
+        previous_recovery:
+          allOf:
+            - $ref: "#/components/schemas/CompetitionJobReevaluationCycle"
+            - required: [started_at]
+              properties:
+                schema: {const: 2}
+                cycle: {const: 1}
+                started_at: {type: string, format: date-time}
 
     CompetitionDistributedJobReevaluationCycle:
       type: object
