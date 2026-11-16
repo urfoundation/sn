@@ -311,6 +311,12 @@ func ValidateProvisionalRuntimeMetadata(metadata *types.Metadata) error {
 // signatures, SelectiveMetagraph layout and stake-weight sources are unchanged;
 // gamma emission only adds storage, events, errors and calls. Its consumed
 // metadata interfaces are unchanged. Pinned in runtime490_metadata_test.go.
+// Runtime491 (subtensor v491, be3a11b1; Finney from block 9520960, 2026-11-16)
+// declares every runtime API at 490's version, and v490..v491 leaves the
+// runtime API crate, rpc_info, epoch, weights, registration and serving
+// sources untouched; it folds the removed OwnerLock and DecayingOwnerLock
+// storage into the hotkey lock buckets, which nothing here reads. Its consumed
+// metadata interfaces are unchanged. Pinned in runtime491_metadata_test.go.
 // This exception grants no source or artifact authority: each caller still
 // authenticates its exact block artifact and checks its consumed interfaces.
 func validateProvisionalRuntimeApis(raw json.RawMessage) error {
@@ -335,12 +341,12 @@ func validateProvisionalRuntimeApis(raw json.RawMessage) error {
 		}
 		value, err := decodeRuntimeVersionUint("SubnetInfoRuntimeApi", pair[1], 32)
 		if found || err != nil || value != 2 && value != 3 {
-			return errors.New("consumed SubnetInfoRuntimeApi is not version2 or reviewed runtime481/482/483/484/486/488/490 version3")
+			return errors.New("consumed SubnetInfoRuntimeApi is not version2 or reviewed runtime481/482/483/484/486/488/490/491 version3")
 		}
 		if value == 3 {
 			identity, err := DecodeRuntimeVersionIdentity(raw)
-			if err != nil || identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 481, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 482, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 483, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 484, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 486, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 488, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 490, TransactionVersion: 1, StateVersion: 1}) {
-				return errors.Join(errors.New("consumed SubnetInfoRuntimeApi version3 requires the reviewed node-subtensor/481/1/1 or node-subtensor/482/1/1 or node-subtensor/483/1/1 or node-subtensor/484/1/1 or node-subtensor/486/1/1 or node-subtensor/488/1/1 or node-subtensor/490/1/1 tuple"), err)
+			if err != nil || identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 481, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 482, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 483, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 484, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 486, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 488, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 490, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 491, TransactionVersion: 1, StateVersion: 1}) {
+				return errors.Join(errors.New("consumed SubnetInfoRuntimeApi version3 requires the reviewed node-subtensor/481/1/1 or node-subtensor/482/1/1 or node-subtensor/483/1/1 or node-subtensor/484/1/1 or node-subtensor/486/1/1 or node-subtensor/488/1/1 or node-subtensor/490/1/1 or node-subtensor/491/1/1 tuple"), err)
 			}
 		}
 		found = true
