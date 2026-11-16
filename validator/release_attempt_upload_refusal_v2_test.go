@@ -38,6 +38,10 @@ type releaseUploadRefusalFixture struct {
 	bodies         [][]byte
 	waits          []time.Duration
 	credentials    atomic.Int32
+	// public reads of the object between attempts, which find nothing unless
+	// stored is set: then the object reads back as the bytes it was given
+	probes atomic.Int32
+	stored atomic.Pointer[[]byte]
 }
 
 func newReleaseUploadRefusalFixture(t *testing.T, answers func(request int) (int, string)) *releaseUploadRefusalFixture {
@@ -86,6 +90,15 @@ func newReleaseUploadRefusalFixture(t *testing.T, answers func(request int) (int
 }
 
 func (self *releaseUploadRefusalFixture) roundTrip(request *http.Request) (*http.Response, error) {
+	if request.Method == http.MethodGet {
+		self.probes.Add(1)
+		stored := self.stored.Load()
+		if stored == nil {
+			return &http.Response{StatusCode: http.StatusNotFound, Header: http.Header{}, Body: io.NopCloser(strings.NewReader("Not found."))}, nil
+		}
+		header := http.Header{"Content-Type": {request.Header.Get("Accept")}}
+		return &http.Response{StatusCode: http.StatusOK, Header: header, ContentLength: int64(len(*stored)), Body: io.NopCloser(bytes.NewReader(*stored))}, nil
+	}
 	body, err := io.ReadAll(request.Body)
 	if err != nil {
 		return nil, err
@@ -172,10 +185,12 @@ func TestReservedUploadRefusalEverywhereStaysHard(t *testing.T) {
 }
 
 // Only a 403 says one instance may differ from its siblings, and only on the
-// reserved lane. Every other answer keeps its one request and its own classifier.
+// reserved lane. Every other refusal keeps its one request and its own
+// classifier. The answers of a path that lost the upload (408, 425, 429, 5xx)
+// go again under their own bound: release_attempt_upload_retry_v2_test.go.
 func TestReservedUploadRefusalRetryIsOnlyForAReservedForbidden(t *testing.T) {
 	t.Parallel()
-	for _, status := range []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusRequestEntityTooLarge, http.StatusConflict, http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable} {
+	for _, status := range []int{http.StatusBadRequest, http.StatusUnauthorized, http.StatusRequestEntityTooLarge, http.StatusConflict} {
 		fixture := newReleaseUploadRefusalFixture(t, func(int) (int, string) { return status, "synthetic" })
 		err := fixture.write(t.Context(), []byte("{\"object\":3}\n"))
 		var refusal *attemptStreamHttpStatusError

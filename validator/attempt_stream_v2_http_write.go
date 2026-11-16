@@ -19,6 +19,8 @@ import (
 )
 
 // Upload acknowledgement has separate ownership from retryable public reads.
+// The longest a body may sit still while it is sent, and the base of every
+// upload's size-scaled cap (attempt_stream_v2_http_write_deadline.go).
 const attemptStreamV2HttpWriteIoTimeout = 30 * time.Second
 
 // Safe for concurrent calls with independently owned immutable input bytes.
@@ -31,6 +33,8 @@ type HTTPAttemptStreamV2Writer struct {
 	proofBytes    uint64
 	byJwt         func() string
 	client        *http.Client
+	// zero in production
+	timing attemptUploadTiming
 }
 
 // Reuses typed reader origin/bound admission and its non-redirecting client.
@@ -56,11 +60,15 @@ func newHttpAttemptStreamV2Writer(origin string, bounds AttemptCutV2Bounds, meta
 		}
 	}
 	// Stream readers pause their I/O budget while replay owns CPU work. An
-	// upload instead owns one request and acknowledgement, both under the
-	// original finite HTTP budget even when its release context is long lived.
+	// upload instead owns one request and acknowledgement under a finite,
+	// progress-measured budget even when its release context is long lived.
 	// Keep expiry in the request context: Client.Timeout replaces the original
 	// deadline with a private HTTP matcher that bounded capture must refuse.
-	return &HTTPAttemptStreamV2Writer{endpoint: reader.endpoint, metadataBytes: reader.metadataBytes, recordBytes: reader.recordBytes, proofBytes: reader.proofBytes, byJwt: byJwt, client: reader.client}, nil
+	// Uploads use the HTTP/1.1 transport; the reader keeps HTTP/2.
+	client := &http.Client{Transport: releaseAPIUploadHTTPTransport, CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	return &HTTPAttemptStreamV2Writer{endpoint: reader.endpoint, metadataBytes: reader.metadataBytes, recordBytes: reader.recordBytes, proofBytes: reader.proofBytes, byJwt: byJwt, client: client}, nil
 }
 
 // Owns and checks exact bytes before calling the live credential getter.
@@ -111,16 +119,33 @@ func (self *HTTPAttemptStreamV2Writer) write(ctx context.Context, kind, contentH
 	}
 	endpoint := self.endpoint
 	endpoint.RawQuery = url.Values{"kind": {kind}, "hash": {contentHash}}.Encode()
-	requestCtx, cancel := context.WithTimeout(ctx, attemptStreamV2HttpWriteIoTimeout)
-	defer cancel()
+	body := newAttemptUploadBody(owned)
+	span := self.timing.cap(len(owned))
+	if signer != nil {
+		// The api refuses a reserved upload whose signed consent expired
+		// before its body arrived, so nothing is gained by sending past it.
+		span = min(span, time.Duration(signer.maximumIntentSeconds)*time.Second)
+	}
+	watch := watchAttemptUpload(ctx, body, span, self.timing)
+	defer watch.close()
+	requestCtx := watch.ctx
 	diagnostic := newReleasePreparationHttpDiagnostic(requestCtx, releasePreparationHttpWrite)
 	defer func() { diagnostic.finish(resultErr) }()
-	// Observe expiry after the body closes and before our own cancellation.
-	defer func() { resultErr = errors.Join(resultErr, requestCtx.Err()) }()
-	request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpoint.String(), bytes.NewReader(owned))
+	// Observe the owner's own ending after the body closes and before it is
+	// released. Whatever the torn-down connection reported, the answer is
+	// this request's deadline, which the caller may retry. A status the api
+	// or its load balancer answered keeps its own verdict.
+	defer func() {
+		if resultErr != nil && watch.expired() && releaseUploadStatus(resultErr) == nil {
+			resultErr = watch.deadline(endpoint)
+		}
+	}()
+	request, err := http.NewRequestWithContext(requestCtx, http.MethodPost, endpoint.String(), body)
 	if err != nil {
 		return err
 	}
+	request.ContentLength = int64(len(owned))
+	request.GetBody = body.rewind(owned)
 	request.Header.Set("Authorization", "Bearer "+credential)
 	request.Header.Set("Content-Type", contentType)
 	request.Header.Set("Accept-Encoding", "identity")
