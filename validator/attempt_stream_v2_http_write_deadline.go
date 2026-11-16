@@ -20,7 +20,8 @@ import (
 )
 
 const (
-	// The slowest whole upload accepted: a 4 MiB object gets about 4.6 minutes.
+	// The slowest whole upload accepted: a 4 MiB object gets 286 seconds, and a
+	// reserved one no longer than its signed consent.
 	attemptStreamV2HttpWriteFloorBytesPerSecond = 16 << 10
 	// How often an owner looks at its body's progress.
 	attemptStreamV2HttpWriteWatchInterval = time.Second
