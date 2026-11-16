@@ -245,9 +245,11 @@ func (self *releaseRuntimeV2) seal(ctx context.Context, noId uint64, replicas []
 	if len(replicas) == 1 {
 		uploaded = self.uploadMemo(noId)
 	}
+	// The memo, the replica publisher and the upload owners behind it are all
+	// safe for concurrent calls, so a seal's data objects upload side by side.
 	return AttemptCutV2SealOptions{ReplayBounds: self.cfg.EvidenceV2.Bounds.Replay, ScratchDirectory: paths, ServerKeys: self.history.keys[noId],
 		WriteRecords: uploaded.writer(AttemptStreamV2Records, publisher.writer(AttemptStreamV2Records)), WriteProofs: uploaded.writer(AttemptStreamV2Proofs, publisher.writer(AttemptStreamV2Proofs)), WriteMetadata: uploaded.writer("metadata", publisher.writer("metadata")),
-		ReadMetadata: uploaded.metadataReader(publisher.readers[0].ReadMetadata), OpenData: uploaded.dataOpener(publisher.readers[0].OpenData)}, nil
+		ReadMetadata: uploaded.metadataReader(publisher.readers[0].ReadMetadata), OpenData: uploaded.dataOpener(publisher.readers[0].OpenData), UploadsInFlight: attemptStreamV2WriteInFlight}, nil
 }
 
 // One operator's acknowledged objects, for the life of this process.

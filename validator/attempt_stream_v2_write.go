@@ -1,8 +1,9 @@
 package validator
 
-// Stream production holds one bounded data chunk and descriptor page in RAM.
-// A fixed-width, hash-chained descriptor spool lets pages be linked backwards
-// without retaining a history-sized index. Only the final manifest is a result.
+// Stream production holds one bounded data chunk being built, the chunks still
+// uploading (at most InFlight) and one descriptor page in RAM. A fixed-width,
+// hash-chained descriptor spool lets pages be linked backwards without
+// retaining a history-sized index. Only the final manifest is a result.
 
 import (
 	"bytes"
@@ -13,9 +14,15 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 )
 
 const attemptStreamV2DescriptorBytes = 104
+
+// Data objects a production seal uploads at once. Over a lossy path each
+// upload holds its own HTTP/1.1 connection, so a few in flight multiply what
+// one connection's loss-limited window carries.
+const attemptStreamV2WriteInFlight = 3
 
 // The source synchronously visits rows in increasing original ledger sequence.
 // Rows are borrowed only during the call. Records must be contiguous; completed
@@ -42,9 +49,15 @@ type AttemptStreamV2WriteOptions struct {
 	Spool         io.ReadWriteSeeker
 	WriteData     AttemptStreamV2ObjectWriter
 	WriteMetadata AttemptStreamV2ObjectWriter
+	// Data objects uploading at once while later chunks are built. Zero or one
+	// uploads each chunk before building the next. More requires a WriteData
+	// that is safe for concurrent calls. Either way every data object has
+	// succeeded before any page or the manifest is written.
+	InFlight int
 }
 
-// All state belongs to one synchronous write; no lock spans a source or sink.
+// All state belongs to one write; no lock spans a source or sink. Only data
+// uploads run beside it, under their own owner.
 type attemptStreamV2Writer struct {
 	ctx                context.Context
 	kind               string
@@ -56,6 +69,83 @@ type attemptStreamV2Writer struct {
 	descriptorHash     [32]byte
 	fault              error
 	spoolStarted       bool
+	uploads            *attemptStreamV2Uploads
+}
+
+// Data uploads in flight. The first failure cancels the others, and every
+// upload is joined before the stream returns on any path.
+type attemptStreamV2Uploads struct {
+	ctx    context.Context
+	cancel context.CancelFunc
+	slots  chan struct{}
+	group  sync.WaitGroup
+	lock   sync.Mutex
+	err    error
+}
+
+func newAttemptStreamV2Uploads(ctx context.Context, inFlight int) *attemptStreamV2Uploads {
+	uploads, cancel := context.WithCancel(ctx)
+	return &attemptStreamV2Uploads{ctx: uploads, cancel: cancel, slots: make(chan struct{}, inFlight)}
+}
+
+func (self *attemptStreamV2Uploads) failed() error {
+	self.lock.Lock()
+	defer self.lock.Unlock()
+	return self.err
+}
+
+func (self *attemptStreamV2Uploads) fail(err error) {
+	self.lock.Lock()
+	if self.err == nil {
+		self.err = err
+	}
+	self.lock.Unlock()
+	self.cancel()
+}
+
+// Starts one upload once a slot is free. The upload owns data from here on.
+// A failed upload answers with its own error, not the cancellation it caused.
+func (self *attemptStreamV2Uploads) start(write AttemptStreamV2ObjectWriter, contentHash string, data []byte) error {
+	select {
+	case self.slots <- struct{}{}:
+	case <-self.ctx.Done():
+		if err := self.failed(); err != nil {
+			return err
+		}
+		return self.ctx.Err()
+	}
+	if err := self.failed(); err != nil {
+		<-self.slots
+		return err
+	}
+	self.group.Add(1)
+	go func() {
+		// Goexit runs defers without returning from the callback, so the
+		// failure stands until the callback returns. It is recorded before
+		// the slot or the join is released.
+		outcome := errors.New("attempt stream upload did not return")
+		defer func() {
+			if outcome != nil {
+				self.fail(outcome)
+			}
+			<-self.slots
+			self.group.Done()
+		}()
+		outcome = write(self.ctx, contentHash, data)
+	}()
+	return nil
+}
+
+// Joins every upload and returns the first failure.
+func (self *attemptStreamV2Uploads) wait() error {
+	self.group.Wait()
+	return self.failed()
+}
+
+// Cancels and joins every upload; the stream then returns no result.
+func (self *attemptStreamV2Uploads) abandon() {
+	self.cancel()
+	self.group.Wait()
 }
 
 // Derives a conservative page capacity from the actual JSON representation.
@@ -109,6 +199,11 @@ func WriteAttemptStreamV2(ctx context.Context, kind string, source AttemptStream
 		return AttemptStreamV2Reference{}, AttemptStreamV2Census{}, err
 	}
 	writer := &attemptStreamV2Writer{ctx: ctx, kind: kind, options: options, descriptorsPerPage: capacity}
+	if options.InFlight > 1 {
+		writer.uploads = newAttemptStreamV2Uploads(ctx, options.InFlight)
+		// No upload outlives the stream, whatever its outcome.
+		defer writer.uploads.abandon()
+	}
 	err = source(ctx, func(sequence uint64, row []byte) error {
 		if writer.fault == nil {
 			writer.fault = writer.append(sequence, row)
@@ -123,6 +218,12 @@ func WriteAttemptStreamV2(ctx context.Context, kind string, source AttemptStream
 	}
 	if err := writer.flush(); err != nil {
 		return AttemptStreamV2Reference{}, AttemptStreamV2Census{}, err
+	}
+	// Every data object is durable before any page names it.
+	if writer.uploads != nil {
+		if err := errors.Join(writer.uploads.wait(), ctx.Err()); err != nil {
+			return AttemptStreamV2Reference{}, AttemptStreamV2Census{}, err
+		}
 	}
 	reference, err := writer.seal()
 	if err != nil {
@@ -152,6 +253,12 @@ func (self *attemptStreamV2Writer) seek(offset int64, whence int) (int64, error)
 func (self *attemptStreamV2Writer) append(sequence uint64, row []byte) error {
 	if err := self.ctx.Err(); err != nil {
 		return err
+	}
+	// A failed upload stops the source at its next row.
+	if self.uploads != nil {
+		if err := self.uploads.failed(); err != nil {
+			return err
+		}
 	}
 	bounds := self.options.Bounds
 	if len(row) == 0 || uint64(len(row)) > self.options.MaxRowBytes || row[len(row)-1] != '\n' || bytes.IndexByte(row[:len(row)-1], '\n') >= 0 || !json.Valid(row[:len(row)-1]) {
@@ -205,6 +312,8 @@ func (self *attemptStreamV2Writer) append(sequence uint64, row []byte) error {
 
 // Durably stages one complete chunk, then records its authenticated descriptor.
 // The data callback receives ownership; later chunks never reuse that buffer.
+// With uploads in flight the chunk is staged beside later ones, and the stream
+// joins every upload before its pages.
 func (self *attemptStreamV2Writer) flush() error {
 	if err := self.ctx.Err(); err != nil {
 		return err
@@ -215,7 +324,11 @@ func (self *attemptStreamV2Writer) flush() error {
 	self.chunk.ContentHash = attemptHex32(sha256.Sum256(self.data))
 	data := self.data
 	self.data = nil
-	if err := self.options.WriteData(self.ctx, self.chunk.ContentHash, data); err != nil {
+	if self.uploads != nil {
+		if err := self.uploads.start(self.options.WriteData, self.chunk.ContentHash, data); err != nil {
+			return err
+		}
+	} else if err := self.options.WriteData(self.ctx, self.chunk.ContentHash, data); err != nil {
 		return err
 	}
 	if err := self.ctx.Err(); err != nil {

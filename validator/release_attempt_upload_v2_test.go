@@ -496,7 +496,9 @@ func TestReleaseEvidenceV2UploadReplicasOverlapAndJoinFailure(t *testing.T) {
 			entered <- index
 			if index == 0 {
 				<-fail
-				w.WriteHeader(http.StatusServiceUnavailable)
+				// a verdict, which the owner does not send again; a 503 would
+				// be retried in place (release_attempt_upload_retry_v2_test.go)
+				w.WriteHeader(http.StatusConflict)
 				return
 			}
 			<-r.Context().Done()

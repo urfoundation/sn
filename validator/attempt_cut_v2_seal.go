@@ -43,6 +43,10 @@ type AttemptCutV2SealOptions struct {
 	WriteMetadata    AttemptStreamV2ObjectWriter
 	ReadMetadata     AttemptStreamV2MetadataReader
 	OpenData         AttemptStreamV2DataOpener
+	// Record or proof objects uploading at once (AttemptStreamV2WriteOptions'
+	// InFlight). Above one, WriteRecords and WriteProofs must be safe for
+	// concurrent calls.
+	UploadsInFlight int
 }
 
 // Returns only an independently replayed, signed header and verified census.
@@ -215,7 +219,7 @@ func sealAttemptCutV2WithHooks(ctx context.Context, ledger *AttemptLedger, expec
 			})
 		}
 		diagnostic.move(releasePreparationSealRecords)
-		cut.Records, _, err = WriteAttemptStreamV2(ctx, AttemptStreamV2Records, recordSource, AttemptStreamV2WriteOptions{Bounds: bounds.Records, MaxRowBytes: options.ReplayBounds.MaxRecordBytes, Spool: recordSpool, WriteData: checkedWriter(options.WriteRecords), WriteMetadata: writeMetadata})
+		cut.Records, _, err = WriteAttemptStreamV2(ctx, AttemptStreamV2Records, recordSource, AttemptStreamV2WriteOptions{Bounds: bounds.Records, MaxRowBytes: options.ReplayBounds.MaxRecordBytes, Spool: recordSpool, WriteData: checkedWriter(options.WriteRecords), WriteMetadata: writeMetadata, InFlight: options.UploadsInFlight})
 		if err != nil {
 			return nil, verified, err
 		}
@@ -236,7 +240,7 @@ func sealAttemptCutV2WithHooks(ctx context.Context, ledger *AttemptLedger, expec
 			})
 		}
 		diagnostic.move(releasePreparationSealProofs)
-		cut.Proofs, _, err = WriteAttemptStreamV2(ctx, AttemptStreamV2Proofs, proofSource, AttemptStreamV2WriteOptions{Bounds: bounds.Proofs, MaxRowBytes: options.ReplayBounds.MaxProofBytes, Spool: proofSpool, WriteData: checkedWriter(options.WriteProofs), WriteMetadata: writeMetadata})
+		cut.Proofs, _, err = WriteAttemptStreamV2(ctx, AttemptStreamV2Proofs, proofSource, AttemptStreamV2WriteOptions{Bounds: bounds.Proofs, MaxRowBytes: options.ReplayBounds.MaxProofBytes, Spool: proofSpool, WriteData: checkedWriter(options.WriteProofs), WriteMetadata: writeMetadata, InFlight: options.UploadsInFlight})
 		if err != nil {
 			return nil, verified, err
 		}

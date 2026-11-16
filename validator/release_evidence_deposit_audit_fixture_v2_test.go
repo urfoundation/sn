@@ -245,7 +245,9 @@ func newDepositAuditPublicationV2TestFixtureWithBounds(t *testing.T, mode string
 				}
 				var signed ValidatorEvidenceSignedV2
 				if index == 1 && json.Unmarshal(raw, &signed) == nil && signed.Schema == ValidatorEvidenceSignedV2Schema && signed.Header.NoID == self.sourceNoIds[1] && self.refuseLast.CompareAndSwap(true, false) {
-					writer.WriteHeader(http.StatusServiceUnavailable)
+					// a verdict the upload owner keeps; a transient answer
+					// would be sent again in place
+					writer.WriteHeader(http.StatusConflict)
 					return
 				}
 			}

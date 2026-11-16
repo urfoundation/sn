@@ -159,7 +159,9 @@ func TestReleaseAPIHTTPTransportHealthChecksHTTP2(t *testing.T) {
 }
 
 // Every API client the validator builds uses a health-checked transport and
-// still refuses redirects.
+// still refuses redirects. Uploads are the exception: they go over HTTP/1.1,
+// which has no ping, and each one's own progress watch ends a dead connection
+// within its stall window (attempt_stream_v2_http_write_deadline.go).
 func TestReleaseAPIHTTPClientsUseHealthCheckedTransport(t *testing.T) {
 	bounds, _ := attemptReplayV2TestBounds()
 	reader, err := NewHTTPAttemptStreamV2Reader("https://api.example", bounds)
@@ -178,11 +180,14 @@ func TestReleaseAPIHTTPClientsUseHealthCheckedTransport(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	shared := map[string]*http.Client{"attempt reader": reader.client, "attempt writer": writer.client, "client-key history": history.client, "wallet mapping": wallet.client, "server keys": newReleaseServerKeysV2Client()}
+	shared := map[string]*http.Client{"attempt reader": reader.client, "client-key history": history.client, "wallet mapping": wallet.client, "server keys": newReleaseServerKeysV2Client()}
 	for name, client := range shared {
 		if client.Transport != releaseAPIHTTPTransport || client.CheckRedirect == nil {
 			t.Errorf("%s client does not use the shared API transport with redirects refused", name)
 		}
+	}
+	if writer.client.Transport != releaseAPIUploadHTTPTransport || writer.client.CheckRedirect == nil {
+		t.Error("attempt writer client does not use the upload transport with redirects refused")
 	}
 	artifact, err := NewHTTPArtifactReader("https://api.example", "sn25-mainnet-20261007-01", 25)
 	if err != nil {
