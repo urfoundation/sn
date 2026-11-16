@@ -5,6 +5,16 @@ seconds per block, as on the mainnet timeline, and can move by a few minutes.
 Finalized chain state governs, and we will update this notice as each step
 completes.
 
+**Update, November 16:** the subnet owner changed how the pool is paid before
+the amendment entry was signed. Half of the pool now goes evenly over the
+blocks that hold eligible extenders, as before, and the other half to the
+eligible extenders in proportion to the bytes each relayed in the epoch. The
+section "How the pool is paid" and the amendment line below say it. On
+November 16, two networks running one fork build of the miner held about nine
+tenths of the blocks that would share an even split while carrying a small part
+of what extenders relay; split half and half, an extender earns its block's
+part for being there and a relay part for the clients it carries.
+
 ## What changes
 
 From block 9,600,028, the first block of epoch 8, the part of each contract's
@@ -46,13 +56,21 @@ approved this amendment on November 10 ([WHITEPAPER.md](../../WHITEPAPER.md)
 ## How the pool is paid
 
 The epoch's pool bytes are spread over the extenders that are eligible at the
-end of the epoch:
+end of the epoch, half by block and half by relay bytes (the subnet owner's
+decision of November 16):
 
-- **Evenly over blocks, then within each block.** Each /29 IPv4 or /48 IPv6
-  block that holds at least one eligible extender takes an equal part, and its
-  eligible extenders split that part evenly. Packing hosts into one block adds
-  nothing. Remainder bytes go to the lowest block hashes, then the lowest
-  client ids.
+- **Half evenly over blocks, then within each block.** Each /29 IPv4 or /48
+  IPv6 block that holds at least one eligible extender takes an equal part of
+  this half, and its eligible extenders split that part evenly. Packing hosts
+  into one block adds nothing. Remainder bytes go to the lowest block hashes,
+  then the lowest client ids. This half includes the odd byte.
+- **Half by relay bytes.** The other half goes to the eligible extenders in
+  proportion to the bytes each relayed in the epoch: its own shares, as one of
+  a contract's hops, of the funded contracts that closed in the epoch, less the
+  network operator's measurement and test traffic. An extender that relayed
+  nothing takes none of this half. Remainder bytes go to the largest
+  remainders, then the lowest client ids. If no eligible extender relayed, the
+  whole pool goes by block.
 - **At most half of a pool.** The pool's bytes are weighted beside the
   provider rows, up to the epoch's eligible provider usage, so extenders take
   at most half of the pool and providers at least half. Bytes above that cap
@@ -90,7 +108,9 @@ platform traffic, and validators recompute the arithmetic.
 
 - **The ledger.** From epoch 8, each epoch's ledger header (schema
   urnetwork-payout-ledger-v3) lists its extender component: the pool's bytes,
-  the census and the share rows. The census has one row per extender the
+  the census, the relay rows and the share rows. The relay rows give the bytes
+  each extender of the census relayed in the epoch, which the network operator
+  attests as it does the census. The census has one row per extender the
   operator knew in the epoch, eligible or not: its id, its provider client,
   its payout wallet, its block as a keyed /29 or /48 prefix hash, never an
   address, and its flags: active at the end, the operator's own (gated,
@@ -115,7 +135,7 @@ platform traffic, and validators recompute the arithmetic.
   in this repository:
 
   ```text
-  UR settlement amendment v1: chain 964, sn 25, no 1, from epoch 8, intra-platform and intra-network extenders, units egress prefix, free and paid, zeta 1
+  UR settlement amendment v1: chain 964, sn 25, no 1, from epoch 8, intra-platform and intra-network extenders, units egress prefix, free and paid, zeta 1, half by unit half by relay bytes
   ```
 
 ## When
@@ -177,8 +197,9 @@ claim flow.
 
 Rewards are paid in alpha, the token of SN25, whose value changes and can
 fall. What an extender receives depends on the pool's bytes in the epoch, on
-how many blocks hold eligible extenders and on the network's emission, and
-miners pay their own costs, such as power and data.
+how many blocks hold eligible extenders, on how much it relayed beside the
+others and on the network's emission, and miners pay their own costs, such as
+power and data.
 
 The milestones are on the
 [mainnet timeline](https://ur.xyz/mainnet#extender-pool-epoch-8). The design is

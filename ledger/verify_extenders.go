@@ -5,10 +5,11 @@ package ledger
 // census, and its share rows. Validators recompute the arithmetic only. The
 // census is the operator's attestation of its extenders at end(k), published
 // as keyed prefix hashes and never as addresses, so no validator can check
-// which extenders are active, who controls them or their wallets; it checks
-// that the census is well formed, that its head flags agree with the chain,
-// and that the share rows are exactly the census's even split of the capped
-// pool bytes.
+// which extenders are active, who controls them, what they relayed or their
+// wallets; it checks that the census and the relay rows are well formed, that
+// the census's head flags agree with the chain, and that the share rows are
+// exactly the split of the capped pool bytes over them, half by unit and half
+// by relay bytes.
 
 import (
 	"errors"
