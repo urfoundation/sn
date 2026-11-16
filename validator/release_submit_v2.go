@@ -776,7 +776,7 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 		}
 		// The error can occur after broadcast but before finality was observed.
 		// Preserve an uncertain pending state so a restart cannot double-submit.
-		return self.productionPendingSubmissionFailure(intent, intent.SubnetEpoch, err)
+		return self.productionPendingSubmissionFailure(ctx, intent, intent.SubnetEpoch, err)
 	}
 	if err := authenticatePinnedNativeRuntimeAtContext(ctx, self.native, self.cfg, result.FinalizedBlockHash); err != nil {
 		return fmt.Errorf("authenticate steering finality at %s: %w", result.FinalizedBlockHash.Hex(), self.recordReleasePendingError(intent.VectorHash, err))

@@ -29,7 +29,13 @@ import (
 // The intended commit being on chain is the intent's own receipt, which the
 // pending owner's receipt scan finds before any failure is recorded. A pending
 // commit's row cannot be read before its reveal, so a fallback commit that has
-// not revealed never counts as the intended weights.
+// not revealed never counts as the intended weights by its row. Its commit
+// still moves LastUpdate, though. A hold can therefore also follow an older
+// row that already equals the decided one while a different fallback row
+// waits to reveal; that row then stands until the next epoch's decision
+// reveals, at most one epoch. Telling the two apart would need the hotkey's
+// pending commits (TimelockedWeightCommits), which the reviewed producer
+// storage profile does not read.
 func (self *ReleaseSteerer) productionResignHold(ctx context.Context, retained *SteeringIntent, nativeHash types.Hash, nativeState *crv4.EpochScheduleState) (*productionSteeringEpochHold, error) {
 	if !isOwnerRecycleProductionConfig(self.cfg) || retained == nil || retained.Status != "failed" || retained.Prepared == nil || nativeState == nil || retained.SubnetEpoch != nativeState.SubnetEpochIndex {
 		return nil, nil

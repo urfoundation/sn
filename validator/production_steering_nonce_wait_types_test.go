@@ -17,8 +17,8 @@ import (
 func productionNonceTestWaits() []error {
 	refusal := &crv4.SubmissionUnresolvedError{Outcome: crv4.SubmissionNonceTaken, Code: 1010, Message: "Invalid Transaction", Data: "Transaction is outdated"}
 	return []error{
-		&productionPendingNonceWait{nativeEpoch: 26216, extrinsicHash: "0x01", prepared: 41, cause: refusal},
-		&productionPendingNonceWait{nativeEpoch: 26216, extrinsicHash: "0x01", prepared: 41, gap: true, finalized: 40},
+		&productionPendingNonceWait{nativeEpoch: 26216, extrinsicHash: "0x01", prepared: 41, next: 42, cause: refusal},
+		&productionPendingNonceWait{nativeEpoch: 26216, extrinsicHash: "0x01", prepared: 41, next: 41, gap: true, finalized: 40},
 		&productionSteeringEpochHold{nativeEpoch: 26216, prepared: 9461000, written: 9461002},
 	}
 }
@@ -90,30 +90,38 @@ func TestReleaseStopDuringNonceWaitOrEpochHoldIsClean(t *testing.T) {
 }
 
 // Both submission owners, the pending rebroadcast and a fresh intent's first
-// send, answer through one classifier over the real crv4 submit path: a pool
-// answer that leaves the bytes to finality is a nonce wait carrying it, a
-// genuinely hard refusal keeps its error, and a lost acknowledgement keeps its
-// transport wait.
+// send, answer through one classifier over the real crv4 submit path. A pool
+// answer that leaves the bytes to finality is a nonce wait carrying it while
+// the next index shows the nonce held; the same answer with nothing holding
+// the nonce, and a genuinely hard refusal, keep their errors; a lost
+// acknowledgement keeps its transport wait.
 func TestProductionPendingSubmissionFailureClassifiesPoolAnswers(t *testing.T) {
 	fixture, native, pending := newProductionNonceWaitFixture(t, 0)
+	next := pending.Prepared.AccountNonce + 1
+	native.nextIndex = func() uint32 { return next }
 	submit := func(answer error) error {
 		t.Helper()
 		native.submitAnswer = func(int) error { return answer }
 		_, err := crv4.SubmitPrepared(t.Context(), fixture.steerer.native, pending.Prepared)
-		return fixture.steerer.productionPendingSubmissionFailure(pending, pending.SubnetEpoch, err)
+		return fixture.steerer.productionPendingSubmissionFailure(t.Context(), pending, pending.SubnetEpoch, err)
 	}
+	var wait *productionPendingNonceWait
+	var transport *productionSteeringReadWait
+	var unresolved *crv4.SubmissionUnresolvedError
 	for _, refusal := range productionPoolTestNonceTaken(t) {
-		var wait *productionPendingNonceWait
-		var unresolved *crv4.SubmissionUnresolvedError
-		if err := submit(refusal); !errors.As(err, &wait) || wait.gap || wait.nativeEpoch != pending.SubnetEpoch || wait.prepared != pending.Prepared.AccountNonce || !errors.As(wait.cause, &unresolved) {
+		if err := submit(refusal); !errors.As(err, &wait) || wait.gap || wait.nativeEpoch != pending.SubnetEpoch || wait.prepared != pending.Prepared.AccountNonce || wait.next != next || !errors.As(wait.cause, &unresolved) {
 			t.Fatalf("pool answer %v was not a nonce wait: %v", refusal, err)
 		}
 	}
+	next = pending.Prepared.AccountNonce
+	for _, refusal := range productionPoolTestNonceTaken(t) {
+		if err := submit(refusal); err == nil || errors.As(err, &wait) || errors.As(err, &transport) || !errors.As(err, &unresolved) || retryableProductionSteeringRead(err) {
+			t.Fatalf("pool answer %v with nothing holding the nonce became a wait: %v", refusal, err)
+		}
+	}
+	next = pending.Prepared.AccountNonce + 1
 	payment := productionPoolTestRefusal(t, map[string]any{"code": 1010, "message": "Invalid Transaction", "data": "Inability to pay some fees (e.g. account balance too low)"})
-	err := submit(payment)
-	var wait *productionPendingNonceWait
-	var transport *productionSteeringReadWait
-	if err == nil || errors.As(err, &wait) || errors.As(err, &transport) || retryableProductionSteeringRead(err) {
+	if err := submit(payment); err == nil || errors.As(err, &wait) || errors.As(err, &transport) || retryableProductionSteeringRead(err) {
 		t.Fatalf("a genuinely hard refusal became a wait: %v", err)
 	}
 	if err := submit(context.DeadlineExceeded); !errors.As(err, &transport) || transport.phase != productionReadReceipt {

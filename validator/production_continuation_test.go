@@ -53,7 +53,9 @@ type productionContinuationNativeTestClient struct {
 	// When set, the self UID's LastUpdate at each selected fixture height; every
 	// other UID reads 90, as in the fixture's stored row.
 	lastUpdateAt func(uint64) uint64
-	call         func(context.Context, any, string, ...any) error
+	// When set, the node's pool-aware next index (system_accountNextIndex).
+	nextIndex func() uint32
+	call      func(context.Context, any, string, ...any) error
 }
 
 // The weight fallback's reserve-shaped row: one target the intent does not
@@ -149,6 +151,9 @@ func installProductionContinuationNative(t *testing.T, fixture *productionContin
 					break
 				}
 			}
+		}
+		if method == "system_accountNextIndex" && self.nextIndex != nil {
+			return assign(self.nextIndex())
 		}
 		if method == "state_getRuntimeVersion" && selected == production.head && selected > self.receiptNumber {
 			self.currentReads++

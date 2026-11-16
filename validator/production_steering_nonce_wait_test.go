@@ -143,17 +143,19 @@ func runProductionNonceTestLoop(t *testing.T, fixture *productionContinuationTes
 }
 
 // The fallback's commit holds the nonce of the validator's signed pending
-// commit, and the pool refuses every rebroadcast of its exact bytes, more times
-// in a row than the failure limit. That is a wait, not ten hard errors and a
-// panic. Once the fallback's commit is final, a different extrinsic consumed
-// the nonce: the bytes can never land, the intent fails, and since the hotkey's
-// row is not the decided one, the native epoch is prepared again, which signs
-// with a fresh nonce.
+// commit, pooled and then in a best block (the next index is past it), and the
+// pool refuses every rebroadcast of its exact bytes, more times in a row than
+// the failure limit. That is a wait, not ten hard errors and a panic. Once the
+// fallback's commit is final, a different extrinsic consumed the nonce: the
+// bytes can never land, the intent fails, and since the hotkey's row is not
+// the decided one, the native epoch is prepared again, which signs with a
+// fresh nonce.
 func TestProductionFallbackNonceRefusalsAreAWaitNotAPanic(t *testing.T) {
 	fixture, native, pending := newProductionNonceWaitFixture(t, 0)
 	refusals := productionPoolTestNonceTaken(t)
 	native.submitAnswer = func(count int) error { return refusals[count%len(refusals)] }
 	native.nonceKVs[fixture.production.head] = pending.Prepared.AccountNonce
+	native.nextIndex = func() uint32 { return pending.Prepared.AccountNonce + 1 }
 	before, err := os.ReadFile(fixture.steerer.intents.path)
 	if err != nil {
 		t.Fatal(err)
@@ -203,12 +205,14 @@ func TestProductionFallbackNonceRefusalsAreAWaitNotAPanic(t *testing.T) {
 
 // The validator signed at nonce 5 while the fallback's commit at nonce 4 was
 // pooled but not final. Its bytes wait behind that commit: the finalized nonce
-// lags the prepared one for more polls than the failure limit, which is a wait
-// and sends nothing. When the fallback's commit is final the nonce is the
-// validator's: the same bytes go out again, land, and finalize the intent.
+// lags the prepared one, with the commit still in the pool (next index 5), for
+// more polls than the failure limit, which is a wait and sends nothing. When
+// the fallback's commit is final the nonce is the validator's: the same bytes
+// go out again, land, and finalize the intent.
 func TestProductionNonceGapIsAWaitThenRecovers(t *testing.T) {
 	fixture, native, pending := newProductionNonceWaitFixture(t, 5)
 	native.nonceKVs[fixture.production.head] = 4
+	native.nextIndex = func() uint32 { return 5 }
 	const polls = releaseSteeringFailureLimit + 2
 	err := runProductionNonceTestLoop(t, fixture, polls)
 	var limit *releaseSteeringFailureLimitError
@@ -321,5 +325,42 @@ func TestProductionHardPoolRefusalStillSpendsTheBudget(t *testing.T) {
 	var limit *releaseSteeringFailureLimitError
 	if !errors.As(err, &limit) || limit.failures != releaseSteeringFailureLimit || len(native.broadcasts) != 1+releaseSteeringFailureLimit {
 		t.Fatalf("a genuinely hard pool refusal did not spend the failure budget: sends=%d err=%v", len(native.broadcasts), err)
+	}
+}
+
+// What a node answers after that first refusal: it banned the invalid bytes,
+// and each rebroadcast renews the ban, so every later answer is "temporarily
+// banned". With nothing holding the nonce (the next index is still the
+// prepared nonce) the ban is about the bytes alone; it stays hard, and ten
+// still end the validator instead of a wait that never ends.
+func TestProductionBannedBytesWithoutNonceEvidenceStayHard(t *testing.T) {
+	fixture, native, pending := newProductionNonceWaitFixture(t, 0)
+	payment := productionPoolTestRefusal(t, map[string]any{"code": 1010, "message": "Invalid Transaction", "data": "Inability to pay some fees (e.g. account balance too low)"})
+	banned := productionPoolTestRefusal(t, map[string]any{"code": 1012, "message": "Transaction is temporarily banned"})
+	native.submitAnswer = func(count int) error {
+		if count == 2 {
+			return payment
+		}
+		return banned
+	}
+	native.nonceKVs[fixture.production.head] = pending.Prepared.AccountNonce
+	native.nextIndex = func() uint32 { return pending.Prepared.AccountNonce }
+	err := runProductionNonceTestLoop(t, fixture, 3*releaseSteeringFailureLimit)
+	var limit *releaseSteeringFailureLimitError
+	if !errors.As(err, &limit) || limit.failures != releaseSteeringFailureLimit || len(native.broadcasts) != 1+releaseSteeringFailureLimit {
+		t.Fatalf("a ban on the bytes alone became an endless wait: sends=%d err=%v", len(native.broadcasts), err)
+	}
+}
+
+// A gap with nothing at the earlier nonce, in the best chain or the pool (the
+// next index is the finalized nonce), does not close by waiting; it stays hard.
+func TestProductionNonceGapWithNothingPendingStaysHard(t *testing.T) {
+	fixture, native, _ := newProductionNonceWaitFixture(t, 5)
+	native.nonceKVs[fixture.production.head] = 4
+	native.nextIndex = func() uint32 { return 4 }
+	err := runProductionNonceTestLoop(t, fixture, 3*releaseSteeringFailureLimit)
+	var limit *releaseSteeringFailureLimitError
+	if !errors.As(err, &limit) || limit.failures != releaseSteeringFailureLimit || len(native.broadcasts) != 1 || !strings.Contains(err.Error(), "steering nonce gap at scanned block 100: finalized 4, prepared 5") {
+		t.Fatalf("a gap nothing can close did not spend the failure budget: sends=%d err=%v", len(native.broadcasts), err)
 	}
 }
