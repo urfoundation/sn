@@ -27,11 +27,11 @@ import (
 	"golang.org/x/sys/unix"
 
 	"github.com/quic-go/quic-go"
-	"github.com/urnetwork/connect"
-	"github.com/urnetwork/sdk"
-	servercontroller "github.com/urnetwork/server/controller"
+	"github.com/urnetwork/connect/v2026"
+	"github.com/urnetwork/sdk/v2026"
+	servercontroller "github.com/urnetwork/server/v2026/controller"
 
-	"github.com/urfoundation/sn/clientauth"
+	"github.com/urfoundation/sn/v2026/clientauth"
 )
 
 // The quota forecast includes every permitted validator process restart.
