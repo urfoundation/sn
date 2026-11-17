@@ -15,9 +15,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/urfoundation/sn/crv4"
-	validatorpkg "github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/connect"
+	"github.com/urfoundation/sn/v2026/crv4"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/connect/v2026"
 )
 
 func policyRolloverObservationFixtureV2(t *testing.T) (*policyRolloverGenerationTestV2, *policyRolloverHandoffV2, []ProcessSpec) {

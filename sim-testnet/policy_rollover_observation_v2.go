@@ -12,8 +12,8 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/urfoundation/sn/crv4"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/crv4"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 func readPolicyRolloverObservationV2(ctx context.Context, cfg *ResolvedConfig, stateDir string) (*policyRolloverHandoffV2, error) {
