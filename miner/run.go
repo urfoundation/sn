@@ -1093,7 +1093,9 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 		// Always-on public mode includes network and friends/family service,
 		// matching the SDK's hierarchical provide contract.
 		device.SetProvideControlMode(sdk.ProvideControlModeAlways)
-		progressGeneration, err := progress.attach(proxyCtx, providerRegistrationSlot(proxySettings), device)
+		// the device's own registration requirement, which a capture profile
+		// turned on above (newProviderDeviceLocal) and a plain launch leaves off
+		progressGeneration, err := progress.attachWithKeyRegistration(proxyCtx, providerRegistrationSlot(proxySettings), device, settings.ClientKeyRegistrationRequired)
 		if err != nil {
 			return err
 		}
