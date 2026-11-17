@@ -284,6 +284,38 @@ func TestProviderClientKeyMissingMarkerDoesNotBlessRetainedHistory(t *testing.T)
 	}
 }
 
+// A legacy install keeps its extender identity as a side file, whichever name
+// it has: the one every slot shared, or a node's own, which the node renamed
+// the shared one to when it adopted it. Either leaves the install adoptable,
+// and no other extender name does.
+func TestProviderClientKeyLegacyAdoptionKeepsExtenderKeySideFiles(t *testing.T) {
+	for _, name := range []string{".provider.extender.key", ".provider.extender.00000000-0000-0000-0000-000000000101.key"} {
+		path := filepath.Join(providerRegistrationPrivateDir(t), ".provider.key")
+		seed := bytes.Repeat([]byte{23}, ed25519.SeedSize)
+		if err := os.WriteFile(path, seed, 0600); err != nil {
+			t.Fatal(err)
+		}
+		if err := WriteToken(filepath.Join(filepath.Dir(path), ".provider.jwt"), registrationTestToken(t, "00000000-0000-0000-0000-000000000101", "legacy")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(filepath.Dir(path), name), bytes.Repeat([]byte{29}, ed25519.SeedSize), 0600); err != nil {
+			t.Fatal(err)
+		}
+		owner, err := OpenProviderClientKey(t.Context(), path, ProviderClientKeyOptions{AdoptLegacyKey: true})
+		if err != nil || !bytes.Equal(owner.Seed(), seed) {
+			t.Fatal("a legacy install with its extender key was refused adoption", name, err)
+		}
+		if err := owner.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, name := range []string{".provider.extender.measurement.key", ".provider.extender.unknown.key", ".provider.extender.00000000-0000-0000-0000-000000000101"} {
+		if providerExtenderKeyName(name) {
+			t.Fatal("an extender name that is no identity seed counts as one", name)
+		}
+	}
+}
+
 // Unsafe, malformed and changed keys fail even with a new-create flag. The
 // namespace guards must execute before reading key bytes or replacing files.
 func TestProviderClientKeyRejectsChangedOrUnsafeCustody(t *testing.T) {

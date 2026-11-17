@@ -63,6 +63,10 @@ type providerRegistrationFixture struct {
 	onCommit       func()
 	// the server rejects every network token renewal (401)
 	networkRefreshes int
+	// the api url the runner names this server by, when not its own url: a
+	// test that needs a dotted host maps it to the listener with its own
+	// dialer
+	apiUrl string
 }
 
 // Explicit private parents keep both positive and negative custody fixtures
@@ -109,6 +113,14 @@ func newProviderRegistrationFixtureIn(t *testing.T, dir string) *providerRegistr
 	self.server = httptest.NewServer(http.HandlerFunc(self.serveHttp))
 	t.Cleanup(self.server.Close)
 	return self
+}
+
+// The api url the runner names this server by.
+func (self *providerRegistrationFixture) endpointUrl() string {
+	if self.apiUrl != "" {
+		return self.apiUrl
+	}
+	return self.server.URL
 }
 
 // Even the public runner's transport can dial only this exact local listener.
@@ -188,7 +200,7 @@ func (self *providerRegistrationFixture) observeCustody(body []byte, request sdk
 		if encodeErr != nil || scopeErr != nil || !bytes.Equal(encoded, body) || hex.EncodeToString(digest[:]) != request.ScopeSha256 {
 			self.test.Error("provider POST changed its durable original request or opaque scope")
 		}
-		if record.Scope.ClientRole != "provider-v1" || record.Scope.ClientKey != public || record.Scope.Endpoint != self.server.URL+"/network/register-client-v1" || record.Scope.ValidatorId != 0 || record.Scope.OperatorNoId != 0 || record.Scope.Netuid != 0 || record.Scope.ChainId != 0 || record.Scope.DeploymentId != "" || record.Scope.GenesisHash != "" || request.DeviceDescription != "provider" {
+		if record.Scope.ClientRole != "provider-v1" || record.Scope.ClientKey != public || record.Scope.Endpoint != self.endpointUrl()+"/network/register-client-v1" || record.Scope.ValidatorId != 0 || record.Scope.OperatorNoId != 0 || record.Scope.Netuid != 0 || record.Scope.ChainId != 0 || record.Scope.DeploymentId != "" || record.Scope.GenesisHash != "" || request.DeviceDescription != "provider" {
 			self.test.Error("provider fabricated chain authority or mutable description")
 		}
 		anchor, anchorErr := os.ReadFile(filepath.Join(self.dir, name.Name()+".started"))

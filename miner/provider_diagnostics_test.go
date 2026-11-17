@@ -295,18 +295,19 @@ func TestProviderDiagnosticsKeyPersistenceAndFailureFacts(t *testing.T) {
 	key := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: []byte("synthetic-private-key")})
 	material := sdk.NewDeviceLocalKeyMaterial(seed, cert, key)
 	material.SetExtenderKeySeed(bytes.Repeat([]byte{43}, 32))
-	persistProviderKeyMaterial(owner, 2, material)
+	extenderKeyClientId := connect.NewId()
+	persistProviderKeyMaterial(owner, 2, material, extenderKeyClientId)
 	if actual, err := readProviderClientKeySeed(); err != nil || !bytes.Equal(actual, seed) {
 		t.Fatal("refused output prevented real client key persistence")
 	}
-	if actual, err := readProviderExtenderKeySeed(); err != nil || !bytes.Equal(actual, material.GetExtenderKeySeed()) {
+	if actual, err := readProviderExtenderKeySeed(extenderKeyClientId); err != nil || !bytes.Equal(actual, material.GetExtenderKeySeed()) {
 		t.Fatal("refused output prevented real extender key persistence")
 	}
 	actualCert, actualKey, err := readProviderTlsCertAndKey()
 	if err != nil || !bytes.Equal(actualCert, cert) || !bytes.Equal(actualKey, key) {
 		t.Fatal("refused output prevented real TLS key persistence")
 	}
-	for _, name := range []string{".provider.key", ".provider.cert", ".provider.extender.key"} {
+	for _, name := range []string{".provider.key", ".provider.cert", providerExtenderKeyFileName(extenderKeyClientId)} {
 		path := filepath.Join(state, name)
 		if err := os.Remove(path); err != nil {
 			t.Fatal(err)
@@ -315,7 +316,7 @@ func TestProviderDiagnosticsKeyPersistenceAndFailureFacts(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	persistProviderKeyMaterial(owner, 2, material)
+	persistProviderKeyMaterial(owner, 2, material, extenderKeyClientId)
 	if owner.snapshot().Keys.Dropped != 3 {
 		t.Fatal("real key failures did not remain separate bounded facts")
 	}

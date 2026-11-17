@@ -935,6 +935,33 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 	defer func() { returnErr = errors.Join(returnErr, stopRenewal()) }()
 
 	extenderSlot := providerExtenderSlot(providers)
+	// The client strategy settings of one slot: its proxy, and a test's egress
+	// dialer in place of every dial.
+	slotStrategySettings := func(proxySettings *connect.ProxySettings) *connect.ClientStrategySettings {
+		clientStrategySettings := connect.DefaultClientStrategySettings()
+		clientStrategySettings.ProxySettings = proxySettings
+		clientStrategySettings.DialContextSettings = self.testEgressDialer
+		return clientStrategySettings
+	}
+	// The run's one extender stack (connect#227): the extender slot's space
+	// runs it -- the directory, the network client that samples it, the gossip
+	// node and the reports -- through that slot's proxy, and every other
+	// slot's space reads it (sdk.NewNetworkSpaceWithUrlsOnExtenderHost) rather
+	// than running a stack of its own. The run owns the space, so the stack
+	// serves every slot until all of them have joined, even past an extender
+	// slot that ends early.
+	var extenderHost *sdk.NetworkSpace
+	for _, proxySettings := range providers {
+		if providerRegistrationSlot(proxySettings) == extenderSlot {
+			extenderHost = sdk.NewNetworkSpaceWithUrls(ctx, self.apiUrl, self.connectUrl, slotStrategySettings(proxySettings))
+			break
+		}
+	}
+	defer func() {
+		if extenderHost != nil {
+			extenderHost.Close()
+		}
+	}()
 	provideWithProxy := func(index uint64, proxySettings *connect.ProxySettings) (returnErr error) {
 		defer func() {
 			// Registered first, this runs after every real cleanup below.
@@ -950,11 +977,13 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 		proxyCtx, proxyCancel := context.WithCancel(ctx)
 		defer proxyCancel()
 
-		clientStrategySettings := connect.DefaultClientStrategySettings()
-		clientStrategySettings.ProxySettings = proxySettings
-		clientStrategySettings.DialContextSettings = self.testEgressDialer
-		networkSpace := sdk.NewNetworkSpaceWithUrls(proxyCtx, self.apiUrl, self.connectUrl, clientStrategySettings)
-		defer networkSpace.Close()
+		clientStrategySettings := slotStrategySettings(proxySettings)
+		extenderNode := providerRegistrationSlot(proxySettings) == extenderSlot
+		networkSpace := extenderHost
+		if !extenderNode {
+			networkSpace = sdk.NewNetworkSpaceWithUrlsOnExtenderHost(proxyCtx, self.apiUrl, self.connectUrl, clientStrategySettings, extenderHost)
+			defer networkSpace.Close()
+		}
 		api := networkSpace.GetApi()
 		// Authentication refusal also joins the API before the shared key owner
 		// is released; later callback cleanup may join this same owner again.
@@ -1022,9 +1051,16 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 		}()
 
 		certPem, keyPem, _ := readProviderTlsCertAndKey()
-		extenderKeySeed, _ := readProviderExtenderKeySeed()
-		settings := providerSlotDeviceSettings(self.closeReportDomainHash, providerRegistrationSlot(proxySettings) == extenderSlot)
-		settings.KeyMaterial = providerDeviceKeyMaterial(seed, certPem, keyPem, extenderKeySeed)
+		// only the run's one gossip node has an extender identity: the
+		// extender slot's, kept under its own client id
+		var extenderKeySeed []byte
+		var extenderKeyClientId connect.Id
+		if extenderNode {
+			extenderKeySeed, _ = readProviderExtenderKeySeed(clientId)
+			extenderKeyClientId = clientId
+		}
+		settings := providerSlotDeviceSettings(self.closeReportDomainHash, extenderNode)
+		settings.KeyMaterial = providerDeviceKeyMaterial(seed, certPem, keyPem, extenderKeySeed, extenderNode)
 		applyProviderMemoryTarget(settings, self.memoryPlan.DeviceMemoryTargetByteCount)
 		settings.ProviderDialContextSettings = self.testEgressDialer
 		if hooks, ok := proxyCtx.Value(providerRegistrationHooksKey{}).(providerRegistrationHooks); ok && hooks.beforeDevice != nil {
@@ -1067,12 +1103,12 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 		if !bytes.Equal(keyMaterial.GetClientKeySeed(), seed) {
 			return errors.New("provider device changed its retained registration key")
 		}
-		persistProviderAuxiliaryKeyMaterial(output, index, keyMaterial)
+		persistProviderAuxiliaryKeyMaterial(output, index, keyMaterial, extenderKeyClientId)
 		observeProviderExtenderIdentity(output, index, keyMaterial.GetExtenderKeySeed())
 		// one line per change, so the activation prints once it settles and
 		// nothing repeats while it holds (connect/EXTENDER.md F3, G3)
 		extenderStatusListener := newProviderExtenderStatusListener(output, index).withStanding(extenderStandings, extenderBindFix)
-		if providerRegistrationSlot(proxySettings) == extenderSlot {
+		if extenderNode {
 			extenderStatusListener.portMapping = portMapping
 		}
 		extenderStatusSub := device.AddExtenderProvideStatusChangeListener(extenderStatusListener)
@@ -1222,7 +1258,9 @@ func writeProviderClientKeySeed(seed []byte) error {
 
 // providerDeviceKeyMaterial is the identity material the provider device is
 // built with. The space keeps no local state, so the extender's keys live in
-// the provider state directory and ride the key material:
+// the provider state directory and ride the key material of the one slot whose
+// space runs the run's gossip node and the provider extender role
+// (`extenderNode`, the extender slot):
 //   - the extender identity seed (connect/EXTENDER.md B1, G2): without it the
 //     role would activate under a new key every launch and the operator would
 //     revoke the old one as fast as it publishes it.
@@ -1230,8 +1268,14 @@ func writeProviderClientKeySeed(seed []byte) error {
 //     which the role creates at its first start and asks the operator to
 //     certify. Without it the role serves no measurement name, which left
 //     lag.dev with no extender to offer.
-func providerDeviceKeyMaterial(clientKeySeed []byte, certPem []byte, keyPem []byte, extenderKeySeed []byte) *sdk.DeviceLocalKeyMaterial {
+//
+// Every other slot's space reads the extender slot's stack and runs no node,
+// so its material carries neither (connect#227).
+func providerDeviceKeyMaterial(clientKeySeed []byte, certPem []byte, keyPem []byte, extenderKeySeed []byte, extenderNode bool) *sdk.DeviceLocalKeyMaterial {
 	keyMaterial := sdk.NewDeviceLocalKeyMaterial(clientKeySeed, certPem, keyPem)
+	if !extenderNode {
+		return keyMaterial
+	}
 	keyMaterial.SetExtenderKeySeed(extenderKeySeed)
 	if measurementKeyFile, err := providerStatePath(providerExtenderMeasurementKeyFileName); err == nil {
 		keyMaterial.SetExtenderMeasurementKeyFile(measurementKeyFile)
@@ -1243,29 +1287,61 @@ func providerDeviceKeyMaterial(clientKeySeed []byte, certPem []byte, keyPem []by
 // private key the sdk role writes 0600 when it is absent.
 const providerExtenderMeasurementKeyFileName = ".provider.extender.measurement.key"
 
-// readProviderExtenderKeySeed loads the ed25519 seed of this provider's
-// extender identity from `~/.urnetwork/.provider.extender.key`
-// (connect/EXTENDER.md B1). Returns (nil, nil) when the file does not exist --
-// a provider that has not been an extender yet. The file is the raw 32-byte
+// The provider state file every slot of a run read and wrote its extender
+// identity seed through, before each gossip node kept its own
+// (providerExtenderKeyFileName). readProviderExtenderKeySeed hands it to the
+// first node that needs a key.
+const providerLegacyExtenderKeyFileName = ".provider.extender.key"
+
+// The provider state file of the extender identity seed of the gossip node
+// that provider client `clientId` runs (connect/EXTENDER.md B1): one file per
+// node, so no two nodes present one key and one peer id (connect#227). The
+// seed is also the identity the node's provider extender role activates.
+func providerExtenderKeyFileName(clientId connect.Id) string {
+	return fmt.Sprintf(".provider.extender.%s.key", clientId)
+}
+
+// readProviderExtenderKeySeed loads the extender identity seed of the gossip
+// node that provider client `clientId` runs. Returns (nil, nil) when it has
+// none -- a node that has not run before -- and its space makes one, which the
+// run writes back (writeProviderExtenderKeySeed). The file is the raw 32-byte
 // seed; no encoding, exactly as the client key seed beside it.
-func readProviderExtenderKeySeed() ([]byte, error) {
-	p, err := providerStatePath(".provider.extender.key")
+//
+// An install from before nodes kept their own keys has one
+// `.provider.extender.key`, which every slot of a run read and wrote. The first
+// node to find its own file missing adopts that one, renamed to its own name,
+// so an install that ran one node keeps its peer id and its extender record.
+// The rename is the claim: once it is done no other node, of this process or
+// another on the same state directory, can find the file, and a node that
+// finds neither file starts on a new key rather than reuse one.
+func readProviderExtenderKeySeed(clientId connect.Id) ([]byte, error) {
+	p, err := providerStatePath(providerExtenderKeyFileName(clientId))
 	if err != nil {
 		return nil, err
 	}
 	b, err := os.ReadFile(p)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+	if !errors.Is(err, os.ErrNotExist) {
+		return b, err
 	}
-	return b, err
+	legacyPath, err := providerStatePath(providerLegacyExtenderKeyFileName)
+	if err != nil {
+		return nil, err
+	}
+	if err := os.Rename(legacyPath, p); err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return os.ReadFile(p)
 }
 
-// writeProviderExtenderKeySeed persists the extender identity seed to
-// `~/.urnetwork/.provider.extender.key` with 0600 permissions (sensitive
-// material -- anyone with this file can present this host's extender identity
-// to the mesh and to the operator).
-func writeProviderExtenderKeySeed(extenderKeySeed []byte) error {
-	p, err := providerStatePath(".provider.extender.key")
+// writeProviderExtenderKeySeed persists the extender identity seed of the
+// gossip node that provider client `clientId` runs, with 0600 permissions
+// (sensitive material -- anyone with this file can present the node's
+// extender identity to the mesh and to the operator).
+func writeProviderExtenderKeySeed(clientId connect.Id, extenderKeySeed []byte) error {
+	p, err := providerStatePath(providerExtenderKeyFileName(clientId))
 	if err != nil {
 		return err
 	}

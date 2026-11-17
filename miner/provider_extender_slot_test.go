@@ -131,7 +131,7 @@ func TestProviderProxySlotDeviceProvidesWithoutTheExtenderRole(t *testing.T) {
 		t.Fatal(err)
 	}
 	settings := providerSlotDeviceSettings([32]byte{}, false)
-	settings.KeyMaterial = providerDeviceKeyMaterial(bytes.Repeat([]byte{19}, ed25519.SeedSize), nil, nil, extenderKeySeed)
+	settings.KeyMaterial = providerDeviceKeyMaterial(bytes.Repeat([]byte{19}, ed25519.SeedSize), nil, nil, extenderKeySeed, true)
 	settings.ProviderDialContextSettings = dialSettings
 	// a loopback platform names its own pump ingress: the sdk default is a
 	// production host, which the auto transport would resolve and send to

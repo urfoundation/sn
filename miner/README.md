@@ -103,6 +103,12 @@ checks again every five minutes.
   slots, with or without `--all-operators`. The extender runs from the host, not
   through a proxy, so the host's own address needs TCP 443 reachable, and its
   relayed traffic doesn't use the proxy's bandwidth. All the slots provide as usual.
+- A provider process runs one extender network client for all its slots: the
+  directory of known extenders, the sampler that fills it and the gossip node. They
+  run in the extender slot, through that slot's proxy, and the other slots read the
+  directory. The gossip node keeps its key in `.provider.extender.<client id>.key`.
+  An older install's `.provider.extender.key` becomes the extender slot's key on the
+  first run, so its identity doesn't change.
 
 
 ## Hotkey payout across operators
