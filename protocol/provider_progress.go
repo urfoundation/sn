@@ -35,6 +35,13 @@ type ProviderProgress struct {
 
 // Slot names and client identities are observations, never metric labels.
 // Generation changes when a member is replaced inside the same process.
+//
+// KeyRegistered says the platform holds the member's current key: its
+// processed registration where the launch requires one (swarm and capture
+// launches), and otherwise the platform's acknowledgment of the key's
+// publication, since such a launch never registers. Ready is Connected with
+// KeyRegistered, and where the launch requires registration also the sdk's
+// own readiness.
 type ProviderMemberProgress struct {
 	Slot          string `json:"slot"`
 	Generation    uint64 `json:"generation"`
