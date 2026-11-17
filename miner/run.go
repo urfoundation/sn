@@ -315,8 +315,9 @@ Options:
 	--member=<client_id>:<client_key>  fleet init: one member, the client id as 16-byte hex or uuid and the
 	                                   client key as a 0x 32-byte Ed25519 public key; repeatable. Also
 	                                   with --client_seed_file and --client_id it adds this device.
-	                                   fleet init reads only local files, sends nothing and prints the
-	                                   manifest as fleet manifest does; save it as the --manifest file.
+	                                   fleet init reads only local files and sends nothing. Its stdout is the
+	                                   manifest alone, to save as the --manifest file (fleet init ... > fleet.json);
+	                                   the commitment_sha256 and members lines go to stderr.
 	--client_id=<hex>                  Stable 16-byte UR client identity from the fleet manifest. fleet sign:
 	                                   optional with --client_seed_file (the member holding that key).
 	--client_seed_file=<path>          Raw or hex 32-byte Ed25519 client key seed (a provider's is
@@ -493,8 +494,11 @@ func Run(args []string) {
 			panic(err)
 		}
 	} else if fleet_, _ := opts.Bool("fleet"); fleet_ {
+		// a refusal is an answer, not a crash: its message and exit 1, whatever
+		// stderr is. As a panic it became a stack trace off a terminal
 		if err := fleetCommand(opts); err != nil {
-			panic(err)
+			writeCliError(os.Stderr, err.Error())
+			os.Exit(1)
 		}
 	} else if auth_, _ := opts.Bool("auth"); auth_ {
 		if _, err := opts.String("--operator"); err == nil {

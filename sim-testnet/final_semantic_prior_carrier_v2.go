@@ -303,20 +303,22 @@ func finalPriorCarrierStoreReaderV2(cfg *ResolvedConfig, stateRoot, runId string
 		if store == nil || !validSHA256ContentHash(hash) || maximumBytes == 0 || maximumBytes > limits.maximumEnvelopeBytes() {
 			return nil, errors.New("prior carrier store read is outside its approved identity or bound")
 		}
-		contentKey, err := startifact.EvidenceContentKey(store, hash)
-		if err != nil {
-			return nil, err
-		}
 		historyKey, err := startifact.EvidenceHistoryKey(store, cfg.Config.Deployment.DeploymentID, cfg.Netuid, campaignEvidenceFileKind, evidenceHistoryStorageRunID(runId), hash)
 		if err != nil {
 			return nil, err
 		}
+		// the content at its sharded key or, published before that layout,
+		// its legacy flat key; then its history copy
+		opens := []func() (io.ReadCloser, error){
+			func() (io.ReadCloser, error) { return startifact.OpenEvidenceContent(ctx, store, hash) },
+			func() (io.ReadCloser, error) { return store.Get(ctx, historyKey) },
+		}
 		var first []byte
-		for _, key := range []string{contentKey, historyKey} {
+		for _, open := range opens {
 			if err := ctx.Err(); err != nil {
 				return nil, err
 			}
-			reader, err := store.Get(ctx, key)
+			reader, err := open()
 			if err != nil {
 				return nil, err
 			}

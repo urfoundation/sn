@@ -2,8 +2,20 @@
 
 [`miner/FLEET-MAINNET-RUNTIME.md`](../../miner/FLEET-MAINNET-RUNTIME.md) is the
 contract: what the document holds and what `provider fleet` does with it. This
-says how one comes to exist. **None is approved or published today**, and there is
-no date.
+says how one comes to exist.
+
+## Published
+
+| Runtime | Document | SHA-256 | Published |
+| --- | --- | --- | --- |
+| `node-subtensor` 491/1/1, `:code` `0x4201278656a17aff924ca24123c8e5866d569a84a7150bb0372bc7078fc6173c`, source `be3a11b1` | [`runtime-491.json`](runtime-491.json) | `0d16e120c0b3575e1daf6c221374f12d3fc6de85f03b12693e3f1a42243b0df3` | 2026-11-17 |
+
+Fetch the exact bytes with
+`curl -fsSL -o fleet-runtime-authority.json https://raw.githubusercontent.com/urfoundation/sn/main/mainnet/fleet-runtime-authority/runtime-491.json`,
+check them with `shasum -a 256 fleet-runtime-authority.json`, and compare the digest with
+the one above and with the one on ur.xyz's miner docs and ur.io's Top 200 page. Only the
+current chain runtime's document works: when Finney upgrades its runtime, mainnet fleet
+commands refuse until the next document is published here.
 
 ## What goes in it
 
@@ -21,6 +33,17 @@ no date.
 `check.py` compares a document with both endpoints and with upstream's release.
 Matching does not approve anything: an endpoint observation or a matching hash is
 not the review.
+
+Each check prints `ok` or `FAIL`, or `NOT VERIFIED` when it could not run because
+upstream did not publish what it reads: the release, its tag, or an asset.
+Upstream published no `deployment.json` with v488 or v490. For such a release
+`check.py` compares the release's `subtensor.wasm` with each endpoint's `:code`
+instead, and reports the spec version, commit and code hash it would have read
+from `deployment.json` as not verified, for the review to settle from the srtool
+digest and rebuild. It exits 0 only when every check ran and matched, 1 when a
+field differs, and 3 when no field differs but a check is not verified.
+`check_test.py` tests it offline:
+`python3 -I -B mainnet/fleet-runtime-authority/check_test.py`.
 
 ## Who approves it
 
@@ -46,7 +69,10 @@ An operator passes both with `--mainnet-runtime-authority=<absolute path>` and
 ## When the runtime changes
 
 Every runtime upgrade stops `provider fleet` writes and status until a new
-document is reviewed and published: no runtime is auto-adopted. Mainnet went from
+document is reviewed and published: no runtime is auto-adopted. Until then each
+command exits 1 with "no reviewed fleet runtime authority document is published
+for the chain's current runtime" and a link here, as it does before the first
+document is published. Mainnet went from
 runtime 475 at launch on 2026-10-08 to 486 by 2026-10-26, so plan the review to
 follow each upstream release. The `urnetwork-mainnet-fleet-runtime-authority-v2` catalog
 (`miner/fleet_runtime_catalog.go`) lists up to 8 reviewed runtimes with the

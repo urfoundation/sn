@@ -32,22 +32,20 @@ const (
 )
 
 // Support inbox 7992: a claimant could not produce a manifest; fleet init
-// must print one that the --manifest commands accept unchanged.
+// must print one that the --manifest commands accept unchanged. That is all of
+// stdout, as a redirect saves it, not its first line; the commitment and member
+// count fleet manifest prints after the manifest go to stderr.
 func TestFleetInitPrintsCanonicalManifest(t *testing.T) {
 	opts := fleetInitParse(t, "--chain_id=964", "--coordinator="+fleetInitCoordinator, "--hotkey="+fleetInitHotkeyHex,
 		"--member="+fleetInitMemberB, "--member="+fleetInitMemberA)
 	random := bytes.NewReader(bytes.Repeat([]byte{0x44}, 32))
-	var out bytes.Buffer
-	if err := fleetInit(opts, &out, random); err != nil {
+	var stdout, stderr bytes.Buffer
+	if err := fleetInit(opts, &stdout, &stderr, random); err != nil {
 		t.Fatal(err)
 	}
-	lines := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n")
-	if len(lines) != 3 {
-		t.Fatalf("output lines = %d: %q", len(lines), out.String())
-	}
-	manifest, err := protocol.ParseFleetManifest([]byte(lines[0] + "\n"))
+	manifest, err := protocol.ParseFleetManifest(stdout.Bytes())
 	if err != nil {
-		t.Fatalf("printed manifest is not accepted: %v", err)
+		t.Fatalf("stdout is not a manifest file: %v\n%s", err, stdout.String())
 	}
 	if manifest.Netuid != 25 || manifest.Generation != 1 || manifest.ChainID != 964 {
 		t.Fatalf("defaults: netuid %d generation %d chain %d", manifest.Netuid, manifest.Generation, manifest.ChainID)
@@ -58,12 +56,13 @@ func TestFleetInitPrintsCanonicalManifest(t *testing.T) {
 	if manifest.Members[0].ClientID[15] != 0x0a || manifest.Members[1].ClientID[15] != 0x0b {
 		t.Fatal("members not sorted by client_id")
 	}
+	// fleet manifest prints both parts on stdout, in this order
 	var want bytes.Buffer
-	if err := printFleetManifest(&want, manifest); err != nil {
+	if err := printFleetManifest(&want, &want, manifest); err != nil {
 		t.Fatal(err)
 	}
-	if out.String() != want.String() || !strings.HasPrefix(lines[1], "commitment_sha256: 0x") || lines[2] != "members: 2" {
-		t.Fatalf("output differs from fleet manifest:\n%s\nwant\n%s", out.String(), want.String())
+	if stdout.String()+stderr.String() != want.String() || !strings.HasPrefix(stderr.String(), "commitment_sha256: 0x") || !strings.HasSuffix(stderr.String(), "\nmembers: 2\n") {
+		t.Fatalf("output differs from fleet manifest:\nstdout %q\nstderr %q\nwant %q", stdout.String(), stderr.String(), want.String())
 	}
 }
 
@@ -78,14 +77,14 @@ func TestFleetInitClientSeedAndSs58Hotkey(t *testing.T) {
 	opts := fleetInitParse(t, "--chain_id=964", "--coordinator="+fleetInitCoordinator, "--hotkey="+testSs58(hotkey),
 		"--netuid=521", "--generation=7", "--fleet_id=0x"+strings.Repeat("66", 32),
 		"--client_seed_file="+seedPath, "--client_id=0x0000000000000000000000000000000c")
-	var out bytes.Buffer
-	if err := fleetInit(opts, &out, bytes.NewReader(nil)); err != nil {
+	var out, info bytes.Buffer
+	if err := fleetInit(opts, &out, &info, bytes.NewReader(nil)); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(out.String(), hex.EncodeToString(seed)) {
+	if strings.Contains(out.String()+info.String(), hex.EncodeToString(seed)) {
 		t.Fatal("seed printed")
 	}
-	manifest, err := protocol.ParseFleetManifest([]byte(strings.SplitN(out.String(), "\n", 2)[0]))
+	manifest, err := protocol.ParseFleetManifest(out.Bytes())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +110,7 @@ func TestFleetInitRefusals(t *testing.T) {
 	} {
 		opts := fleetInitParse(t, append(append([]string(nil), base...), args...)...)
 		var out bytes.Buffer
-		err := fleetInit(opts, &out, bytes.NewReader(bytes.Repeat([]byte{0x44}, 32)))
+		err := fleetInit(opts, &out, &out, bytes.NewReader(bytes.Repeat([]byte{0x44}, 32)))
 		if err == nil {
 			t.Fatalf("%s: accepted: %s", name, out.String())
 		}

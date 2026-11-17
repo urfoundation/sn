@@ -15,6 +15,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"github.com/urfoundation/sn/crv4"
 )
 
 // The concrete production steerer owns its Run lifetime through this method.
@@ -108,6 +110,11 @@ func releaseErrorGraph(err error, accept func(error) bool, depth int, remaining 
 			return false
 		}
 	}
+	// A canceled dial at shutdown holds net's own "operation was canceled";
+	// it is context.Canceled, not an opaque matcher.
+	if standard, ok := crv4.StandardContextError(err); ok {
+		err = standard
+	}
 	switch cause := err.(type) {
 	case *os.PathError, *os.LinkError, *TrailFatalError, *releaseObservedHard, *releaseObservedRefusal:
 		return false
@@ -153,6 +160,44 @@ func releaseRuntimeError(ctx context.Context, err error) error {
 	if err != nil && ctx != nil && ctx.Err() != nil && releaseOnlyErrors(err, context.Canceled, context.DeadlineExceeded) {
 		return nil
 	}
+	return err
+}
+
+// The process's own verdict on what the release returned. A requested stop is
+// no failure, even when it interrupted startup or the steering loop's latest
+// attempt: what remains then is cancellation and the loop's own waits, which
+// it never counts as failures. Exiting with a panic for them made a deploy's
+// stop read as a crash (2026-11-11 05:34:58). A hard cause still panics: it is
+// returned for the caller's panic after one bounded stderr line naming its
+// distinct causes, since the panic's nested rendering is hard to read.
+func releaseProcessError(ctx context.Context, err error) error {
+	err = releaseRuntimeError(ctx, err)
+	if err == nil {
+		return nil
+	}
+	if ctx != nil && ctx.Err() != nil {
+		remaining := 512
+		stopped := releaseErrorGraph(err, func(cause error) bool {
+			if releaseErrorIdentity(cause, context.Canceled) || releaseErrorIdentity(cause, context.DeadlineExceeded) || releaseErrorIdentity(cause, ErrSteeringAlreadyFinal) {
+				return true
+			}
+			switch wait := cause.(type) {
+			case *productionSteeringReadWait:
+				return retryableProductionSteeringRead(wait.cause)
+			case *productionPendingReconciliation:
+				return wait.cause == nil || retryableProductionSteeringRead(wait.cause)
+			case *productionOperatorAuthenticationPending:
+				return !wait.hard
+			case *productionPreparationPending, *productionSteeringTransition, *productionPendingNonceWait, *productionSteeringEpochHold:
+				return true
+			}
+			return productionSteeringCutWait(cause)
+		}, 0, &remaining)
+		if stopped {
+			return nil
+		}
+	}
+	os.Stderr.Write(formatReleaseErrorCauses("process_exit", 0, err))
 	return err
 }
 

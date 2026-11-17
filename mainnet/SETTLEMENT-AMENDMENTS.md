@@ -37,12 +37,16 @@ The tool refuses an entry whose first epoch has started, so a missed deadline mo
 The lines for epoch 8:
 
 ```text
-UR settlement amendment v1: chain 964, sn 25, no 1, from epoch 8, intra-platform and intra-network extenders, units egress prefix, free and paid, zeta 1
+UR settlement amendment v1: chain 964, sn 25, no 1, from epoch 8, intra-platform and intra-network extenders, units egress prefix, free and paid, zeta 1, half by unit half by relay bytes
 UR settlement amendment v2: chain 964, sn 25, no 1, from epoch 8, capture the flag, ctf pool 4294967297, carry <the carry contract's address>, shares pool 4/10 ctf 1/10 head 5/10, head cedes to pool, slots 5 providers 5 extenders, countries iso 3166-1 249, presence half epoch, units egress prefix, draw drand quicknet 60s after census
 ```
 
 Only the chain, sn, operator, first epoch and carry contract can vary. Every other term is fixed by the owner's
 decisions, and the tool refuses a line that differs from them in any character.
+
+The extender pool's line binds the owner's split of 2026-11-16, "half by unit half by relay bytes" (WHITEPAPER.md
+§8.6.8, decision 17): every reader must run a build that reads it before the owner signs, since a reader built for
+the line without it refuses it, and a line without it is not one this release reads.
 
 The extender pool's "intra-platform" covers exactly the platform endpoint kinds the operator's registry accepts:
 sidecar's TLS, SMTP and MX edges (`tlsedge`, `smtpedge` and `mxedge`), each a client on one of the operator's own

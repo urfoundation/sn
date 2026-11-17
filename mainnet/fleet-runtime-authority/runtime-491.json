@@ -1,0 +1,19 @@
+{
+  "schema": "urnetwork-mainnet-fleet-runtime-authority-v1",
+  "native_chain": "Bittensor",
+  "genesis_hash": "0x2f0555cc76fc2840a25a6ea3b9637146806f1f44b090c175ffde2a7e5ab36c03",
+  "evm_chain_id": 964,
+  "netuid": 25,
+  "coordinator": "0xc18925925e2b7bb9059b7d696b8c92762ae86406",
+  "runtime_source_commit": "be3a11b1a5300bb58d6fbad3c629e4a926bb2f44",
+  "runtime_review_scope": "urnetwork-fleet-register-commitment-frontier-v1",
+  "runtime_review_sha256": "7cc8e7456ca7c634c3e4eeb512e1874fb0b8df47f40c4273f7ad731e0edf4d48",
+  "runtime_version": {
+    "specName": "node-subtensor",
+    "specVersion": 491,
+    "transactionVersion": 1,
+    "stateVersion": 1
+  },
+  "runtime_code_hash": "0x4201278656a17aff924ca24123c8e5866d569a84a7150bb0372bc7078fc6173c",
+  "runtime_metadata_hash": "0xae0df84c73d0dd04ebcab7d184a228b9e49d9817fa127f2203c627afe29d24a0"
+}

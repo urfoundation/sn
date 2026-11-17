@@ -392,14 +392,8 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 	}
 	preparingProduction := isOwnerRecycleProductionConfig(self.cfg)
 	defer func() {
-		var wait *productionSteeringReadWait
-		if preparingProduction && resultErr != nil && !errors.As(resultErr, &wait) && !errors.Is(ctx.Err(), context.Canceled) {
-			cause := observeProductionSteeringRead(resultErr, evidenceReadContextError(ctx) == context.DeadlineExceeded)
-			if retryableProductionSteeringRead(cause) {
-				resultErr = &productionSteeringReadWait{phase: productionReadPreparation, cause: cause}
-			} else {
-				resultErr = cause
-			}
+		if preparingProduction {
+			resultErr = productionPreparationFailure(ctx, resultErr)
 		}
 	}()
 	var nativeHash types.Hash
@@ -420,6 +414,12 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 	}
 	if nativeState != nil {
 		diagnostic.setNativeEpoch(nativeState.SubnetEpochIndex)
+	}
+	// A failed intent's native epoch is signed again only while still needed.
+	if hold, err := self.productionResignHold(ctx, retained, nativeHash, nativeState); err != nil {
+		return err
+	} else if hold != nil {
+		return hold
 	}
 	var snapshot *ReleaseSnapshot
 	diagnostic.move(releasePreparationEvmSnapshot)
@@ -632,6 +632,9 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 		if err != nil {
 			return err
 		}
+		if excluded := uint64(len(productionStage.proof.Row.ExcludedHeadUids)); excluded != 0 {
+			releaseDiagnostic(ctx, "steering", "head_fleets_excluded", nativeState.SubnetEpochIndex, true, excluded)
+		}
 		verifiedMeasurement, err = ownerRecycleProductionRowDecision(verifiedMeasurement, productionStage.proof.Row)
 		if err != nil {
 			return err
@@ -773,7 +776,7 @@ func (self *ReleaseSteerer) submitOnceV2(ctx context.Context) (resultErr error) 
 		}
 		// The error can occur after broadcast but before finality was observed.
 		// Preserve an uncertain pending state so a restart cannot double-submit.
-		return self.recordReleasePendingError(intent.VectorHash, err)
+		return self.productionPendingSubmissionFailure(ctx, intent, intent.SubnetEpoch, err)
 	}
 	if err := authenticatePinnedNativeRuntimeAtContext(ctx, self.native, self.cfg, result.FinalizedBlockHash); err != nil {
 		return fmt.Errorf("authenticate steering finality at %s: %w", result.FinalizedBlockHash.Hex(), self.recordReleasePendingError(intent.VectorHash, err))

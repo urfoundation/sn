@@ -260,6 +260,21 @@ func (self *releaseErrorObservation) capture(err error, depth int) error {
 		self.notDeadline()
 		return observed
 	}
+	if standard, ok := crv4.StandardContextError(err); ok {
+		// net's or net/http's own deadline or cancellation value stands for
+		// its context error. Freezing that sentinel lets every later
+		// classifier judge it like the context error it is, without calling
+		// the value's Is method.
+		if census := self.deadline; census != nil {
+			if standard == context.DeadlineExceeded {
+				census.deadlines++
+			} else {
+				census.cancellations++
+			}
+		}
+		observed.value = standard
+		return observed
+	}
 	switch cause := err.(type) {
 	case *os.PathError, *os.LinkError, *TrailFatalError, *releaseObservedHard, *releaseObservedRefusal:
 		self.failed = true
@@ -309,6 +324,15 @@ func (self *releaseErrorObservation) capture(err error, depth int) error {
 		self.notDeadline()
 		copy := *cause
 		copy.cause = self.optional(cause.cause, depth+1)
+		observed.value = &copy
+	case *productionPendingNonceWait:
+		self.notDeadline()
+		copy := *cause
+		copy.cause = self.optional(cause.cause, depth+1)
+		observed.value = &copy
+	case *productionSteeringEpochHold:
+		self.notDeadline()
+		copy := *cause
 		observed.value = &copy
 	case *productionNativeGapHold:
 		self.notDeadline()

@@ -10,19 +10,30 @@ package ledger
 //     rows;
 //   - the census: one row per extender of the operator known in the epoch,
 //     eligible or not, captured at end(k) and operator-attested;
+//   - the relay rows: the bytes each census client carried as an extender
+//     in the epoch, its hop shares as an extender party (J3) that stayed
+//     provider usage, of the funded contracts that closed in the earning
+//     window less declared measurement and test traffic, operator-attested
+//     like the census;
 //   - the share rows: Z' = min(Z, ζ·W_k) with ζ = 1, W_k the epoch's
-//     eligible provider usage, split evenly over the units that hold an
-//     eligible extender, by unit hash, then evenly over the eligible
-//     extenders of each unit, by client id. They are 57-byte rows like
-//     provider rows, and enter the epoch's allocation beside them.
+//     eligible provider usage. Half of Z' is split evenly over the units
+//     that hold an eligible extender, by unit hash, then evenly over the
+//     eligible extenders of each unit, by client id; the other half over
+//     the eligible extenders in proportion to their relay bytes (owner,
+//     2026-11-16). One share row holds both of an extender's parts. They
+//     are 57-byte rows like provider rows, and enter the epoch's allocation
+//     beside them.
 //
 // With no eligible extender Z is dropped: it enters no weight, and the epoch
-// allocates exactly as it would without the amendment.
+// allocates exactly as it would without the amendment. With eligible
+// extenders none of which relayed in the epoch, all of Z' is split by unit.
 
 import (
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"math/bits"
 	"slices"
 
 	"github.com/urfoundation/sn/protocol"
@@ -35,6 +46,13 @@ const (
 	// The size of a census row, big-endian: extender_id(16) ‖ client_id(16) ‖
 	// coldkey(32) ‖ unit(32) ‖ unit_family(1) ‖ flags(1).
 	CensusRowBytes = 98
+	// The size of a relay row, big-endian: client_id(16) ‖ relay_bytes(8).
+	RelayRowBytes = 24
+	// The part of Z' split by relay bytes is floor(Z' / ExtenderRelayDivisor),
+	// half: a term of the extender pool's signed amendment line ("half by
+	// unit, half by relay bytes"). The rest, its odd byte included, is split
+	// by unit.
+	ExtenderRelayDivisor = 2
 )
 
 // A census row's flags (WHITEPAPER.md §8.6.2), one bit each.
@@ -91,6 +109,17 @@ type CensusRow struct {
 	Flags  CensusFlags
 }
 
+// The bytes one provider client of the census carried as an extender in the
+// epoch (§8.6.2): its hop shares as an extender party of a contract (J3) that
+// stayed provider usage, of the funded contracts that closed in the epoch's
+// earning window, less the operator's declared measurement and test traffic.
+// Operator-attested, like the census. A client that carried nothing has no
+// row.
+type RelayRow struct {
+	ClientID   [16]byte
+	RelayBytes uint64
+}
+
 // Reports E1 and E3–E5: active, with no other flag set, and a payout
 // coldkey.
 func (self *CensusRow) Eligible() bool {
@@ -118,8 +147,12 @@ var (
 	// than one record (E3), or whose rows name more than one coldkey.
 	ErrCensusClient = errors.New("ledger: a provider client's census rows count twice or name two coldkeys")
 	// Returned when an epoch's eligible usage with its extender share
-	// rows reaches 2^64.
-	ErrExtenderOverflow = errors.New("ledger: eligible usage with the extender share rows reaches 2^64")
+	// rows reaches 2^64, or its relay bytes do.
+	ErrExtenderOverflow = errors.New("ledger: eligible usage with the extender share rows, or the relay bytes, reach 2^64")
+	// Returned for relay rows out of client id order or repeating one, a row
+	// with a zero client id or zero relay bytes, and a row whose client has
+	// no census row.
+	ErrRelayRows = errors.New("ledger: relay rows are not sorted and unique by client id, hold zero, or name a client the census does not")
 )
 
 // Encodes census rows, in the order given, as a chunk list.
@@ -160,6 +193,61 @@ func decodeCensusRows(rows []CensusRow, chunk []byte) []CensusRow {
 		rows = append(rows, row)
 	}
 	return rows
+}
+
+// Encodes relay rows, in the order given, as a chunk list.
+func EncodeRelayChunks(rows []RelayRow) [][]byte {
+	return encodeChunks(len(rows), RelayRowBytes, func(b []byte, i int) []byte {
+		b = append(b, rows[i].ClientID[:]...)
+		return binary.BigEndian.AppendUint64(b, rows[i].RelayBytes)
+	})
+}
+
+// Decodes a chunk list of relay rows, checking its shape. It does not check
+// the relay rules; CheckRelayRows does.
+func DecodeRelayChunks(chunks [][]byte) ([]RelayRow, error) {
+	var rows []RelayRow
+	for j, chunk := range chunks {
+		if err := checkChunk(len(chunk), RelayRowBytes, j, len(chunks)); err != nil {
+			return nil, err
+		}
+		rows = decodeRelayRows(rows, chunk)
+	}
+	return rows, nil
+}
+
+// Appends the relay rows of one chunk, whose shape has been checked, to rows.
+func decodeRelayRows(rows []RelayRow, chunk []byte) []RelayRow {
+	for offset := 0; offset < len(chunk); offset += RelayRowBytes {
+		b := chunk[offset : offset+RelayRowBytes]
+		var row RelayRow
+		copy(row.ClientID[:], b[:16])
+		row.RelayBytes = binary.BigEndian.Uint64(b[16:24])
+		rows = append(rows, row)
+	}
+	return rows
+}
+
+// Checks the relay rules a verifier can check (§8.6.4 check 2): the rows are
+// sorted by client id with none repeated, every row has a nonzero client id
+// and positive relay bytes, and every row's client has a census row. census
+// must have passed CheckCensusRows. Which contracts an extender relayed, and
+// their bytes, are the operator's attestation.
+func CheckRelayRows(rows []RelayRow, census []CensusRow) error {
+	censusClientIds := make(map[[16]byte]bool, len(census))
+	for i := range census {
+		censusClientIds[census[i].ClientID] = true
+	}
+	for i := range rows {
+		row := &rows[i]
+		if row.ClientID == ([16]byte{}) || row.RelayBytes == 0 || !censusClientIds[row.ClientID] {
+			return fmt.Errorf("%w: row %d", ErrRelayRows, i)
+		}
+		if 0 < i && bytes.Compare(rows[i-1].ClientID[:], row.ClientID[:]) >= 0 {
+			return fmt.Errorf("%w: row %d", ErrRelayRows, i)
+		}
+	}
+	return nil
 }
 
 // Checks the census rules a verifier can check without addresses
@@ -238,7 +326,8 @@ func CheckCensusRows(rows []CensusRow) error {
 	return nil
 }
 
-// The even split of an epoch's extender pool (§8.6.2).
+// The split of an epoch's extender pool (§8.6.2): half by unit, half by relay
+// bytes.
 type ExtenderSplit struct {
 	// Z, the epoch's extender pool bytes.
 	Bytes uint64
@@ -246,12 +335,22 @@ type ExtenderSplit struct {
 	// eligible provider usage (ζ = 1), and 0 when no extender is eligible.
 	// The share rows sum to it.
 	Weight uint64
+	// Z' in its two parts, which sum to it: the part split evenly by unit,
+	// and the part split by relay bytes, floor(Z' / ExtenderRelayDivisor),
+	// which is 0 when no eligible extender relayed.
+	UnitWeight  uint64
+	RelayWeight uint64
 	// N, the census rows that pass E1 and E3–E5, and M, the units that hold
 	// them.
 	Eligible uint64
 	Units    uint64
-	// The share rows: one per eligible extender with a positive share, sorted
-	// by client id, each with its census row's coldkey and head_excluded 0.
+	// R, the relay bytes of the eligible extenders, and how many of them
+	// relayed.
+	RelayBytes uint64
+	Relaying   uint64
+	// The share rows: one per eligible extender with a positive share, its
+	// two parts together, sorted by client id, each with its census row's
+	// coldkey and head_excluded 0.
 	Rows []protocol.LedgerUsageRow
 }
 
@@ -270,16 +369,28 @@ func EligibleUsage(rows []protocol.LedgerUsageRow) uint64 {
 
 // Splits an epoch's extender pool bytes z (§8.6.2). The weight Z' is z capped
 // at the eligible usage of the epoch's provider rows (ζ = 1), so extenders
-// take at most half of the epoch's amount. The eligible census rows group
-// into units by unit hash; with M units, the j-th by unit hash takes
-// floor(Z'/M), plus one byte when j < Z' mod M, and within it the i-th of its
-// m eligible extenders by client id takes floor(z_j/m), plus one byte when i
-// < z_j mod m. A share of zero has no row. With no eligible extender Z is
-// dropped: Weight is 0 and there are no rows.
+// take at most half of the epoch's amount. When an eligible extender relayed
+// in the epoch, the relay part floor(Z'/2) is split over the eligible
+// extenders in proportion to their relay bytes and the unit part, the rest,
+// by unit; when none did, all of Z' is split by unit.
+//
+//   - By unit: the eligible census rows group into units by unit hash; with M
+//     units, the j-th by unit hash takes floor(Z_u/M), plus one byte when
+//     j < Z_u mod M, and within it the i-th of its m eligible extenders by
+//     client id takes floor(z_j/m), plus one byte when i < z_j mod m.
+//   - By relay bytes: with R the eligible extenders' relay bytes, an
+//     extender with r takes floor(Z_r·r/R), and the bytes left over, fewer
+//     than the extenders that relayed, go one each to the largest
+//     remainders (Z_r·r mod R), the lower client id first among equal ones.
+//
+// An extender's share row holds its two parts together; a share of zero has
+// no row. With no eligible extender Z is dropped: Weight is 0 and there are
+// no rows. A relay row of a client whose census rows are not eligible counts
+// for nothing.
 //
 // census must pass CheckCensusRows, which makes each eligible row's client id
-// unique, and providers checkProviderRows.
-func SplitExtenderPool(z uint64, providers []protocol.LedgerUsageRow, census []CensusRow) (*ExtenderSplit, error) {
+// unique, relay CheckRelayRows, and providers checkProviderRows.
+func SplitExtenderPool(z uint64, providers []protocol.LedgerUsageRow, census []CensusRow, relay []RelayRow) (*ExtenderSplit, error) {
 	// the share of index in an even split of total over count, the remainder
 	// going to the lowest indexes: the rule a contract's bytes split over its
 	// hops by (the server's evenContractPayoutShare)
@@ -308,23 +419,81 @@ func SplitExtenderPool(z uint64, providers []protocol.LedgerUsageRow, census []C
 	slices.SortFunc(units, func(a, b [32]byte) int { return bytes.Compare(a[:], b[:]) })
 	split.Units = uint64(len(units))
 
+	// the relay bytes of each eligible row, by census index, and R
+	clientIdRelayBytes := make(map[[16]byte]uint64, len(relay))
+	for i := range relay {
+		clientIdRelayBytes[relay[i].ClientID] = relay[i].RelayBytes
+	}
+	relayingIndexes := []int{}
+	for i := range census {
+		r := clientIdRelayBytes[census[i].ClientID]
+		if !census[i].Eligible() || r == 0 {
+			continue
+		}
+		if split.RelayBytes+r < split.RelayBytes {
+			return nil, fmt.Errorf("%w: relay bytes", ErrExtenderOverflow)
+		}
+		split.RelayBytes += r
+		relayingIndexes = append(relayingIndexes, i)
+	}
+	split.Relaying = uint64(len(relayingIndexes))
+
 	w := EligibleUsage(providers)
 	split.Weight = min(z, w)
 	if w+split.Weight < w {
 		return nil, fmt.Errorf("%w: %d bytes of eligible usage and %d of extender weight", ErrExtenderOverflow, w, split.Weight)
 	}
+	if 0 < split.RelayBytes {
+		split.RelayWeight = split.Weight / ExtenderRelayDivisor
+	}
+	split.UnitWeight = split.Weight - split.RelayWeight
+
+	// each eligible row's share, by census index: its unit part and its
+	// relay part, which sum to at most Z' and so cannot overflow
+	indexShares := map[int]uint64{}
 	for j, unit := range units {
-		zj := evenShare(split.Weight, uint64(j), split.Units)
+		zj := evenShare(split.UnitWeight, uint64(j), split.Units)
 		// census order is client id order, so a unit's members are too
 		for i, index := range unitMemberIndexes[unit] {
-			share := evenShare(zj, uint64(i), uint64(len(unitMemberIndexes[unit])))
-			if share == 0 {
-				continue
-			}
-			split.Rows = append(split.Rows, protocol.LedgerUsageRow{ClientID: census[index].ClientID, Coldkey: census[index].Coldkey, UsageBytes: share})
+			indexShares[index] += evenShare(zj, uint64(i), uint64(len(unitMemberIndexes[unit])))
 		}
 	}
-	slices.SortFunc(split.Rows, func(a, b protocol.LedgerUsageRow) int { return bytes.Compare(a.ClientID[:], b.ClientID[:]) })
+	if 0 < split.RelayWeight {
+		// Z_r·r < 2^64·R, since r <= R, so the high word is below R and the
+		// quotient, at most Z_r, fits
+		remainders := make([]uint64, len(relayingIndexes))
+		var distributed uint64
+		for k, index := range relayingIndexes {
+			hi, lo := bits.Mul64(split.RelayWeight, clientIdRelayBytes[census[index].ClientID])
+			quotient, remainder := bits.Div64(hi, lo, split.RelayBytes)
+			indexShares[index] += quotient
+			remainders[k] = remainder
+			distributed += quotient
+		}
+		// census order breaks ties, so a lower client id comes first
+		order := make([]int, len(relayingIndexes))
+		for k := range order {
+			order[k] = k
+		}
+		slices.SortStableFunc(order, func(a, b int) int {
+			switch {
+			case remainders[a] > remainders[b]:
+				return -1
+			case remainders[a] < remainders[b]:
+				return 1
+			default:
+				return 0
+			}
+		})
+		for _, k := range order[:split.RelayWeight-distributed] {
+			indexShares[relayingIndexes[k]]++
+		}
+	}
+	for i := range census {
+		if share := indexShares[i]; 0 < share {
+			split.Rows = append(split.Rows, protocol.LedgerUsageRow{ClientID: census[i].ClientID, Coldkey: census[i].Coldkey, UsageBytes: share})
+		}
+	}
 	return split, nil
 }
 
@@ -339,15 +508,22 @@ func buildExtenders(input *EpochInput, objects Objects) (*ExtenderAllocation, er
 	if err := CheckCensusRows(extenders.Census); err != nil {
 		return nil, fmt.Errorf("epoch %d census: %w", input.Epoch, err)
 	}
+	if err := CheckRelayRows(extenders.Relay, extenders.Census); err != nil {
+		return nil, fmt.Errorf("epoch %d relay: %w", input.Epoch, err)
+	}
 	census := putChunks(EncodeCensusChunks(extenders.Census), objects)
 	if extenders.Chunks != nil && !slices.Equal(extenders.Chunks, census) {
 		return nil, fmt.Errorf("%w: epoch %d census", ErrFixedInputs, input.Epoch)
 	}
-	split, err := SplitExtenderPool(extenders.Bytes, input.Rows, extenders.Census)
+	relay := putChunks(EncodeRelayChunks(extenders.Relay), objects)
+	if extenders.Chunks != nil && !slices.Equal(extenders.RelayChunks, relay) {
+		return nil, fmt.Errorf("%w: epoch %d relay", ErrFixedInputs, input.Epoch)
+	}
+	split, err := SplitExtenderPool(extenders.Bytes, input.Rows, extenders.Census, extenders.Relay)
 	if err != nil {
 		return nil, fmt.Errorf("epoch %d: %w", input.Epoch, err)
 	}
-	return &ExtenderAllocation{ExtenderSplit: *split, Census: census, Chunks: putChunks(EncodeProviderChunks(split.Rows), objects)}, nil
+	return &ExtenderAllocation{ExtenderSplit: *split, Census: census, Relay: relay, Chunks: putChunks(EncodeProviderChunks(split.Rows), objects)}, nil
 }
 
 // Adds chunks to objects and returns their references.

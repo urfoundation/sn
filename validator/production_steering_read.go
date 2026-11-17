@@ -69,6 +69,11 @@ func retryableProductionSteeringReadBounded(err error, transportOrigin bool, dep
 			return false
 		}
 	}
+	// Startup stages classify raw originals, which can still hold net's own
+	// dial or lookup timeout; judge it as the context error it stands for.
+	if standard, ok := crv4.StandardContextError(err); ok {
+		err = standard
+	}
 	if crv4.IsSubstrateReadTransportCause(err) {
 		return crv4.RetryableSubstrateReadTransportError(err)
 	}
@@ -232,6 +237,9 @@ func (self *productionSteeringDeadlineWalk) visit(err error, depth int) bool {
 			return false
 		}
 	}
+	if standard, ok := crv4.StandardContextError(err); ok {
+		err = standard
+	}
 	switch err {
 	case context.DeadlineExceeded, os.ErrDeadlineExceeded:
 		self.deadlines++
@@ -320,6 +328,23 @@ func (self *productionSteeringReadWait) Error() string {
 
 func (self *productionSteeringReadWait) Unwrap() error { return self.cause }
 
+// A fresh preparation failure whose every cause is a retryable upstream read
+// waits for the next poll and spends no steering failure. Any other failure is
+// returned observed, so the loop counts it as hard. An existing wait, a held
+// epoch and the owner's cancellation pass through unchanged.
+func productionPreparationFailure(ctx context.Context, err error) error {
+	var wait *productionSteeringReadWait
+	var hold *productionSteeringEpochHold
+	if err == nil || errors.As(err, &wait) || errors.As(err, &hold) || errors.Is(ctx.Err(), context.Canceled) {
+		return err
+	}
+	cause := observeProductionSteeringRead(err, evidenceReadContextError(ctx) == context.DeadlineExceeded)
+	if retryableProductionSteeringRead(cause) {
+		return &productionSteeringReadWait{phase: productionReadPreparation, cause: cause}
+	}
+	return cause
+}
+
 // An operation that may already have published retained work is never repeated
 // here. A pure remote read failure defers to the next normal custody read;
 // filesystem/custody/contradiction leaves still force an explicit hard result.
@@ -387,7 +412,10 @@ func (self *ReleaseSteerer) productionRead(ctx context.Context, phase production
 		if !retryableProductionSteeringRead(lastErr) || ownerErr != nil {
 			break
 		}
-		if err := wait(operation, releaseSnapshotStartupRetryDelay); err != nil {
+		// A refusal for load paces the next attempt (Retry-After, or the
+		// rate-limit pause); the read's own deadline still bounds the wait.
+		delay := max(releaseSnapshotStartupRetryDelay, releaseRateLimitPause(lastErr, releaseSteeringSettingsFrom(ctx)))
+		if err := wait(operation, delay); err != nil {
 			lastErr = errors.Join(lastErr, err, evidenceReadContextError(ctx), evidenceReadContextError(operation))
 			break
 		}

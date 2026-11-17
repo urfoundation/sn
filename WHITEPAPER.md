@@ -1441,7 +1441,11 @@ receives it for future network improvements; `ur‑reserve` is a 2‑of‑3 nati
 owner's hotkeys and separate from the buyback reserve (§7.4). An empty tier cedes its share to the other
 (`cede_to_nonempty`); with no provider weight at all the row is reserve-only, the recipients sharing it
 equally. A missing or masked recipient, or an entry over the cap, refuses the row rather than clipping or
-repairing it. Changing `μ` takes a newly signed treasury policy, and the current validator admits only 1/10;
+repairing it. A selected head fleet whose share rounds to zero in `u16`, below half a unit (under 1/8,738 of the
+head at θ = 3/10 with two recipients and a pool), is left out of that tempo's row and named in it, and the other
+fleets take its share: an idle fleet's EMA decays by 3/4 a tempo and never reaches zero, and it must not stop the
+row for everyone. It keeps its seat and EMA and returns with its first tempo back; with no emission it also
+faces the deregistration tournament of §8.4. Changing `μ` takes a newly signed treasury policy, and the current validator admits only 1/10;
 without a treasury policy (testnet) `μ = 1`. At θ = 3/10, one pool and one head fleet, the row (pool, head,
 the two recipients) is [7/100, 3/100, 9/20, 9/20], u16 [10194, 4369, 65535, 65535].
 
@@ -1472,7 +1476,10 @@ zeroes its CTF pool too. The cede rules apply in this order:
 On SN25 with no head fleet, the row (pool, CTF, the two recipients) is [9/100, 1/100, 9/20, 9/20], about u16
 [13107, 1456, 65535, 65535]. Once fleets are weighted it is pool 4/100, CTF 1/100, head 5/100 and the
 recipients 9/20 each. The pool, CTF and head entries stay far under the 32768 cap, the recipients stay at 9/20
-each as before, and the treasury policy (μ = 1/10, cap 32768) is unchanged. In epoch 4 the providers' share funded the pool with 1,195.84 α, all of `μ`. At that
+each as before, and the treasury policy (μ = 1/10, cap 32768) is unchanged. A selected head fleet that rounds to
+zero in `u16` is still left out of the row and named in it, as above: with the head at 5/100, under about
+1/14,563 of the head with the CTF channel weighted, or 1/16,181 with it empty; a CTF pool that rounds to zero
+refuses the row, as a pool does. In epoch 4 the providers' share funded the pool with 1,195.84 α, all of `μ`. At that
 scale the CTF pools get about 119.58 α an epoch and the pool about 1,076.26 α. Once fleets are weighted, the
 pool gets about 478.34 α and the head about 597.92 α.
 
@@ -1516,8 +1523,10 @@ against the tail.
 > between the network operator and a client, spread their traffic weight evenly across all extenders, since
 > extenders make the api and platform surface reachable from anywhere. The owner's decisions of the same day
 > are folded in (§8.6.8), and so is the owner's answer of 2026‑11‑11 to the last open question, Q7: on every
-> contract an extender counts as one of the contract's `n_c` hops (§8.6.2, decision 16). Everything marked
-> *option* below is an alternative with trade‑offs, not a replacement.
+> contract an extender counts as one of the contract's `n_c` hops (§8.6.2, decision 16). On 2026‑11‑16 the
+> owner amended the split before any entry was signed: half of the capped pool goes by unit and half by the
+> bytes each extender relayed in the epoch (§8.6.2, §8.6.3, decision 17), and the amendment line states it.
+> Everything marked *option* below is an alternative with trade‑offs, not a replacement.
 
 **Extenders, as built** (`connect/EXTENDER.md`). An extender is a relay that a provider runs on TCP and UDP
 443 and a DNS carrier. It forwards only to its operator's own api and connect hosts, behind camouflage meant
@@ -1582,20 +1591,40 @@ z_c       =  the part of contract c's completed bytes b_c that no provider earns
              every other share, an extender party's included, is provider usage (§8.2)
 Z_{n,k}   =  Σ z_c over n's funded contracts c that closed in k's earning window, free and paid alike (pool bytes)
 Z'        =  min(Z, ζ · W_k),   ζ = 1        W_k = the epoch's eligible provider usage, after the rule below  (cap, M3)
+r_x       =  eligible extender x's relay bytes in k: its hop shares s_{c,i} as an extender party (J2) that stay
+               provider usage, over n's funded contracts c that closed in k's earning window, less declared
+               measurement and test traffic                                         (relay rows, decision 17)
+R         =  Σ r_x over n's eligible extenders
+Z_r       =  floor(Z' / 2) if R > 0, else 0;     Z_u = Z' − Z_r            (the relay part and the unit part)
 U_{n,k}   =  the units holding at least one of n's eligible extenders for k, by unit hash ascending;  M = |U_{n,k}|
-z_j       =  floor(Z' / M) + (1 if j < Z' mod M, else 0)      for the j-th unit, j = 0 … M−1         (Σ z_j = Z')
+z_j       =  floor(Z_u / M) + (1 if j < Z_u mod M, else 0)    for the j-th unit, j = 0 … M−1         (Σ z_j = Z_u)
 s_{j,i}   =  floor(z_j / m_j) + (1 if i < z_j mod m_j, else 0)
                                   for the i-th of unit j's m_j eligible extenders, by provider client_id  (Σ_i s_{j,i} = z_j)
-row_{j,i} =  (client_id, coldkey, usage_bytes = s_{j,i}, head_excluded = 0)    (extender share row; none where s = 0)
+q_x       =  floor(Z_r · r_x / R), plus one byte for each of the Z_r − Σ_y floor(Z_r · r_y / R) extenders with the
+               largest remainder Z_r · r_x mod R, the lower client_id first among equal ones        (Σ_x q_x = Z_r)
+row_x     =  (client_id, coldkey, usage_bytes = s_{j,i} + q_x, head_excluded = 0)
+                                  (one extender share row for x, the i-th of unit j; none where it is 0)
 ```
 
 The epoch then allocates its amount `A` (§8.2) with `coldkey_usage_largest_remainder_rao_v1`, unchanged,
-over its provider rows **and** its extender share rows. Each unit carries `Z'/M` bytes of usage weight
-beside the providers' settled bytes, split evenly among the eligible extenders in it. `ΣW` grows by `Z'`,
-and an extender's coldkey gets `δ ≈ A · s_{j,i} / ΣW`, summed with any provider usage the same coldkey has.
-Where every unit holds one extender, this is exactly the even split the owner asked for. Extenders that
-share a block share its unit. Because `Z' ≤ W_k`, extenders take at most half a pool: every miner can be
-both a provider and an extender (owner decision). Bytes above the cap enter no weight.
+over its provider rows **and** its extender share rows. `Z'` enters in two parts (owner, 2026‑11‑16):
+
+- **By unit,** `Z_u`, half of `Z'` and its odd byte. Each unit carries `Z_u/M` bytes of usage weight beside
+  the providers' settled bytes, split evenly among the eligible extenders in it. Extenders that share a
+  block share its unit.
+- **By relay bytes,** `Z_r`, the other half, over the eligible extenders in proportion to the bytes each
+  relayed in the epoch. An extender that carried no contract takes none of it. With no eligible extender
+  that relayed, `Z_r` is 0 and all of `Z'` goes by unit.
+
+`ΣW` grows by `Z'`, and an extender's coldkey gets `δ ≈ A · (s_{j,i} + q_x) / ΣW`, summed with any provider
+usage the same coldkey has. Where every unit holds one extender and every extender relayed alike, this is
+exactly the even split the owner first asked for. Because `Z' ≤ W_k`, extenders take at most half a pool:
+every miner can be both a provider and an extender (owner decision). Bytes above the cap enter no weight.
+
+**Relay bytes.** `r_x` is what the operator's epoch reader already counts for `x` as provider usage under
+J3: its even hop shares on the contracts it was an extender party of, from the same contracts and the same
+earning window as `Z`, funded and not measurement. A share on the origin's network is `z_c`, never `x`'s, so
+it adds nothing to `r_x`. Like the census, the relay bytes are operator‑attested (§8.6.4).
 
 **Unit.** A unit is a keyed /29 IPv4 or /48 IPv6 prefix hash: the scoring unit of routable‑IP breadth
 (§8.4), computed with the same key, domain and granularity. The signed policy sets that granularity once
@@ -1719,12 +1748,15 @@ between pools, and there is no global root (§11.1). An extender forwards only t
 hosts and holds a separate record with each operator, so a host that serves two NOs counts as two
 extenders, one in each pool, paid through two accounts.
 
-**Rounding and the empty set.** Bytes split twice, first over units and then within each unit, by the same
-rule at each level: the floor, with the remainder going to the lowest keys (unit hashes, then client ids).
-This is the rule a contract already uses to split its bytes across its participants
-(`evenContractPayoutShare`). α splits by the unchanged largest‑remainder rule, so `Σ δ = A` exactly. With
-`N = 0` (no eligible extender, and so no unit), `Z` is dropped: it enters no weight, and the epoch allocates
-exactly as it does today. If the epoch also has no eligible provider usage, §8.3's carry applies.
+**Rounding and the empty set.** The unit part splits twice, first over units and then within each unit, by
+the same rule at each level: the floor, with the remainder going to the lowest keys (unit hashes, then
+client ids). This is the rule a contract already uses to split its bytes across its participants
+(`evenContractPayoutShare`). The relay part splits once, by the floor of each extender's proportion, the
+bytes left over going one each to the largest remainders, the lower client id first among equal ones, as α
+splits by the largest‑remainder rule. Both parts sum exactly, so the share rows sum to `Z'`, and `Σ δ = A`
+exactly. With `N = 0` (no eligible extender, and so no unit), `Z` is dropped: it enters no weight, and the
+epoch allocates exactly as it does today. If the epoch also has no eligible provider usage, §8.3's carry
+applies.
 
 **How it fits the ledger.** Leaves do not change. Accounts stay `(coldkey, cumulative)` and are appended
 and credited as §8.3 says, so an extender whose coldkey already holds an account (because it also runs
@@ -1734,13 +1766,16 @@ usage statement (§8.6.4):
 ```
 header (urnetwork-payout-ledger-v3 for a root whose header lists an extender component; any other root keeps
         urnetwork-payout-ledger-v2, byte for byte):
-  {"epoch":K,"providers":[…],"extenders":{"bytes":Z,"census":["sha256:…",…],"rows":["sha256:…",…]}}
+  {"epoch":K,"providers":[…],"extenders":{"bytes":Z,"census":["sha256:…",…],"relay":["sha256:…",…],"rows":["sha256:…",…]}}
   "extenders" comes last, in the entry of each covered epoch k ≥ E_x that is not declared unrecoverable,
-  and in no other. "census" and "rows" are chunk lists like "providers" (ChunkRows = 131,072 rows in every
-  chunk but a non-empty last one; an empty list has no chunks), never null.
+  and in no other. "census", "relay" and "rows" are chunk lists like "providers" (ChunkRows = 131,072 rows in
+  every chunk but a non-empty last one; an empty list has no chunks), never null.
+relay rows:          24-byte rows, client_id (16) ‖ relay_bytes (8, big-endian), sorted by client_id, one per
+                     census client with relay bytes in k (r_x > 0), each of a client with a census row;
+                     operator-attested; "relay": [] when no census client relayed
 extender share rows: 57-byte rows exactly as provider rows (client_id ‖ coldkey ‖ usage_bytes ‖ head_excluded),
-                     sorted by client_id, one per eligible extender with s_{j,i} > 0, usage_bytes = s_{j,i},
-                     head_excluded = 0; "rows": [] when N = 0 or Z = 0
+                     sorted by client_id, one per eligible extender with s_{j,i} + q_x > 0,
+                     usage_bytes = s_{j,i} + q_x, head_excluded = 0; "rows": [] when N = 0 or Z = 0
 census chunks:       98-byte rows, one per extender of n known in epoch k, eligible or not,
                      sorted by (client_id, extender_id):
                      extender_id (16) ‖ provider client_id (16) ‖ coldkey (32; zero without a wallet, E4) ‖
@@ -1756,13 +1791,13 @@ Release 1.0's `share_bps` leaves are not involved, because `E_x ≥ E_s`.
 
 #### 8.6.3 Incentives and attacks
 
-**Sybil: an even split pays per unit.** Whoever holds `k` of the `M` units takes about `k/M` of `Z'`.
-Because a unit is a /29 or /48 block, packing extenders into one block gains nothing: they share its unit.
-What still pays is spreading extenders across blocks, and a cloud fleet does that cheaply, since a hosting
-provider's address space spans many /29s. An extender costs a host with a public address on port 443 that
-passes the probe, which a small cloud VM provides. So as `Z` grows, the cheapest way to earn is to add
-hosts in new blocks rather than to serve clients. Activation budgets limit activations per hour, not hosts,
-and the decided rule adds no minimum age or uptime threshold (E1). The options:
+**Sybil: an even split pays per unit.** Under an even split alone, whoever holds `k` of the `M` units takes
+about `k/M` of `Z'`. Because a unit is a /29 or /48 block, packing extenders into one block gains nothing:
+they share its unit. What still pays is spreading extenders across blocks, and a cloud fleet does that
+cheaply, since a hosting provider's address space spans many /29s. An extender costs a host with a public
+address on port 443 that passes the probe, which a small cloud VM provides. So as `Z` grows, the cheapest
+way to earn is to add hosts in new blocks rather than to serve clients. Activation budgets limit activations
+per hour, not hosts, and the decided rule adds no minimum age or uptime threshold (E1). The options:
 
 - (S1, eligibility costs such as a minimum age or an uptime record, is removed: E1 is the active pool.)
 - **(S2) Coarser units** (*option*). A unit per origin ASN would collapse a cloud fleet spread across
@@ -1782,9 +1817,20 @@ and the decided rule adds no minimum age or uptime threshold (E1). The options:
   - Both use and capacity would be operator‑measured, like the census.
 - (S5, validator sampling of extenders, is removed: validators do not check extenders, §8.6.4.)
 
-*As decided:* E1 and E3–E5 over /29 and /48 units, with the cap M3 (`ζ = 1`). S3 stays out. ASN units (S2)
-and the weightings of S4 are later options, by signed entry (§8.6.7), if one operator's share of units keeps
-growing.
+*As decided:* E1 and E3–E5 over /29 and /48 units, with the cap M3 (`ζ = 1`), and S4's hybrid: half of `Z'`
+evenly by unit and half by the bytes each extender relayed in the epoch (owner, 2026‑11‑16, decision 17).
+S3 stays out. ASN units (S2) remain a later option, by signed entry (§8.6.7).
+
+*Why the hybrid (2026‑11‑16).* The condition this section named for it, one operator's share of units growing,
+arrived before the first signing. On 2026‑11‑16 two networks running one fork build of the miner activated
+about 3,200 extenders on cloud hosts in a day. They held 3,033 of the 3,370 units that held an active
+extender, so an even split alone would have paid them about nine tenths of every epoch's `Z'`. Over the same
+hours they carried 12–31% of the bytes credited to extenders as hop shares. Their hosts are real and relay
+real clients, so no eligibility rule removes them. Split half by unit and half by relay bytes, a fleet that
+holds units but carries little takes most of the unit half and little of the relay half, while standby reach
+is still paid. An extender's relay bytes are its own hop shares (J3), which a client's choice of extender
+decides, so they are as costly to manufacture as any funded traffic (M2) and are attested like the census
+(§8.6.4).
 
 **Manufactured traffic.** Every intra‑network and intra‑platform contract now draws on the payer network's
 data balance (owner decision), so manufacturing `Z` takes funded balance. Free and paid balance count alike,
@@ -1838,7 +1884,8 @@ is a better route for any one attacker than the funded cross‑network route tha
   `Z` only what its own data balance funded, free plan or paid, and unfunded contracts add nothing.
 - **(M3) A cap on `Z`'s weight** (owner decision). `Z` enters the allocation as at most the epoch's eligible
   provider usage (`ζ = 1`), so extenders take at most half a pool, however much is manufactured.
-- **The units.** Only spreading across /29 and /48 blocks raises a manufacturer's share.
+- **The units.** Only spreading across /29 and /48 blocks raises a manufacturer's share of the unit half;
+  the relay half follows the bytes extenders carried.
 - **E5** keeps the NO's declared fleet from collecting it.
 - **(M4) Audit.** The statement publishes `Z` split into its intra‑platform and intra‑network parts, with the
   number of contracts and of payer networks behind it. A jump, or one network driving most of `Z`, is visible
@@ -1851,6 +1898,7 @@ therefore only moves funding from providers to extenders within the pool, and M3
 
 - `Z`, and with it which contracts are intra‑platform, intra‑network, funded or measurement;
 - the active pool at `end(k)`;
+- the extenders' relay bytes;
 - the extenders' wallets;
 - its own declared networks.
 
@@ -1909,13 +1957,17 @@ an epoch whose rows were fixed without one cannot gain one (check 3). The rest r
    extender twice, carry a unit exactly when they are active, never give one unit two families, are never
    both active and revoked nor a duplicate without being active, and count each provider client at most
    once, under one coldkey. Its head flags agree with `bindingAt` at both boundaries, as in check 6.
-2. The share rows sum to `Z' = min(Z, W_k)`, with `Z` the header's `extenders.bytes` and `W_k` taken from
+2. The relay rows are well formed. Their chunk hashes match and their chunks have a chunk list's shape
+   (check 4). They are sorted by client id with none twice, each with positive relay bytes and a client that
+   has a census row.
+3. The share rows sum to `Z' = min(Z, W_k)`, with `Z` the header's `extenders.bytes` and `W_k` taken from
    the epoch's own eligible provider rows, or to 0 when `N = 0`. The usage statement must carry the same `Z`,
    which the deposit audit checks (below).
-3. The eligible set and its units are exactly the census rows that pass E1 and E3–E5 by the census's own
-   flags, grouped by their unit hashes. The share rows are the two‑level even split of `Z'` over them, and
-   each row carries the coldkey its census row names.
-4. The share rows then enter check 7's allocation like provider rows.
+4. The eligible set and its units are exactly the census rows that pass E1 and E3–E5 by the census's own
+   flags, grouped by their unit hashes. The share rows are the split of `Z'` over them: the unit part's
+   two‑level even split, and the relay part's split by the relay rows of the eligible extenders, one row per
+   extender, each carrying the coldkey its census row names.
+5. The share rows then enter check 7's allocation like provider rows.
 
 **What validators cannot check** (owner decision). Validators do not verify extenders. The directory is
 built so that no one learns every extender's address at once: tiers, partitioned directories and rationed
@@ -1926,6 +1978,7 @@ The census is therefore published as keyed prefix hashes, never addresses. Sever
 operator‑attested:
 
 - membership of the active pool;
+- the relay bytes, which rest on the operator's contract parties (J2) and usage snapshots;
 - the classification of contracts as intra‑platform, intra‑network, funded or measurement, and of their hop
   shares as an extender's, a platform endpoint's or on the origin's network;
 - the wallets;
@@ -1961,8 +2014,8 @@ chunk lists, `N` and `M` are counted from the census rows, and `Z'` is the share
 operator's attestation. Two statements for the same chunks with different totals or a different extender
 pool are equivocation, as today.
 
-**Fixed inputs.** An epoch's extender component is built once, at the first root that covers it, like its
-provider rows (§8.3). A rebuild needs the same explicit operator command, which the validator accepts only
+**Fixed inputs.** An epoch's extender component, its census and relay rows with it, is built once, at the
+first root that covers it, like its provider rows (§8.3). A rebuild needs the same explicit operator command, which the validator accepts only
 for an epoch whose component it refused.
 
 #### 8.6.5 Worked example
@@ -1982,32 +2035,38 @@ One epoch of one pool with `A = 1,000 α = 10^12 rao`:
   - `x2` is paid to coldkey `b`, which also runs providers.
   - `x4` has no wallet (E4), so it is not counted.
   - So there are `M = 2` units and `N = 3` eligible extenders.
+- **The relay rows:** in the epoch `x2` relayed 0.3 TB as an extender party (hop shares that are part of
+  `b`'s 2.5 TB) and `x3` 0.1 TB; `x1` carried nothing. So `R = 400,000,000,000`.
 
-The split runs at two levels:
+`Z'` splits into `Z_r = 500,000,000,000`, half, and `Z_u = 500,000,000,001`, the rest:
 
-- **Over units:** `z_1 = 500,000,000,001`, since `u1`, with the lower hash, takes the remainder byte; and
-  `z_2 = 500,000,000,000`.
-- **Within `u1`:** `x1` gets 250,000,000,001, taking the remainder byte as the lower client id, and `x2`
-  gets 250,000,000,000.
-- **Within `u2`:** `x3` gets 500,000,000,000.
+- **The unit part, over units:** `z_1 = 250,000,000,001`, since `u1`, with the lower hash, takes the
+  remainder byte; and `z_2 = 250,000,000,000`.
+- **Within `u1`:** `x1` gets 125,000,000,001, taking the remainder byte as the lower client id, and `x2`
+  gets 125,000,000,000. **Within `u2`:** `x3` gets 250,000,000,000.
+- **The relay part:** `x2` gets `Z_r · 0.3 / 0.4 = 375,000,000,000` and `x3` `125,000,000,000`, with no bytes
+  left over; `x1` gets none.
 
-The weights total `ΣW = 9,000,000,000,000 + 1,000,000,000,001 = 10,000,000,000,001`.
+So `x1`'s share row is 125,000,000,001 bytes, `x2`'s 500,000,000,000 and `x3`'s 375,000,000,000. The weights
+total `ΣW = 9,000,000,000,000 + 1,000,000,000,001 = 10,000,000,000,001`.
 
 | Coldkey | `W_c` (bytes) | `δ_c` (rao) | `δ_c` (α) | Today (α) |
 |---|---:|---:|---:|---:|
 | `a` | 6,000,000,000,000 | 600,000,000,000 | 600.000000000 | 638.297872340 |
-| `b` (provider and `x2`) | 2,750,000,000,000 | 275,000,000,000 | 275.000000000 | 265.957446809 |
+| `b` (provider and `x2`) | 3,000,000,000,000 | 300,000,000,000 | 300.000000000 | 265.957446809 |
 | `c` | 500,000,000,000 | 50,000,000,000 | 50.000000000 | 95.744680851 |
-| `d` (`x1`) | 250,000,000,001 | 25,000,000,000 | 25.000000000 | — |
-| `e` (`x3`) | 500,000,000,000 | 50,000,000,000 | 50.000000000 | — |
+| `d` (`x1`) | 125,000,000,001 | 12,500,000,000 | 12.500000000 | — |
+| `e` (`x3`) | 375,000,000,000 | 37,500,000,000 | 37.500000000 | — |
 | **Σ** | 10,000,000,000,001 | 1,000,000,000,000 | 1,000 | 1,000 |
 
-"Today" counts `c`'s same‑network 0.4 TB as provider usage, for a `ΣW` of 9.4 TB, and drops the
-intra‑platform bytes. Alone in its block, `x3` gets twice what `x1` and `x2` each get.
+The four rao left over after the floors go to the largest remainders, `e`'s, `c`'s, `b`'s and `a`'s; `d`'s
+is the smallest. "Today" counts `c`'s same‑network 0.4 TB as provider usage, for a `ΣW` of 9.4 TB, and drops
+the intra‑platform bytes. Alone in its block, `x3` has a unit part twice `x1`'s and `x2`'s each; `x2` and `x3`
+add relay parts in proportion to what they carried, and `x1`, which carried nothing, has its unit part alone.
 
 The leaves: `a`, `b` and `c` keep their positions and add their `δ`, and `d` and `e` become new accounts,
 appended in ascending coldkey order. Say the previous cumulatives were `a` 12.345678901 α, `b` 2 α and `c`
-0.5 α. The root's leaves are then `(a, 612.345678901)`, `(b, 277)`, `(c, 50.5)`, `(d, 25)` and `(e, 50)` α.
+0.5 α. The root's leaves are then `(a, 612.345678901)`, `(b, 302)`, `(c, 50.5)`, `(d, 12.5)` and `(e, 37.5)` α.
 Their total, 1,014.845678901 α, must equal `fundedThrough[k]` (§8.3).
 
 **At scale, from the public epoch 4 ledger.**
@@ -2039,8 +2098,9 @@ origin's network.
   have given `x` all 3,000,000,001 bytes (the contract staying whole with its extender) or none of them (the
   contract moving whole into the even split).
 - In every row, the provider usage and `z_c` sum to `b_c`. `x`'s provider row gets its three hop shares,
-  3,000,000,000 bytes. If `x` is also an eligible extender, its share row adds its unit's part of `Z'`, and
-  `Z` holds the shares of `t` and `r`, never `x`'s own.
+  3,000,000,000 bytes, which are also its relay bytes `r_x`. If `x` is also an eligible extender, its share
+  row adds its unit's part of `Z_u` and its relay part of `Z_r`, and `Z` holds the shares of `t` and `r`,
+  never `x`'s own.
 - Before `E_x`, every share is provider usage, `t`'s and `r`'s included: 7,000,000,004 bytes of provider rows,
   and no `Z`.
 
@@ -2203,7 +2263,7 @@ Epoch 9's window runs from 12‑04 18:25Z to 12‑11 18:25Z.
   validator and `snclaim`, and `cli/amendment` signs it (`mainnet/SETTLEMENT-AMENDMENTS.md`). For example:
 
   ```
-  UR settlement amendment v1: chain 964, sn 25, no 1, from epoch 8, intra-platform and intra-network extenders, units egress prefix, free and paid, zeta 1
+  UR settlement amendment v1: chain 964, sn 25, no 1, from epoch 8, intra-platform and intra-network extenders, units egress prefix, free and paid, zeta 1, half by unit half by relay bytes
   ```
 
 - **The fallback.** Configuration is used only if the signing cannot happen before epoch 8 starts: the same
@@ -2220,8 +2280,8 @@ credit it earned.
 
 #### 8.6.8 Owner decisions and open questions
 
-**Decided (owner, 2026‑11‑10, with follow‑ups at about 23:00Z, 23:10Z and 23:25Z, and Q7 on 2026‑11‑11).** The question
-numbers are those of the first draft.
+**Decided (owner, 2026‑11‑10, with follow‑ups at about 23:00Z, 23:10Z and 23:25Z, Q7 on 2026‑11‑11, and the
+split on 2026‑11‑16).** The question numbers are those of the first draft.
 
 1. **The unit (Q3).**
    - /29 IPv4 and /48 IPv6 prefix units are the base rule from `E_x`, under the granularity setting of
@@ -2292,6 +2352,17 @@ numbers are those of the first draft.
       share passes to another hop.
     - No byte is credited twice: each share of a contract goes to a provider row or to `z_c`, never both.
     - It takes effect with the amendment, from `E_x = 8`. Before `E_x` nothing changes.
+17. **Half by unit, half by relay bytes (2026‑11‑16).** The owner approved §8.6.3's S4 hybrid when two networks
+    of one fork build held 3,033 of the 3,370 units with an active extender while carrying 12–31% of the
+    extenders' hop credit:
+    - `Z_r = floor(Z' / 2)` goes to the eligible extenders in proportion to their relay bytes `r_x`, their own
+      hop shares as extender parties that stay provider usage, funded and not measurement, in `k`'s earning
+      window. The leftover bytes go to the largest remainders.
+    - `Z_u`, the rest, goes by unit as decision 1 says. With no eligible extender that relayed, all of `Z'`
+      goes by unit.
+    - The header lists the relay rows beside the census, operator‑attested like it, and validators recompute
+      the split. The extender pool's amendment line states the split ("half by unit half by relay bytes"), so
+      it is part of what the owner signs. No entry had been signed when it changed.
 
 **Still open.** Nothing: Q7, the last open question, is decision 16.
 

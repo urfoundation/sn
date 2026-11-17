@@ -24,9 +24,10 @@ type chainContextRPCRequest struct {
 	Params []json.RawMessage `json:"params"`
 }
 
-// Builds the exact map metadata needed by release schedule, weights, and
-// canonical-nonce readers. Identity hashers keep this fixture small while the
-// production code still derives each storage key from authenticated metadata.
+// Builds the exact map metadata needed by release schedule, weights, last
+// update and canonical-nonce readers. Identity hashers keep this fixture small
+// while the production code still derives each storage key from authenticated
+// metadata.
 func releaseContextStorageMetadata() *types.Metadata {
 	mapEntry := func(name string, hashers int) types.StorageEntryMetadataV14 {
 		entryHashers := make([]types.StorageHasherV10, hashers)
@@ -50,6 +51,7 @@ func releaseContextStorageMetadata() *types.Metadata {
 				Prefix: types.Text(PalletName),
 				Items: []types.StorageEntryMetadataV14{
 					mapEntry("Weights", 2),
+					mapEntry("LastUpdate", 1),
 					mapEntry("LastEpochBlock", 1),
 					mapEntry("PendingEpochAt", 1),
 					mapEntry("SubnetEpochIndex", 1),

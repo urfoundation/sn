@@ -12,6 +12,7 @@ require (
 	github.com/gorilla/websocket v1.5.3
 	github.com/holiman/uint256 v1.3.2
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/klauspost/compress v1.20.2
 	github.com/quic-go/quic-go v0.61.0
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	github.com/urnetwork/connect v0.0.0
@@ -86,7 +87,6 @@ require (
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/go-temp-err-catcher v0.1.0 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
-	github.com/klauspost/compress v1.20.2 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/klauspost/crc32 v1.3.0 // indirect
 	github.com/koron/go-ssdp v0.9.1 // indirect
@@ -127,6 +127,7 @@ require (
 	github.com/nyaruka/phonenumbers v1.6.5 // indirect
 	github.com/oasisprotocol/curve25519-voi v0.0.0-20251114093237-2ab5a27a1729 // indirect
 	github.com/oschwald/maxminddb-golang/v2 v2.4.1 // indirect
+	github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pierrec/xxHash v0.1.5 // indirect
 	github.com/pion/datachannel v1.6.2 // indirect
@@ -211,6 +212,11 @@ replace github.com/urnetwork/sdk => ../sdk
 replace github.com/pion/sctp => ../connect/sctp
 
 replace github.com/urnetwork/server => ../server
+
+// Server builds pgx from its own fork, and server main calls the fork's
+// pgxpool.Conn.ReleaseWithIdleReturn. Dependency replaces are not inherited,
+// so select the same source here, or SN cannot compile against server main.
+replace github.com/jackc/pgx/v5 => ../server/third_party/pgx
 
 // The server module also imports Warp; dependency replaces are not inherited.
 replace github.com/urnetwork/warp => ../warp

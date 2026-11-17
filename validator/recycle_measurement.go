@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"reflect"
 	"slices"
 
@@ -46,6 +47,8 @@ type OwnerRecycleMeasurementAuthority struct {
 // The signed error is a reduced RatString because it can be negative. Only a
 // treasury row whose replayed provider allocation is empty names the
 // reserve-only fallback; every other row omits it and keeps its original bytes.
+// ExcludedHeadUids names the selected head fleets a treasury row leaves out for
+// rounding to zero in u16, ascending, and is likewise absent from every other row.
 type OwnerRecycleMeasuredRow struct {
 	Uids               []uint16       `json:"uids"`
 	Scores             []RationalJSON `json:"scores"`
@@ -56,6 +59,7 @@ type OwnerRecycleMeasuredRow struct {
 	WireProviderShare  RationalJSON   `json:"wire_provider_share"`
 	ProviderShareError string         `json:"provider_share_error"`
 	Fallback           string         `json:"fallback,omitempty"`
+	ExcludedHeadUids   []uint16       `json:"excluded_head_uids,omitempty"`
 }
 
 // The reserve-only row gives every approved treasury recipient an equal share
@@ -299,7 +303,14 @@ func deriveOwnerRecycleMeasuredRow(authority *OwnerRecycleMeasurementAuthority, 
 		}
 		reserveOnly = true
 	}
-	if err := completeOwnerRecycleRow(row, artifact.Policy, verified.UIDs, verified.Scores, owners, reserveOnly); err != nil {
+	var excludedHeadUids []uint16
+	err := completeOwnerRecycleRow(row, artifact.Policy, verified.UIDs, verified.Scores, owners, reserveOnly)
+	// The selector that owns the reserve-only row owns this treasury rule too.
+	// Every row accepted above keeps its exact bytes: this runs only on a refusal.
+	if errors.Is(err, errOwnerRecycleQuantizationLoss) && treasuryReserveFallbackConfig(&authority.config) {
+		row, excludedHeadUids, err = completeTreasuryRowWithoutUnquantizableHead(row, artifact, verified, owners)
+	}
+	if err != nil {
 		return empty, err
 	}
 	if len(row.Uids) < int(authority.observation.MinimumAllowedWeights) {
@@ -321,7 +332,89 @@ func deriveOwnerRecycleMeasuredRow(authority *OwnerRecycleMeasurementAuthority, 
 	if reserveOnly {
 		result.Fallback = TreasuryReserveOnlyFallback
 	}
+	result.ExcludedHeadUids = excludedHeadUids
 	return result, nil
+}
+
+// A bound fleet with no hops keeps its seat while its EMA decays by 3/4 a tempo
+// and never reaches zero, so its share falls below half a wire unit. Refusing
+// would stop steering for every fleet and pool, so the row keeps the longest
+// rank prefix of the selected head that loses nobody, and names who is left out.
+// The head channel keeps its exact share, which moves to the fleets still in it;
+// seats, EMA and the head result are untouched. A lost pool, or a top fleet that
+// is lost alone and with it the whole channel, still refuses.
+//
+// Each prefix is rebuilt as the measurement built its provider row: by theta,
+// or from E_c by capture the flag's shares with its CTF channel
+// (assembleReleaseMeasurement). No head fleet moves the pool or CTF share, and
+// a CTF pool that rounds to zero is a lost pool.
+//
+// Leaving a fleet out never lowers another fleet's wire value, so whether a
+// prefix loses a fleet is monotonic and a binary search keeps the rebuilds few
+// however many fleets are idle. Every prefix kept passed the shared arithmetic.
+func completeTreasuryRowWithoutUnquantizableHead(refused *OwnerRecyclePreview, artifact *ReleaseMeasurementArtifact, verified *VerifiedReleaseMeasurement, owners map[uint16]bool) (*OwnerRecyclePreview, []uint16, error) {
+	pools := make([]ExactWeightInput, 0, len(verified.Pools))
+	for _, pool := range verified.Pools {
+		pools = append(pools, ExactWeightInput{UID: pool.UID, Score: pool.Score})
+	}
+	masked := make(map[uint16]bool, len(verified.MaskedUIDs))
+	for _, uid := range verified.MaskedUIDs {
+		masked[uid] = true
+	}
+	ctf, err := verifiedReleaseCaptureTheFlag(artifact)
+	if err != nil {
+		return nil, nil, err
+	}
+	providerRow := func(head []ExactWeightInput) ([]uint16, []*big.Rat, error) {
+		if ctf != nil {
+			return BuildWeightVectorCtf(pools, verified.Ctf, head, ctf.shares, masked)
+		}
+		return BuildWeightVectorExact(pools, head, artifact.Policy.Steering.Theta, masked)
+	}
+	seated := verified.SelectedHead
+	uids, scores, err := providerRow(seated)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !slices.Equal(uids, verified.UIDs) || !slices.EqualFunc(scores, verified.Scores, func(a, b *big.Rat) bool { return a.Cmp(b) == 0 }) {
+		return nil, nil, errors.New("treasury row's pool and head projections do not reproduce its provider row")
+	}
+	build := func(seats int) (*OwnerRecyclePreview, error) {
+		uids, scores, err := providerRow(seated[:seats])
+		if err != nil {
+			return nil, err
+		}
+		row := &OwnerRecyclePreview{ProposalHash: refused.ProposalHash, FinalizedHash: refused.FinalizedHash, OwnerUids: refused.OwnerUids, MaskedOwnerUids: refused.MaskedOwnerUids}
+		return row, completeOwnerRecycleRow(row, artifact.Policy, uids, scores, owners, false)
+	}
+	// SelectedHead is in rank order. The top unmasked fleet must keep the channel.
+	kept := slices.IndexFunc(seated, func(fleet ExactWeightInput) bool { return !masked[fleet.UID] }) + 1
+	if kept == 0 {
+		return nil, nil, errOwnerRecycleQuantizationLoss
+	}
+	row, err := build(kept)
+	if err != nil {
+		return nil, nil, err
+	}
+	for lost := len(seated); lost-kept > 1; {
+		seats := kept + (lost-kept)/2
+		candidate, err := build(seats)
+		if errors.Is(err, errOwnerRecycleQuantizationLoss) {
+			lost = seats
+		} else if err != nil {
+			return nil, nil, err
+		} else {
+			row, kept = candidate, seats
+		}
+	}
+	var excludedUids []uint16
+	for _, fleet := range seated[kept:] {
+		if !masked[fleet.UID] {
+			excludedUids = append(excludedUids, fleet.UID)
+		}
+	}
+	slices.Sort(excludedUids)
+	return row, excludedUids, nil
 }
 
 // The verified measurement's own pool, selected-head and mask projections must

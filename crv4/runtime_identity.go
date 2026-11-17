@@ -37,6 +37,19 @@ type RuntimeArtifactIdentity struct {
 	MetadataHash string
 }
 
+// Refuses a block whose runtime version no allowed artifact names, as after an
+// upgrade nothing reviewed covers yet. A caller tells it from a failed read with
+// errors.As; the text is unchanged from the plain error it replaces.
+type UnreviewedRuntimeError struct {
+	BlockHash types.Hash
+	Version   RuntimeVersionIdentity
+}
+
+// Keeps the plain error's exact text, which callers and tests match.
+func (self *UnreviewedRuntimeError) Error() string {
+	return fmt.Sprintf("runtime at %s has unreviewed identity %s/%d/%d/%d", self.BlockHash.Hex(), self.Version.SpecName, self.Version.SpecVersion, self.Version.TransactionVersion, self.Version.StateVersion)
+}
+
 // Carries metadata selected only after the requested block matched one exact
 // allowed version and :code hash. Each connection fetches and hashes the large
 // bytes once per exact artifact.
@@ -514,7 +527,7 @@ func AuthenticateRuntimeArtifactAtContext(ctx context.Context, chain *Chain, blo
 			return result, err
 		}
 		if successor == nil {
-			return result, fmt.Errorf("runtime at %s has unreviewed identity %s/%d/%d/%d", blockHash.Hex(), version.SpecName, version.SpecVersion, version.TransactionVersion, version.StateVersion)
+			return result, &UnreviewedRuntimeError{BlockHash: blockHash, Version: version}
 		}
 		admitted := successor.artifact
 		selectedIdentity = &admitted

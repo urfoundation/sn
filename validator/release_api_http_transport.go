@@ -41,6 +41,34 @@ func newReleaseAPIHTTPTransport() *http.Transport {
 	})
 }
 
+// Uploads into the api go over HTTP/1.1. On 2026-11-16 the path into the api's
+// site lost packets at about 90 ms RTT (the den1 to sjc2 to fmt2 Hurricane
+// Electric segment), and uploads measured about 100 KB/s over HTTP/2 against
+// 275 to 850 KB/s over HTTP/1.1. The load balancer's HTTP/2 window was not the
+// limit: it takes a buffered upload body without flow control (nginx opens the
+// stream window to its maximum). Over HTTP/1.1 TCP alone paces each upload on
+// its own connection. Reads keep HTTP/2. Shared like the read transport, so an
+// origin's idle upload connections stay pooled across owners.
+var releaseApiUploadHttpTransport = newReleaseApiUploadHttpTransport(DefaultAttemptUploadSettings())
+
+// The shared transport's proxy, dial and TLS settings with HTTP/1.1 only, and
+// the upload settings' pool and write buffer.
+func newReleaseApiUploadHttpTransport(settings AttemptUploadSettings) *http.Transport {
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	return &http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: releaseAPIHTTPDialTimeout, KeepAlive: releaseAPIHTTPKeepAlive}).DialContext,
+		Protocols:             protocols,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   settings.IdleConnsPerHost,
+		IdleConnTimeout:       settings.IdleConnTimeout,
+		TLSHandshakeTimeout:   releaseAPIHTTPTLSHandshakeTimeout,
+		ExpectContinueTimeout: 1 * time.Second,
+		WriteBufferSize:       settings.WriteBufferBytes,
+	}
+}
+
 // Adds the health check to a transport before its first request, keeping any
 // other HTTP/2 settings it already carries.
 func withReleaseAPIHTTP2Health(transport *http.Transport) *http.Transport {

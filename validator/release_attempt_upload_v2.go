@@ -5,7 +5,31 @@ package validator
 import (
 	"context"
 	"errors"
+	"math/rand/v2"
+	"net/http"
+	"time"
 )
+
+// One origin is many API instances behind its load balancer, and each instance
+// keeps its own reserved upload lane and authority cache. An instance whose lane
+// did not start or whose refresh failed can refuse an upload its siblings accept.
+// A new request can reach a sibling. The bound keeps a refusal from every
+// instance what it was: a hard failure after a few seconds, not a wait.
+const (
+	releaseReservedUploadRefusalAttempts = 4
+	releaseReservedUploadRefusalDelay    = time.Second
+)
+
+// An upload a lossy or briefly unavailable path cut short is sent again: its
+// own deadline, a transport failure, or an answer of 408, 425, 429 or 5xx from
+// the api or its load balancer. Objects are content-addressed and the api
+// stores them put-if-absent, so a repeat is safe. Before repeating, the origin
+// is asked whether the object is already stored, which a lost acknowledgement
+// leaves behind. Waits grow exponentially with jitter, honor a Retry-After up
+// to the cap, and end with the caller; the writer's AttemptUploadSettings hold
+// the bounds. Any other answer keeps its verdict at once. On 2026-11-16 each
+// cut-off upload instead failed its whole seal, and the steering loop started
+// the seal over.
 
 // Immutable routing and limits are safe for concurrent operations. The session
 // owner cancels on logout, failed token persistence or runtime shutdown; each
@@ -18,6 +42,10 @@ type releaseAttemptUploadV2 struct {
 	bounds             AttemptCutV2Bounds
 	maxTransitionBytes uint64
 	writer             *HTTPAttemptStreamV2Writer
+	// the wait between retries of a refused or cut-short upload; nil is the real one
+	refusalWait releaseSnapshotRetryWait
+	// a uniform draw in [0, n); nil is math/rand/v2's
+	jitter func(n int64) int64
 }
 
 // Admission does not fetch a credential or perform network I/O. The getter is
@@ -94,5 +122,148 @@ func (self *releaseAttemptUploadV2) writeWithSigner(ctx context.Context, kind, h
 		resultErr = errors.Join(resultErr, ctx.Err(), self.ctx.Err())
 		cancel()
 	}()
-	return self.writer.write(operationCtx, kind, hash, raw, signer)
+	wait := self.refusalWait
+	if wait == nil {
+		wait = waitReleaseSnapshotRetry
+	}
+	refusals, failures := uint64(0), uint64(0)
+	for {
+		err := self.writer.write(operationCtx, kind, hash, raw, signer)
+		if err == nil || operationCtx.Err() != nil {
+			return err
+		}
+		var delay time.Duration
+		switch {
+		case signer != nil && releaseUploadForbidden(err):
+			refusals++
+			if refusals >= releaseReservedUploadRefusalAttempts {
+				return err
+			}
+			releaseDiagnostic(operationCtx, "operator", "publication_unavailable_retrying", 0, false, refusals, releaseDiagnosticFacts{cause: releaseDiagnosticUnavailable, operatorId: self.noID, operatorKnown: true})
+			delay = releaseReservedUploadRefusalDelay
+		case releaseAttemptUploadTransient(err):
+			failures++
+			if failures >= uint64(max(self.writer.settings.Attempts, 1)) {
+				return err
+			}
+			cause := releaseDiagnosticUnavailable
+			if releaseUploadStatus(err) == nil {
+				cause = releaseDiagnosticReadCause(err)
+			}
+			releaseDiagnostic(operationCtx, "operator", "publication_unavailable_retrying", 0, false, failures, releaseDiagnosticFacts{cause: cause, operatorId: self.noID, operatorKnown: true})
+			// A lost acknowledgement leaves the stored object behind.
+			if self.landed(operationCtx, kind, hash, len(raw)) {
+				return nil
+			}
+			delay = self.backoff(failures, err)
+		default:
+			return err
+		}
+		// An interrupted retry has no verdict yet, so the refusal is not its answer.
+		if err := wait(operationCtx, delay); err != nil {
+			return err
+		}
+	}
+}
+
+// A ceiling that doubles from the base up to the cap, and a wait drawn
+// uniformly from its upper half: spaced enough for a path to recover, spread
+// so validators that lost the same path do not return at once. A longer
+// Retry-After the answer carried is honored, up to the cap.
+func (self *releaseAttemptUploadV2) backoff(failures uint64, err error) time.Duration {
+	jitter := self.jitter
+	if jitter == nil {
+		jitter = rand.Int64N
+	}
+	settings := self.writer.settings
+	ceiling := max(min(settings.BackoffBase<<min(failures-1, 8), settings.BackoffCap), 2)
+	delay := ceiling/2 + time.Duration(jitter(int64(ceiling-ceiling/2)))
+	if status := releaseUploadStatus(err); status != nil {
+		delay = max(delay, status.retryAfter)
+	}
+	return min(delay, max(settings.BackoffCap, ceiling))
+}
+
+// Whether the object is already stored at this origin. Its head answers with
+// the typed content and exact length at its content address; an api with no
+// head of objects (before 2026-11) answers the same in a GET's head, whose body
+// is left unread. The publisher reads every object back in full once its
+// write returns. Absence or any failure says nothing, and the object goes again.
+func (self *releaseAttemptUploadV2) landed(ctx context.Context, kind, hash string, size int) bool {
+	writer := self.writer
+	probe, cancel := context.WithTimeout(ctx, writer.settings.ProbeTimeout)
+	defer cancel()
+	switch writer.head(probe, kind, hash, size) {
+	case attemptObjectStored:
+		return true
+	case attemptObjectAbsent:
+		return false
+	}
+	limit := writer.metadataBytes
+	switch kind {
+	case AttemptStreamV2Records:
+		limit = writer.recordBytes
+	case AttemptStreamV2Proofs:
+		limit = writer.proofBytes
+	}
+	reader := &HTTPAttemptStreamV2Reader{endpoint: writer.endpoint, metadataBytes: writer.metadataBytes, recordBytes: writer.recordBytes, proofBytes: writer.proofBytes, client: writer.client}
+	body, err := reader.open(probe, kind, hash, uint64(size), limit)
+	if err != nil {
+		return false
+	}
+	// The body is left unread on purpose; its incomplete close is no answer.
+	_ = body.Close()
+	return true
+}
+
+// The answers of a path that lost the upload rather than refused it: the
+// owner's own deadline, a transport failure, or 408, 425, 429 or 5xx. A 400,
+// 401, 403, 413 or a malformed acknowledgement keeps its verdict.
+func releaseAttemptUploadTransient(err error) bool {
+	if status := releaseUploadStatus(err); status != nil {
+		return status.status == http.StatusRequestTimeout || status.status == http.StatusTooEarly || status.status == http.StatusTooManyRequests || status.status >= 500 && status.status <= 599
+	}
+	return RetryableEvidenceTransportError(err)
+}
+
+// One upload's status answer, alone or joined only with nothing else.
+func releaseUploadStatus(err error) *attemptStreamHttpStatusError {
+	for range 16 {
+		switch cause := err.(type) {
+		case *attemptStreamHttpStatusError:
+			if cause.upload {
+				return cause
+			}
+			return nil
+		case interface{ Unwrap() []error }:
+			causes := cause.Unwrap()
+			if len(causes) != 1 {
+				return nil
+			}
+			err = causes[0]
+		default:
+			return nil
+		}
+	}
+	return nil
+}
+
+// One upload's plain 403 and nothing else. The status alone decides, never the
+// answer's text, and a joined close failure or cancellation keeps its own verdict.
+func releaseUploadForbidden(err error) bool {
+	for range 16 {
+		switch cause := err.(type) {
+		case *attemptStreamHttpStatusError:
+			return cause.upload && cause.status == http.StatusForbidden
+		case interface{ Unwrap() []error }:
+			causes := cause.Unwrap()
+			if len(causes) != 1 {
+				return false
+			}
+			err = causes[0]
+		default:
+			return false
+		}
+	}
+	return false
 }

@@ -56,6 +56,7 @@ type settlementV2ExtendersRecord struct {
 	Epoch  uint64   `json:"epoch"`
 	Bytes  string   `json:"bytes"`
 	Census []string `json:"census"`
+	Relay  []string `json:"relay"`
 	Rows   []string `json:"rows"`
 }
 
@@ -233,7 +234,7 @@ func (self *settlementV2Custody) ValidExtenders(ctx context.Context, noID, epoch
 	if !ok {
 		return nil, false, err
 	}
-	if record.Schema != settlementV2CustodySchema || record.NoID != noID || record.Epoch != epoch || record.Census == nil || record.Rows == nil {
+	if record.Schema != settlementV2CustodySchema || record.NoID != noID || record.Epoch != epoch || record.Census == nil || record.Relay == nil || record.Rows == nil {
 		return nil, false, fmt.Errorf("settlement v2 custody %s is not pool %d epoch %d's extender component", path, noID, epoch)
 	}
 	component := &ledger.HeaderExtenders{}
@@ -243,7 +244,7 @@ func (self *settlementV2Custody) ValidExtenders(ctx context.Context, noID, epoch
 	for _, list := range []struct {
 		from []string
 		to   *[]ledger.Ref
-	}{{record.Census, &component.Census}, {record.Rows, &component.Rows}} {
+	}{{record.Census, &component.Census}, {record.Relay, &component.Relay}, {record.Rows, &component.Rows}} {
 		*list.to = make([]ledger.Ref, len(list.from))
 		for i, text := range list.from {
 			if (*list.to)[i], err = ledger.ParseRef(text); err != nil {
@@ -257,9 +258,12 @@ func (self *settlementV2Custody) ValidExtenders(ctx context.Context, noID, epoch
 // Records the epoch's extender component as valid.
 func (self *settlementV2Custody) KeepValidExtenders(ctx context.Context, noID, epoch uint64, component *ledger.HeaderExtenders) error {
 	record := settlementV2ExtendersRecord{Schema: settlementV2CustodySchema, NoID: noID, Epoch: epoch, Bytes: strconv.FormatUint(component.Bytes, 10),
-		Census: make([]string, len(component.Census)), Rows: make([]string, len(component.Rows))}
+		Census: make([]string, len(component.Census)), Relay: make([]string, len(component.Relay)), Rows: make([]string, len(component.Rows))}
 	for i, ref := range component.Census {
 		record.Census[i] = ref.String()
+	}
+	for i, ref := range component.Relay {
+		record.Relay[i] = ref.String()
 	}
 	for i, ref := range component.Rows {
 		record.Rows[i] = ref.String()
