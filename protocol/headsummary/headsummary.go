@@ -47,6 +47,9 @@ const (
 	// These are v2 wire limits, shared by its publisher and strict decoder.
 	MaxEvidenceCuts     = 4096
 	MaxEvidenceBindings = 65536
+	// MaxCensusProviders bounds census_providers. A validator's census is far
+	// smaller (max_providers is 4,096 on mainnet); this only refuses nonsense.
+	MaxCensusProviders = 1 << 32
 )
 
 // Summary is the envelope. Its fields are in canonical order; see the spec
@@ -69,16 +72,28 @@ type Summary struct {
 	EvidenceOperators               []uint64         `json:"evidence_operators,omitempty"`
 	EvidenceCuts                    []EvidenceCut    `json:"evidence_cuts,omitempty"`
 	EvidencePolicy                  *protocol.Policy `json:"evidence_policy,omitempty"`
-	ValidatorHotkey                 string           `json:"validator_hotkey"`
-	ValidatorUID                    uint16           `json:"validator_uid"`
-	MaximumHeadFleets               uint16           `json:"maximum_head_fleets"`
-	Entries                         []Entry          `json:"entries"`
-	SelectedUIDs                    []uint16         `json:"selected_uids"`
-	RejectedUIDs                    []uint16         `json:"rejected_uids"`
-	SignedAt                        string           `json:"signed_at"`
-	SignatureScheme                 string           `json:"signature_scheme"`
-	SigningHash                     string           `json:"signing_hash"`
-	Signature                       string           `json:"signature"`
+	// CensusProviders is the recipient operator's measurement census at this
+	// intent: the providers in its raw statistics (the settlement window, every
+	// carried quality and this tempo's egress), the set the validator bounds by
+	// its signed max_providers. Version 2 only; validators before
+	// VERIFY-COHORT-V2.md omit it, and an operator reads the omission as "the
+	// validator's census is unknown".
+	CensusProviders *uint64 `json:"census_providers,omitempty"`
+	// BoundClientsObserved counts the recipient cut's bindings whose client
+	// served at least one verified trail hop this tempo: an egress hash in the
+	// recipient's statistics. Version 2 only, never without census_providers,
+	// and at most the cut's bindings.
+	BoundClientsObserved *uint64  `json:"bound_clients_observed,omitempty"`
+	ValidatorHotkey      string   `json:"validator_hotkey"`
+	ValidatorUID         uint16   `json:"validator_uid"`
+	MaximumHeadFleets    uint16   `json:"maximum_head_fleets"`
+	Entries              []Entry  `json:"entries"`
+	SelectedUIDs         []uint16 `json:"selected_uids"`
+	RejectedUIDs         []uint16 `json:"rejected_uids"`
+	SignedAt             string   `json:"signed_at"`
+	SignatureScheme      string   `json:"signature_scheme"`
+	SigningHash          string   `json:"signing_hash"`
+	Signature            string   `json:"signature"`
 }
 
 // Entry is one eligible head UID.

@@ -73,3 +73,42 @@ func headSummaryEvidence(artifact *ReleaseMeasurementArtifact) ([]headsummary.Ev
 	}
 	return cuts, nil
 }
+
+// One operator's census and bound-client coverage at an intent
+// (VERIFY-COHORT-V2.md §2.1, §5.3).
+type headSummaryCensus struct {
+	// providers in the operator's raw statistics: its settlement window,
+	// every carried quality and this tempo's egress, the set max_providers bounds
+	providers uint64
+	// the operator cut's eligible bindings whose client has an egress hash in
+	// those statistics, i.e. served a verified trail hop this tempo
+	observed uint64
+}
+
+// Counts each operator's census from the same verified measurement the cuts
+// come from. The operator bounds its verify cohort by this number, so it is
+// the exact raw census, never an estimate.
+func headSummaryCensusByOperator(artifact *ReleaseMeasurementArtifact, cuts []headsummary.EvidenceCut) map[uint64]headSummaryCensus {
+	census := make(map[uint64]headSummaryCensus, len(artifact.Inputs))
+	for _, input := range artifact.Inputs {
+		served := make(map[string]bool, len(input.Stats.Providers))
+		for _, provider := range input.Stats.Providers {
+			if 0 < len(provider.EgressIPHashHexes) {
+				served[provider.ClientID] = true
+			}
+		}
+		value := headSummaryCensus{providers: uint64(len(input.Stats.Providers))}
+		for _, cut := range cuts {
+			if cut.NoId != input.NoID {
+				continue
+			}
+			for _, binding := range cut.Bindings {
+				if served[binding.ClientId] {
+					value.observed++
+				}
+			}
+		}
+		census[input.NoID] = value
+	}
+	return census
+}

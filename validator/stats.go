@@ -480,6 +480,40 @@ func (self *StatsEngine) requireLegacyAttemptStats() error {
 // foldWithLock advances the quality EMA and clears one settlement window. The
 // caller must hold the engine state lock.
 func (self *StatsEngine) foldWithLock() {
+	self.foldWithLockRule(false)
+}
+
+// statsWindowMeasured is true when any provider had an assignment in the
+// window: the validator measured during it.
+func statsWindowMeasured(window map[connect.Id]*ProviderWindow) bool {
+	for _, w := range window {
+		if w != nil && 0 < w.Assignments {
+			return true
+		}
+	}
+	return false
+}
+
+// foldWithLockRule is foldWithLock, retiring idle priors when retireIdle is
+// set (rule R1, VERIFY-COHORT-V2.md §2.1): a provider whose quality was carried
+// into the window and that had no assignment in it leaves with its exact and
+// reporting EMAs, unless nobody had an assignment in the window. Providers with
+// 1 to a_min-1 assignments still carry their EMA untouched. Only the compact
+// settlement fold retires; legacy folds keep every prior.
+func (self *StatsEngine) foldWithLockRule(retireIdle bool) {
+	if retireIdle && statsWindowMeasured(self.window) {
+		for id := range self.emaPPM {
+			if w := self.window[id]; w == nil || w.Assignments == 0 {
+				delete(self.emaPPM, id)
+				delete(self.ema, id)
+			}
+		}
+		for id := range self.ema {
+			if w := self.window[id]; w == nil || w.Assignments == 0 {
+				delete(self.ema, id)
+			}
+		}
+	}
 	for id, w := range self.window {
 		if w.Assignments < self.cfg.AMin {
 			continue

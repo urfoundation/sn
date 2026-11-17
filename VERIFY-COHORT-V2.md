@@ -1,8 +1,30 @@
 # Verify cohort v2: retire idle members, admit by rank
 
-**Status:** proposed, 2026-11-17, for the owner's review. Nothing here is built or
-live. On 2026-11-17 ~19:45Z the owner chose "durable fix only": no stopgap
-admissions and no limit raise in the meantime.
+**Status:** approved 2026-11-17 ~20:15Z ("Approve, ride 11-27"): the
+recommendations of §9 items 1-8 and 12, built on branches for the validator
+release before 2026-11-27 18:28Z. Not live. Items 9 (UID 210), 10 (the seven
+fleets) and 11 (board precision) stay open. On 2026-11-17 ~19:45Z the owner chose
+"durable fix only": no stopgap admissions and no limit raise in the meantime.
+
+**Built differently from the proposal:**
+- **No lineage monotonicity.** §2.1 proposed refusing a keep-all fold after an
+  R1 fold in the same lineage. That would also refuse the planned rollback target
+  (§2.3), which produces keep-all folds again, so the verifier accepts either
+  fold for every transition. A validator that stops retiring is caught by the
+  census interlock (§2.5), not by the verifier.
+- **The census field is an optional v2 member, not a schema step.** The head
+  summary carries `census_providers` and, for the coverage metric (§5.3),
+  `bound_clients_observed`: how many of the recipient cut's eligible bindings
+  served a verified hop that tempo. The ratio to the cut's bindings is the
+  claimed-fleet coverage (`docs/spec/head-summary-v2.md`).
+- **The server's rule, exactly** (server `model/verify_cohort_rolling.go`,
+  `COHORT-ROTATION.md`):
+  - A member expires once some server epoch `w` with an assignment lies in
+    `[max(last + 2, E0), v* − 1]`, where `E0` is the first window the validator
+    folded with R1. §2.4's `v* ≥ last + 3` is that rule's most common case.
+  - The start of the rolling census is recorded once in Postgres
+    (`verify_cohort_state`), since head summaries are kept only 7 days.
+  - The interlock counts admissions since the validator's last two reports.
 
 **Sources:** sn `39aecf4f`, server `eb946dd84`. Production figures are read-only
 reads of the operator's database and of Finney on 2026-11-17, with the board
@@ -134,9 +156,8 @@ Everything else is today's rule:
   - the keep-all fold, which every transition before the release has;
   - the R1 fold.
 
-  Any other subset is refused, and so is a keep-all fold with idle priors after
-  an R1 fold in the same lineage, so retirement is monotone
-  (`validator/attempt_transition_v2_verify.go:276-330`). The provisional startup
+  Any other subset is refused (`validator/attempt_transition_v2_verify.go:276-330`).
+  As built there is no lineage monotonicity (see Status). The provisional startup
   reuse check does the same (`validator/provisional_startup_reuse_v2.go:41`).
 - `attemptSettlementV2Postimage` applies R1 to the engine's fold when the
   terminal's post-fold is the R1 fold, so the journal's `stats.json` postimage
@@ -156,9 +177,10 @@ Everything else is today's rule:
   it expected to retire.
 - **The census count is published.** The per-tempo head summary gains an optional
   `census_providers`, the provider count of the tempo's raw measurement: the
-  union above, so the census exactly (`validator/head_summary_upload.go`, a
-  `protocol/headsummary` schema step). The server uses it as a safety interlock
-  (§2.5) and for monitoring. A summary without it reads as "retirement unknown".
+  union above, so the census exactly (`validator/head_summary_upload.go`, an
+  optional v2 member in `protocol/headsummary`). The server uses it as a safety
+  interlock (§2.5) and for monitoring. A summary without it reads as "retirement
+  unknown".
 
 **What it bounds.** With R1, while the validator measures, its census in window
 `v` is contained in the providers assigned in windows `v − 1` and `v`. Egress
@@ -434,8 +456,8 @@ Both orders are safe. Server first is better, because it is inert until the
 validator's summaries carry a census count, so room appears by itself at the
 first R1 fold.
 
-1. **sn:** R1, the two-way verifier and monotonicity, the summary's
-   `census_providers`, `VALIDATOR.md` §11.1, and tests (§5.4). Merge to main.
+1. **sn:** R1, the two-way verifier, the summary's `census_providers` and
+   `bound_clients_observed`, `VALIDATOR.md` §11.1, and tests (§5.4). Merge to main.
 2. **server:**
    - the rolling set, expiry, tier B, headroom and the interlock;
    - the `last_epoch` migration and its monitor migration contract;
@@ -509,26 +531,40 @@ to run.
 All deterministic, with injected clocks and fixtures. Root-cause tests fail on
 today's main.
 
-**sn** (pure Go):
-1. *Root cause:* `TestFoldRetiresPriorAfterIdleSettlementWindow`. A prior with no
-   assignment in a non-empty window leaves the post-fold and the census. On main
-   it stays forever.
-2. `TestFoldKeepsSparseAndScoredProviders`: 1 to `a_min − 1` assignments carry
-   the EMA untouched; `a_min` or more fold at α.
-3. `TestFoldWithEmptyWindowRetiresNothing`, with `Q_n > 0` after it.
-4. `TestPostFoldVerifierAcceptsKeepAllOrR1Only`: every other subset is refused.
-5. `TestR1LineageIsMonotone`.
-6. `TestReturningProviderStartsWithoutPrior`.
-7. `TestPostimageMatchesR1Fold`: `ema` and `emaPPM` key sets are equal, and the
-   journal bytes match.
-8. `TestStartupReplayAcceptsMixedHistory`: keep-all folds, then R1 folds.
-9. `TestValidatorCensusWithinRollingCount`, a fixed-seed simulation. It drives
-   the real fold with windows skewed either way across boundaries, models the
-   server's rule from §2.4, and asserts the census is always within the rolling
-   count, or within `2L` under the guard's edge.
-10. `TestPoolQualityAfterRetirement`.
-11. `TestHeadSummaryCarriesCensusCount`: encode, decode and signature, with old
-    summaries still accepted.
+**sn**, as built (pure Go; the real-trail tests use genuine M8 trails, signed
+disk records and the real commit path, with no database):
+1. *Root cause:* `TestAttemptSettlementRuntimeV2RetiresIdlePriorAcrossRealWindows`.
+   Window 42 scores seven providers of each of two operators. In window 43
+   operator 9 measures six of them and one new provider, and operator 11 measures
+   nobody. Then:
+   - the idle provider leaves operator 9's signed post-fold and engine;
+   - the sparse priors carry unchanged;
+   - operator 11 keeps every prior;
+   - the commit postimage, the journal, an independent replay, the lineage
+     verifier and a restart all agree.
+
+   On main the idle provider stays.
+2. `TestAttemptSettlementV2RetiresIdlePriorsAfterMeasuredWindow`: the producer
+   retires idle priors and keeps a sparse one; a re-signed keep-all post-fold
+   verifies; a partial one is refused.
+3. `TestFoldRetiresPriorAfterIdleSettlementWindow`: the engine fold. An idle prior
+   leaves with both EMAs, a sparse one carries, a scored one folds, a new one
+   enters, and the legacy fold keeps all.
+4. `TestFoldWithEmptyWindowRetiresNothing`, with `Q_n > 0` after it. The existing
+   `TestAttemptSettlementV2EmptySignedWindowRetainsIdleAndZeroPriors` and
+   `TestAttemptSettlementRuntimeV2EmptySuccessorPreservesRealPrior` pin the same
+   at the closure and runtime levels.
+5. `TestPostFoldVerifierAcceptsKeepAllOrR1Only`: the verifier and the engine's
+   fold matcher accept exactly the R1 or keep-all fold.
+6. `TestValidatorCensusWithinRollingCount`: a fixed-seed simulation over 40
+   windows with assignments labelled one epoch early or late near boundaries.
+   Every census member was assigned within the server's last three epochs, and
+   the census never exceeds two windows.
+7. `TestRetiredPriorLeavesProviderIDs`.
+8. `TestHeadSummaryCarriesCensusCount`: each operator's envelope carries its own
+   census and coverage.
+9. `protocol/headsummary`: `TestCensusSummarySignsCensusAndCoverage`,
+   `TestCensusSummaryAbsentFromOlderEnvelopes`, `TestCensusSummaryRejectsInvalidCensus`.
 
 **server**, pure:
 1. `TestRollingCensusExpiryHorizon`: expiry at `v* ≥ last + 3` and not before;

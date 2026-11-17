@@ -64,6 +64,9 @@ type headSummaryJob struct {
 	evidenceOperators                                        []uint64
 	evidenceCuts                                             []headsummary.EvidenceCut
 	evidencePolicy                                           *protocol.Policy
+	// every operator's census, and the one scoped to this envelope's recipient
+	evidenceCensus map[uint64]headSummaryCensus
+	census         *headSummaryCensus
 }
 
 // headSummaryUpload is one signed summary queued for one operator.
@@ -265,6 +268,7 @@ func (self *headSummaryUploader) offer(intent *SteeringIntent, artifact *Release
 			job.evidenceEmptyPrior = job.evidenceEmptyPrior && !record.HasPrior
 		}
 		job.evidenceCuts = cuts
+		job.evidenceCensus = headSummaryCensusByOperator(artifact, cuts)
 		job.evidencePolicy = cloneReleasePolicy(&artifact.Policy)
 		job.evidenceOperators = make([]uint64, len(cuts))
 		for index, cut := range cuts {
@@ -330,6 +334,11 @@ func (self *headSummaryUploader) runBuilder() {
 					scoped.evidenceCuts = job.evidenceCuts[index : index+1]
 					break
 				}
+			}
+			// a recipient reads only its own census
+			scoped.evidenceCensus, scoped.census = nil, nil
+			if census, ok := job.evidenceCensus[target.noID]; ok {
+				scoped.census = &census
 			}
 			publish(scoped, []*headSummaryTarget{target})
 		}
@@ -415,8 +424,15 @@ func newHeadSummary(job headSummaryJob, hotkey [32]byte, policyID uint64, maximu
 		return values
 	}
 	schema := headsummary.Schema
+	var censusProviders, boundClientsObserved *uint64
 	if job.evidencePolicy != nil {
 		schema = headsummary.SchemaV2
+		// the recipient's own census bounds its verify cohort
+		// (VERIFY-COHORT-V2.md §2.4-2.5)
+		if job.census != nil {
+			providers, observed := job.census.providers, job.census.observed
+			censusProviders, boundClientsObserved = &providers, &observed
+		}
 	}
 	return &headsummary.Summary{
 		Schema: schema, Netuid: job.netuid, NativeEpoch: job.nativeEpoch,
@@ -425,6 +441,7 @@ func newHeadSummary(job headSummaryJob, hotkey [32]byte, policyID uint64, maximu
 		PolicyID: policyID, PolicyHash: strings.ToLower(job.policyHash), MeasurementArtifactHash: job.measurementArtifactHash,
 		PreviousMeasurementArtifactHash: job.previousMeasurementArtifactHash, EvidenceEmptyPrior: job.evidenceEmptyPrior, EvidenceCuts: job.evidenceCuts, EvidencePolicy: job.evidencePolicy,
 		EvidenceRecipient: job.evidenceRecipient, EvidenceOperators: job.evidenceOperators,
+		CensusProviders: censusProviders, BoundClientsObserved: boundClientsObserved,
 		ValidatorHotkey: headsummary.Hex32(hotkey), ValidatorUID: job.selfUID, MaximumHeadFleets: maximum,
 		Entries: entries, SelectedUIDs: nonNil(job.selected), RejectedUIDs: nonNil(job.rejected),
 	}, nil

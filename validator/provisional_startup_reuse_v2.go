@@ -38,7 +38,7 @@ func admitProvisionalRetainedSettlementV2(ctx context.Context, closure *AttemptS
 		if err != nil {
 			return nil, err
 		}
-		if !slices.Equal(attemptSettlementV2Qualities(projection.verified), transition.PostFold) {
+		if !attemptSettlementV2PostFoldAccepted(projection.verified, transition.PostFold) {
 			return nil, errors.New("retained compact settlement post-fold differs from its signed statistics")
 		}
 	}
