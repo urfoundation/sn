@@ -44,6 +44,20 @@ and UID current, and its client key equal to the measured client's observed
 key. The keys and their private observation inputs are not included. Live
 eligible identities with no completed hop remain in this census.
 
+Two optional members follow `evidence_policy`, in order. Validators from
+`VERIFY-COHORT-V2.md` on send both. Earlier validators send neither, and their
+envelopes encode and verify exactly as before.
+
+| Member | Type | Meaning |
+|---|---|---|
+| `census_providers` | u64, omitted when unknown | The recipient operator's measurement census at this intent: every provider in its raw statistics (the settlement window, every carried quality and this tempo's egress), the set the validator bounds by its signed `max_providers`. At most 2^32. An explicit `0` is a census of zero; omission means the operator can't know the validator's census and must not free any room it counts. |
+| `bound_clients_observed` | u64, omitted when unknown | How many of the recipient cut's `bindings` served at least one verified trail hop this tempo, which is to say had an egress hash in the recipient's statistics. Never present without `census_providers`, and at most the number of `bindings`. |
+
+The operator uses the census to bound what it admits to its verify cohort
+(`VERIFY-COHORT-V2.md` §2.4-2.5). An operator decoder that predates these
+members refuses an envelope that carries them, as it refuses any unknown
+member, so deploy the operator first.
+
 The summary signs these fields along with the global result. It does not
 publish the private measurement artifact. `measurement_artifact_hash` remains
 an opaque local artifact reference, not a retrievable attempt object.

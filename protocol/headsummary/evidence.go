@@ -14,7 +14,7 @@ import (
 // cut explicitly; missing evidence cannot be interpreted as an empty tempo.
 func (self *Summary) validateEvidence() error {
 	if self.Schema == Schema {
-		if self.PreviousMeasurementArtifactHash != "" || self.EvidenceEmptyPrior || self.EvidenceRecipient != 0 || self.EvidenceOperators != nil || self.EvidenceCuts != nil || self.EvidencePolicy != nil {
+		if self.PreviousMeasurementArtifactHash != "" || self.EvidenceEmptyPrior || self.EvidenceRecipient != 0 || self.EvidenceOperators != nil || self.EvidenceCuts != nil || self.EvidencePolicy != nil || self.CensusProviders != nil || self.BoundClientsObserved != nil {
 			return errors.New("head summary v1 contains v2 evidence")
 		}
 		return nil
@@ -87,6 +87,24 @@ func (self *Summary) validateEvidence() error {
 			}
 			clients[client] = true
 		}
+	}
+	return self.validateCensus()
+}
+
+// The census count is optional; coverage needs it and never exceeds the
+// recipient cut's eligible bindings (evidence_cuts holds exactly that cut).
+func (self *Summary) validateCensus() error {
+	if self.CensusProviders != nil && *self.CensusProviders > MaxCensusProviders {
+		return errors.New("head summary census exceeds its wire bound")
+	}
+	if self.BoundClientsObserved == nil {
+		return nil
+	}
+	if self.CensusProviders == nil {
+		return errors.New("head summary bound-client coverage has no census")
+	}
+	if *self.BoundClientsObserved > uint64(len(self.EvidenceCuts[0].Bindings)) {
+		return errors.New("head summary observes more bound clients than its cut binds")
 	}
 	return nil
 }
