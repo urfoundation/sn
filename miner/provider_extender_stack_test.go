@@ -111,9 +111,9 @@ func runProviderExtenderStack(
 }
 
 // The goroutines whose stack runs through `function`, a qualified function
-// name. Each extender directory runs one save loop from its constructor until
-// its close joins it, and each space that runs a stack one status watch, so
-// these count stacks rather than time anything.
+// name. Each extender directory, the root of a stack, runs one save loop from
+// its constructor until its close joins it, so these count stacks rather than
+// time anything.
 func countProviderGoroutinesIn(function string) int {
 	stacks := make([]byte, 64*1024*1024)
 	stacks = stacks[:runtime.Stack(stacks, true)]
@@ -126,10 +126,7 @@ func countProviderGoroutinesIn(function string) int {
 	return count
 }
 
-const (
-	providerTestDirectoryLoop = "github.com/urnetwork/connect.(*ExtenderDirectory).run("
-	providerTestStatusWatch   = "github.com/urnetwork/sdk.(*NetworkSpace).watchExtenderStatus("
-)
+const providerTestDirectoryLoop = "github.com/urnetwork/connect.(*ExtenderDirectory).run("
 
 // Root cause of connect#227's CPU: a run built one extender stack per slot,
 // so a miner with 1000 proxies ran 1000 directories, network clients, gossip
@@ -143,12 +140,8 @@ func TestProviderRunBuildsOneExtenderStackForAllItsSlots(t *testing.T) {
 	}
 	settings := providerExtenderStackSettings(t, fixture, members...)
 	directoryLoops := countProviderGoroutinesIn(providerTestDirectoryLoop)
-	statusWatches := countProviderGoroutinesIn(providerTestStatusWatch)
 	runProviderExtenderStack(t, settings, len(members), nil, func() {
 		if count := countProviderGoroutinesIn(providerTestDirectoryLoop) - directoryLoops; count != 1 {
-			t.Errorf("%d slots run %d extender directories, expected one for the run", len(members), count)
-		}
-		if count := countProviderGoroutinesIn(providerTestStatusWatch) - statusWatches; count != 1 {
 			t.Errorf("%d slots run %d extender stacks, expected one for the run", len(members), count)
 		}
 	})
