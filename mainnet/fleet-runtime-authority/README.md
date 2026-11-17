@@ -2,8 +2,20 @@
 
 [`miner/FLEET-MAINNET-RUNTIME.md`](../../miner/FLEET-MAINNET-RUNTIME.md) is the
 contract: what the document holds and what `provider fleet` does with it. This
-says how one comes to exist. **None is approved or published today**, and there is
-no date.
+says how one comes to exist.
+
+## Published
+
+| Runtime | Document | SHA-256 | Published |
+| --- | --- | --- | --- |
+| `node-subtensor` 491/1/1, `:code` `0x4201278656a17aff924ca24123c8e5866d569a84a7150bb0372bc7078fc6173c`, source `be3a11b1` | [`runtime-491.json`](runtime-491.json) | `0d16e120c0b3575e1daf6c221374f12d3fc6de85f03b12693e3f1a42243b0df3` | 2026-11-17 |
+
+Fetch the exact bytes with
+`curl -fsSL -o fleet-runtime-authority.json https://raw.githubusercontent.com/urfoundation/sn/main/mainnet/fleet-runtime-authority/runtime-491.json`,
+check them with `shasum -a 256 fleet-runtime-authority.json`, and compare the digest with
+the one above and with the one on ur.xyz's miner docs and ur.io's Top 200 page. Only the
+current chain runtime's document works: when Finney upgrades its runtime, mainnet fleet
+commands refuse until the next document is published here.
 
 ## What goes in it
 
