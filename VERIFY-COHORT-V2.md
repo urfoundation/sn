@@ -17,6 +17,14 @@ fleets) and 11 (board precision) stay open. On 2026-11-17 ~19:45Z the owner chos
   `bound_clients_observed`: how many of the recipient cut's eligible bindings
   served a verified hop that tempo. The ratio to the cut's bindings is the
   claimed-fleet coverage (`docs/spec/head-summary-v2.md`).
+- **The server's rule, exactly** (server `model/verify_cohort_rolling.go`,
+  `COHORT-ROTATION.md`):
+  - A member expires once some server epoch `w` with an assignment lies in
+    `[max(last + 2, E0), v* − 1]`, where `E0` is the first window the validator
+    folded with R1. §2.4's `v* ≥ last + 3` is that rule's most common case.
+  - The start of the rolling census is recorded once in Postgres
+    (`verify_cohort_state`), since head summaries are kept only 7 days.
+  - The interlock counts admissions since the validator's last two reports.
 
 **Sources:** sn `39aecf4f`, server `eb946dd84`. Production figures are read-only
 reads of the operator's database and of Finney on 2026-11-17, with the board
