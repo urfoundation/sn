@@ -23,6 +23,7 @@ type providerProgressDevice interface {
 	GetClientId() *sdk.Id
 	GetProviderConnected() bool
 	GetProviderClientKeyRegistered() bool
+	GetProviderClientKeyPublished() bool
 	GetProviderReady() bool
 }
 
@@ -33,6 +34,10 @@ type providerProgressSlot struct {
 	done       <-chan struct{}
 	device     providerProgressDevice
 	lifecycle  string
+	// whether the member's launch requires its key's processed registration
+	// (swarm and capture launches); see snapshot for what the other launches
+	// report
+	keyRegistrationRequired bool
 }
 
 type providerProgressOwner struct {
@@ -94,7 +99,17 @@ func newProviderProgressOwner(mode string, members []providerProgressConfigMembe
 
 // A new admitted member consumes one generation; a stale teardown can only
 // retire that exact generation. No callback or SDK close runs under this lock.
+// The member requires its key's processed registration as its launch mode
+// does: every swarm member does (swarmMemberDeviceSettings), and a standalone
+// launch says per member (attachWithKeyRegistration).
 func (self *providerProgressOwner) attach(ctx context.Context, slot string, device providerProgressDevice) (uint64, error) {
+	return self.attachWithKeyRegistration(ctx, slot, device, self.source.Mode == "swarm")
+}
+
+// Admits a member as attach does, under its device's own
+// `ClientKeyRegistrationRequired`, which decides what makes it ready
+// (snapshot).
+func (self *providerProgressOwner) attachWithKeyRegistration(ctx context.Context, slot string, device providerProgressDevice, keyRegistrationRequired bool) (uint64, error) {
 	if ctx == nil {
 		return 0, errors.New("provider member lifetime is absent")
 	}
@@ -115,6 +130,7 @@ func (self *providerProgressOwner) attach(ctx context.Context, slot string, devi
 	state.done = done
 	state.device = device
 	state.lifecycle = "running"
+	state.keyRegistrationRequired = keyRegistrationRequired
 	self.slots[slot] = state
 	return state.generation, nil
 }
@@ -165,8 +181,17 @@ func (self *providerProgressOwner) snapshot(ctx context.Context) (*protocol.Prov
 				member.ClientId = identity.String()
 			}
 			member.Connected = slot.device.GetProviderConnected()
-			member.KeyRegistered = slot.device.GetProviderClientKeyRegistered()
-			member.Ready = slot.device.GetProviderReady() && member.Connected && member.KeyRegistered
+			if slot.keyRegistrationRequired {
+				member.KeyRegistered = slot.device.GetProviderClientKeyRegistered()
+				member.Ready = slot.device.GetProviderReady() && member.Connected && member.KeyRegistered
+			} else {
+				// a launch that requires no processed registration never reads
+				// registered, so the platform holds its key once it acknowledged
+				// the key's publication, and the member is ready once connected
+				// with its key published (owner, 2026-11-17)
+				member.KeyRegistered = slot.device.GetProviderClientKeyPublished()
+				member.Ready = member.Connected && member.KeyRegistered
+			}
 			member.Current = member.ClientId != ""
 		}
 		self.stateLock.Lock()

@@ -26,10 +26,12 @@ func TestProviderProgressStatusRefusesUnownedReadiness(t *testing.T) {
 }
 
 type providerProgressTestDevice struct {
-	identity                     *sdk.Id
-	connected, registered, ready bool
-	reads                        atomic.Int32
-	beforeReady                  func()
+	identity                                *sdk.Id
+	connected, registered, published, ready bool
+	reads                                   atomic.Int32
+	// runs before the read that decides readiness: GetProviderReady where the
+	// member requires registration, GetProviderClientKeyPublished where not
+	beforeReady func()
 }
 
 func (self *providerProgressTestDevice) GetClientId() *sdk.Id {
@@ -38,6 +40,12 @@ func (self *providerProgressTestDevice) GetClientId() *sdk.Id {
 }
 func (self *providerProgressTestDevice) GetProviderConnected() bool           { return self.connected }
 func (self *providerProgressTestDevice) GetProviderClientKeyRegistered() bool { return self.registered }
+func (self *providerProgressTestDevice) GetProviderClientKeyPublished() bool {
+	if self.beforeReady != nil {
+		self.beforeReady()
+	}
+	return self.published
+}
 func (self *providerProgressTestDevice) GetProviderReady() bool {
 	if self.beforeReady != nil {
 		self.beforeReady()
@@ -46,7 +54,7 @@ func (self *providerProgressTestDevice) GetProviderReady() bool {
 }
 
 func newProviderProgressTestDevice() *providerProgressTestDevice {
-	return &providerProgressTestDevice{identity: sdk.RequireIdFromBytes([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}), connected: true, registered: true, ready: true}
+	return &providerProgressTestDevice{identity: sdk.RequireIdFromBytes([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}), connected: true, registered: true, published: true, ready: true}
 }
 func newProviderProgressTestOwner(t *testing.T) *providerProgressOwner {
 	t.Helper()
