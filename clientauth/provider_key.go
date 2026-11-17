@@ -138,7 +138,7 @@ func admitProviderKeyMarker(store *registrationStore, adoptLegacy bool) error {
 		if !adoptLegacy {
 			return &RegistrationRefusedError{Code: "provider_key_identity_missing_with_retained_history"}
 		}
-		if name == ".provider.cert" || name == ".provider.extender.key" {
+		if name == ".provider.cert" || providerExtenderKeyName(name) {
 			continue
 		}
 		if !providerClientCredentialName(name) {
@@ -158,6 +158,28 @@ func admitProviderKeyMarker(store *registrationStore, adoptLegacy bool) error {
 		return &RegistrationRefusedError{Code: "provider_key_legacy_adoption_lacks_credential"}
 	}
 	return nil
+}
+
+// Whether a provider state file is an extender identity seed, the side file a
+// legacy adoption keeps: the one file every slot of a run once shared, or the
+// file of one gossip node's own key, named by its client id, which a node
+// renames the shared one to when it adopts it (sn miner
+// providerExtenderKeyFileName). Any other `.provider.extender.` name, such as
+// the measurement key, is not one.
+func providerExtenderKeyName(name string) bool {
+	if name == ".provider.extender.key" {
+		return true
+	}
+	value, ok := strings.CutPrefix(name, ".provider.extender.")
+	if !ok {
+		return false
+	}
+	value, ok = strings.CutSuffix(value, ".key")
+	if !ok {
+		return false
+	}
+	_, err := connect.ParseId(value)
+	return err == nil
 }
 
 // Only the direct credential or the established proxy credential name can be

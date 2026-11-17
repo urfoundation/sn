@@ -2,6 +2,7 @@ package miner
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -13,18 +14,20 @@ import (
 // The provider extender identity in the miner (connect/EXTENDER.md B1, G1).
 //
 // A provider's space keeps no local state, so the extender identity lives in
-// the provider state directory beside the client key seed: the run path reads
-// it before the device is built and writes back whatever the role ended up
-// with. Losing it means activating under a new key every launch, which the
-// operator revokes as fast as it publishes.
+// the provider state directory beside the client key seed, one file per gossip
+// node, named by the node's client id: the run path reads it before the
+// device is built and writes back whatever the role ended up with. Losing it
+// means activating under a new key every launch, which the operator revokes as
+// fast as it publishes.
 
 // The seed survives a write and a read, is kept private to the owner, and a
-// provider that has never been an extender reads none rather than failing.
+// node that has never run reads none rather than failing.
 func TestProviderExtenderKeySeedRoundTrips(t *testing.T) {
 	stateDir := t.TempDir()
 	t.Setenv("URNETWORK_STATE_DIR", stateDir)
+	clientId := connect.NewId()
 
-	extenderKeySeed, err := readProviderExtenderKeySeed()
+	extenderKeySeed, err := readProviderExtenderKeySeed(clientId)
 	if err != nil {
 		t.Fatalf("a fresh install failed to read: %s", err)
 	}
@@ -36,10 +39,10 @@ func TestProviderExtenderKeySeedRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := writeProviderExtenderKeySeed(extenderKeySeed); err != nil {
+	if err := writeProviderExtenderKeySeed(clientId, extenderKeySeed); err != nil {
 		t.Fatal(err)
 	}
-	restoredKeySeed, err := readProviderExtenderKeySeed()
+	restoredKeySeed, err := readProviderExtenderKeySeed(clientId)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,8 +57,8 @@ func TestProviderExtenderKeySeedRoundTrips(t *testing.T) {
 		t.Fatal("the key material did not carry the seed")
 	}
 
-	// anyone with this file can present this host's extender identity
-	seedPath := filepath.Join(stateDir, ".provider.extender.key")
+	// anyone with this file can present the node's extender identity
+	seedPath := filepath.Join(stateDir, ".provider.extender."+clientId.String()+".key")
 	info, err := os.Stat(seedPath)
 	if err != nil {
 		t.Fatal(err)
@@ -71,10 +74,93 @@ func TestProviderExtenderKeySeedRoundTrips(t *testing.T) {
 	}
 }
 
+// Each node's key is its own: one node's file is never another's, and the
+// install's shared `.provider.extender.key` goes to the first node that reads
+// a key, renamed to that node's file, and to no other node after it.
+func TestProviderExtenderKeySeedIsKeptPerNode(t *testing.T) {
+	stateDir := t.TempDir()
+	t.Setenv("URNETWORK_STATE_DIR", stateDir)
+	firstClientId, secondClientId := connect.NewId(), connect.NewId()
+	legacySeed, err := connect.NewExtenderKeySeed()
+	if err != nil {
+		t.Fatal(err)
+	}
+	legacyPath := filepath.Join(stateDir, ".provider.extender.key")
+	if err := os.WriteFile(legacyPath, legacySeed, 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	firstSeed, err := readProviderExtenderKeySeed(firstClientId)
+	if err != nil || !bytes.Equal(firstSeed, legacySeed) {
+		t.Fatal("the first node did not adopt the install's key", err)
+	}
+	if _, err := os.Stat(legacyPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("the adopted key is still there for another node", err)
+	}
+	info, err := os.Stat(filepath.Join(stateDir, ".provider.extender."+firstClientId.String()+".key"))
+	if err != nil || info.Mode().Perm() != 0600 {
+		t.Fatal("the adopted key is not the first node's private file", err)
+	}
+	secondSeed, err := readProviderExtenderKeySeed(secondClientId)
+	if err != nil || secondSeed != nil {
+		t.Fatal("a second node read a key it never had", err)
+	}
+	if again, err := readProviderExtenderKeySeed(firstClientId); err != nil || !bytes.Equal(again, legacySeed) {
+		t.Fatal("the first node's key did not hold", err)
+	}
+
+	// a second node's own key leaves the first's alone
+	ownSeed, err := connect.NewExtenderKeySeed()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeProviderExtenderKeySeed(secondClientId, ownSeed); err != nil {
+		t.Fatal(err)
+	}
+	if again, err := readProviderExtenderKeySeed(firstClientId); err != nil || !bytes.Equal(again, legacySeed) {
+		t.Fatal("a second node's key replaced the first's", err)
+	}
+	if again, err := readProviderExtenderKeySeed(secondClientId); err != nil || !bytes.Equal(again, ownSeed) {
+		t.Fatal("the second node's key did not hold", err)
+	}
+}
+
+// Only the slot whose space runs the gossip node writes an extender key, and
+// under that node's own client id: a slot that runs no node writes none, and
+// a run never writes the shared file again.
+func TestProviderAuxiliaryKeyMaterialWritesOnlyTheNodesKey(t *testing.T) {
+	stateDir := t.TempDir()
+	t.Setenv("URNETWORK_STATE_DIR", stateDir)
+	owner := newProviderDiagnosticTestOwner(t, &providerRefusedWriter{})
+	extenderKeySeed, err := connect.NewExtenderKeySeed()
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyMaterial := sdk.NewDeviceLocalKeyMaterial(nil, nil, nil)
+	keyMaterial.SetExtenderKeySeed(extenderKeySeed)
+
+	persistProviderAuxiliaryKeyMaterial(owner, 1, keyMaterial, connect.Id{})
+	names, err := filepath.Glob(filepath.Join(stateDir, ".provider.extender*"))
+	if err != nil || len(names) != 0 {
+		t.Fatalf("a slot that runs no node wrote %v", names)
+	}
+
+	clientId := connect.NewId()
+	persistProviderAuxiliaryKeyMaterial(owner, 0, keyMaterial, clientId)
+	names, err = filepath.Glob(filepath.Join(stateDir, ".provider.extender*"))
+	if err != nil || len(names) != 1 || filepath.Base(names[0]) != ".provider.extender."+clientId.String()+".key" {
+		t.Fatalf("the node wrote %v, expected its own key file", names)
+	}
+	if seed, err := readProviderExtenderKeySeed(clientId); err != nil || !bytes.Equal(seed, extenderKeySeed) {
+		t.Fatal("the node's key did not round trip", err)
+	}
+}
+
 // The device's key material names the measurement key file in the provider
 // state directory beside the extender seed, so the space, which keeps no local
 // state, serves the lag.dev measurement api under one key across launches
 // (lag.dev/PLAN.md C4). Without it no provider ever asked for a certificate.
+// A slot that runs no node carries neither.
 func TestProviderDeviceKeyMaterialNamesTheMeasurementKeyFile(t *testing.T) {
 	stateDir := t.TempDir()
 	t.Setenv("URNETWORK_STATE_DIR", stateDir)
@@ -82,13 +168,18 @@ func TestProviderDeviceKeyMaterialNamesTheMeasurementKeyFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	keyMaterial := providerDeviceKeyMaterial(nil, nil, nil, extenderKeySeed)
+	keyMaterial := providerDeviceKeyMaterial(nil, nil, nil, extenderKeySeed, true)
 	if !bytes.Equal(keyMaterial.GetExtenderKeySeed(), extenderKeySeed) {
 		t.Fatal("the key material did not carry the seed")
 	}
 	expected := filepath.Join(stateDir, ".provider.extender.measurement.key")
 	if got := keyMaterial.GetExtenderMeasurementKeyFile(); got != expected {
 		t.Fatalf("measurement key file = %q, expected %q", got, expected)
+	}
+
+	keyMaterial = providerDeviceKeyMaterial(nil, nil, nil, extenderKeySeed, false)
+	if keyMaterial.GetExtenderKeySeed() != nil || keyMaterial.GetExtenderMeasurementKeyFile() != "" {
+		t.Fatal("a slot that runs no node carries an extender identity")
 	}
 }
 

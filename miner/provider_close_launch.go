@@ -25,10 +25,10 @@ func ProviderDeviceSettings(domainHash [32]byte) *sdk.DeviceLocalSettings {
 
 // The device settings of one slot of a provider run. One slot runs the provider
 // extender role (connect/EXTENDER.md G1, G2), the one providerExtenderSlot names.
-// A host holds one extender identity and binds the carrier ports once, and every
-// slot has the same .provider.extender.key under a client of its own, so each
-// slot that activated the key would take the operator's row for it from the one
-// before. A slot otherwise provides the same with or without the role.
+// A host binds the carrier ports once, and only that slot's space runs a gossip
+// node and has an extender identity to activate (connect#227): the other
+// slots' spaces read its extender stack. A slot otherwise provides the same
+// with or without the role.
 func providerSlotDeviceSettings(domainHash [32]byte, extenderSlot bool) *sdk.DeviceLocalSettings {
 	settings := ProviderDeviceSettings(domainHash)
 	settings.ProvideExtenderEnabled = extenderSlot

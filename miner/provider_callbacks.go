@@ -79,26 +79,32 @@ func (self *providerAuthenticationCallbacks) failure() error {
 
 // These key saves keep their existing best-effort startup semantics. Each real
 // failure remains visible as its own closed event; output never gates serving.
-func persistProviderKeyMaterial(output *providerDiagnostics, provider uint64, keyMaterial *sdk.DeviceLocalKeyMaterial) {
+func persistProviderKeyMaterial(output *providerDiagnostics, provider uint64, keyMaterial *sdk.DeviceLocalKeyMaterial, extenderKeyClientId connect.Id) {
 	if seed := keyMaterial.GetClientKeySeed(); len(seed) > 0 {
 		if err := writeProviderClientKeySeed(seed); err != nil {
 			output.observe(providerClientKeySaveFailed, provider, true, err, 0, nil)
 		}
 	}
-	persistProviderAuxiliaryKeyMaterial(output, provider, keyMaterial)
+	persistProviderAuxiliaryKeyMaterial(output, provider, keyMaterial, extenderKeyClientId)
 }
 
 // Device-generated TLS/extender state cannot overwrite the already owned and
-// fsynced client key that selected the durable registration operation.
-func persistProviderAuxiliaryKeyMaterial(output *providerDiagnostics, provider uint64, keyMaterial *sdk.DeviceLocalKeyMaterial) {
+// fsynced client key that selected the durable registration operation. The
+// extender identity is written for the gossip node of provider client
+// `extenderKeyClientId`, the run's extender slot, under that node's own file;
+// a zero id is a slot that runs no node, which writes none.
+func persistProviderAuxiliaryKeyMaterial(output *providerDiagnostics, provider uint64, keyMaterial *sdk.DeviceLocalKeyMaterial, extenderKeyClientId connect.Id) {
 	certPem, keyPem := keyMaterial.GetProvideTlsCertificatePem(), keyMaterial.GetProvideTlsPrivateKeyPem()
 	if len(certPem) > 0 && len(keyPem) > 0 {
 		if err := writeProviderTlsCertAndKey(certPem, keyPem); err != nil {
 			output.observe(providerTlsKeySaveFailed, provider, true, err, 0, nil)
 		}
 	}
+	if extenderKeyClientId == (connect.Id{}) {
+		return
+	}
 	if seed := keyMaterial.GetExtenderKeySeed(); len(seed) > 0 {
-		if err := writeProviderExtenderKeySeed(seed); err != nil {
+		if err := writeProviderExtenderKeySeed(extenderKeyClientId, seed); err != nil {
 			output.observe(providerExtenderKeySaveFailed, provider, true, err, 0, nil)
 		}
 	}
