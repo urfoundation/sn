@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/urfoundation/sn/ss58"
+	"github.com/urfoundation/sn/v2026/ss58"
 )
 
 const (

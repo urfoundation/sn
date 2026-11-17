@@ -16,8 +16,8 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urnetwork/server"
-	"github.com/urnetwork/server/startifact"
+	"github.com/urnetwork/server/v2026"
+	"github.com/urnetwork/server/v2026/startifact"
 )
 
 // Route hash and complete-wire identity remain different authorities. The
