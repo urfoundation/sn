@@ -1,6 +1,6 @@
 # Notice: Top 200 fleet binding is open on SN25
 
-November 13, 2026. All times are UTC. The network operator's release that opens
+November 17, 2026. All times are UTC. The network operator's release that opens
 binding has rolled out.
 
 ## What opened
@@ -36,10 +36,15 @@ The command-line writes, `provider fleet register`, `publish`, `bind` and
 `revoke`, need the provider release with `provider fleet storage`, the storage
 declaration that command prepares
 ([`miner/FLEET-MAINNET-RUNTIME.md`](../../miner/FLEET-MAINNET-RUNTIME.md#preparing-storage-for-mainnet-writes)),
-and the reviewed fleet runtime authority document, published in
-[`mainnet/fleet-runtime-authority/`](../fleet-runtime-authority/) with its
-SHA-256. A new chain runtime needs a new reviewed document before those writes
-run again: no runtime is adopted automatically.
+and the reviewed fleet runtime authority document. The chain has run runtime
+491 since block 9,520,960, and its document is
+[`mainnet/fleet-runtime-authority/runtime-491.json`](../fleet-runtime-authority/runtime-491.json),
+with the SHA-256
+`0d16e120c0b3575e1daf6c221374f12d3fc6de85f03b12693e3f1a42243b0df3`. Download
+it from
+https://raw.githubusercontent.com/urfoundation/sn/main/mainnet/fleet-runtime-authority/runtime-491.json
+and check its hash before you use it. A new chain runtime needs a new reviewed
+document before those writes run again: no runtime is adopted automatically.
 
 ## How a spot pays
 
@@ -70,7 +75,9 @@ doesn't measure earns no head score either, so it earns nothing.
   binding starts no earlier than the next epoch. So register in the 3 days
   before the epoch your binding starts, and leave time to publish, wait for the
   mirror and bind before that epoch's first block. A binding that lands later
-  waits for the next epoch.
+  waits for the next epoch. Epoch 7 starts at block 9,549,628, so for a binding
+  that starts with epoch 7, that window opens at block 9,528,028; epoch 8 starts
+  at block 9,600,028.
 - **Publishing again.** A commitment older than 100,800 blocks (14 days) can't
   bind new devices, and commitments in the older, untagged format are not
   mirrored. A fleet that published in the older format, or more than 14 days
