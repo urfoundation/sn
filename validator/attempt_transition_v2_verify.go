@@ -273,17 +273,50 @@ func boundAttemptSettlementV2Closure(closure *AttemptSettlementClosureV2, option
 	return nil
 }
 
-// Retain valid zero quality and idle priors; omitted unscored providers are not
-// fabricated as zero-valued EMA entries. Ordering matches legacy exact math.
+// The post-fold a validator produces (rule R1, VERIFY-COHORT-V2.md §2.1):
+// every scored provider, except that a prior carried into a window in which it
+// had no assignment is retired, unless nobody had an assignment in the window.
+// So the census is set by the last two windows, never by history. Valid zero
+// quality survives, and unscored providers are never fabricated as zero-valued
+// EMA entries. Ordering matches legacy exact math.
 func attemptSettlementV2Qualities(stats VerifiedReleaseStats) []AttemptSettlementQuality {
+	return attemptSettlementV2QualitiesRule(stats, true)
+}
+
+// The release-1.0 post-fold, which keeps every idle prior. Every transition
+// before rule R1 has it, and a validator rolled back to a keep-all producer
+// signs it again, so verification accepts it alongside R1's.
+func attemptSettlementV2KeepAllQualities(stats VerifiedReleaseStats) []AttemptSettlementQuality {
+	return attemptSettlementV2QualitiesRule(stats, false)
+}
+
+func attemptSettlementV2QualitiesRule(stats VerifiedReleaseStats, retireIdle bool) []AttemptSettlementQuality {
+	measured := false
+	if retireIdle {
+		for _, provider := range stats.Providers {
+			if 0 < provider.Exposure {
+				measured = true
+				break
+			}
+		}
+	}
 	qualities := make([]AttemptSettlementQuality, 0, len(stats.Providers))
 	for id, provider := range stats.Providers {
-		if provider.HasQuality {
+		// a quality with no exposure in the window is a carried prior
+		if provider.HasQuality && (!measured || 0 < provider.Exposure) {
 			qualities = append(qualities, AttemptSettlementQuality{ClientID: id.String(), HasQuality: true, QualityPPM: provider.QualityPPM})
 		}
 	}
 	sort.Slice(qualities, func(i, j int) bool { return qualities[i].ClientID < qualities[j].ClientID })
 	return qualities
+}
+
+// A signed post-fold is the R1 fold or the keep-all fold of its exact
+// pre-fold, nothing else. Both are deterministic functions of the signed raw
+// statistics, so history from before R1 and a rolled-back keep-all producer
+// stay verifiable. They differ only when a measured window leaves a prior idle.
+func attemptSettlementV2PostFoldAccepted(stats VerifiedReleaseStats, postFold []AttemptSettlementQuality) bool {
+	return slices.Equal(attemptSettlementV2Qualities(stats), postFold) || slices.Equal(attemptSettlementV2KeepAllQualities(stats), postFold)
 }
 
 // The private observer belongs to one ordinary/terminal composition. It never
@@ -318,10 +351,9 @@ func (self *attemptSettlementV2Operation) replayEach(ctx context.Context, derive
 		if err != nil {
 			return VerifiedAttemptSettlementV2{}, fmt.Errorf("compact settlement no_id %d replay: %w", noID, err)
 		}
-		qualities := attemptSettlementV2Qualities(verified.Stats)
 		if derive {
-			transition.PostFold = qualities
-		} else if !slices.Equal(qualities, transition.PostFold) {
+			transition.PostFold = attemptSettlementV2Qualities(verified.Stats)
+		} else if !attemptSettlementV2PostFoldAccepted(verified.Stats, transition.PostFold) {
 			return VerifiedAttemptSettlementV2{}, errors.New("compact settlement post-fold EMA differs from the complete replay")
 		}
 		result.Operators[noID] = verified

@@ -293,6 +293,22 @@ func validateAttemptSettlementTransactionV2(ctx context.Context, transaction *at
 	return closure, nil
 }
 
+// The engine fold whose post-fold a signed terminal carries: rule R1 or the
+// keep-all fold, the two a verifier accepts (attemptSettlementV2PostFoldAccepted).
+// Each is folded from a fresh clone of the owned candidate; any other set refuses.
+func attemptSettlementV2FoldMatching(pre *StatsEngine, postFold []AttemptSettlementQuality) (*StatsEngine, error) {
+	for _, retireIdle := range []bool{true, false} {
+		pre.mu.Lock()
+		post := pre.cloneStatsWithLock()
+		pre.mu.Unlock()
+		post.foldStatsOwnedRule(retireIdle)
+		if slices.Equal(sortedAttemptEMAQualities(post.emaPPM), postFold) {
+			return post, nil
+		}
+	}
+	return nil, errors.New("compact signed post-fold differs from actual Stats fold")
+}
+
 // Pure candidate folding is checked against the just-replayed signed result;
 // carried legacy history survives unchanged and cannot recursively grow.
 func attemptSettlementV2Postimage(ctx context.Context, pre *StatsEngine, terminal *AttemptSettlementTransitionV2, fold bool, maxBytes uint64) (*StatsEngine, error) {
@@ -316,9 +332,8 @@ func attemptSettlementV2Postimage(ctx context.Context, pre *StatsEngine, termina
 		return nil, errors.New("compact successor generation overflows or differs")
 	}
 	if fold {
-		post.foldStatsOwned()
-		if !slices.Equal(sortedAttemptEMAQualities(post.emaPPM), terminal.PostFold) {
-			return nil, errors.New("compact signed post-fold differs from actual Stats fold")
+		if post, err = attemptSettlementV2FoldMatching(pre, terminal.PostFold); err != nil {
+			return nil, err
 		}
 	} else {
 		// Retry validation reconstructs no quality fold. Full closure replay has

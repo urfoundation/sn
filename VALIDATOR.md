@@ -949,6 +949,18 @@ non-seed** hops only (§7.6). **EMA-smooth** each provider's signal across epoch
   floor once on division by total exposure. A new provider below `a_min` is absent;
   an established provider below `a_min` carries its prior EMA unchanged. This rule
   lives **only on the tail** (`WHITEPAPER.md` §8.4) and is applied independently per NO.
+
+  **Idle retirement (rule R1, `VERIFY-COHORT-V2.md` §2.1).** At each settlement fold, an
+  established provider with **no** assignment in the whole closing window leaves the
+  census: its exact and reporting EMAs are dropped, and if it is measured again it
+  starts fresh, scored from its first window with `a_min` or more assignments. A window
+  in which the validator assigned nobody retires nobody, so an outage can't empty `Q_n`.
+  One sparse window (1 to `a_min − 1` assignments) still carries the EMA unchanged. The
+  validator's census is therefore at most the providers assigned in its last two
+  windows, which is what lets the operator's verify cohort admit new providers. A
+  verifier accepts a signed post-fold that is either this fold or the release-1.0 fold,
+  which keeps every prior, of the same signed statistics, and nothing else: history from
+  before R1 and a validator rolled back to a keep-all build stay verifiable.
 - **HEAD — routable-IP breadth (`score`).** A top-level miner is a **fleet** (a hotkey
   binding many `client_id`s, §11.2), ranked **not** by quality but by **how many unique
   IPs it can route through**. From its own trails the validator collects, per fleet, the

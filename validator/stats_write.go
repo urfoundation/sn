@@ -290,9 +290,14 @@ func (self *StatsEngine) snapshotStats() statsSnapshot {
 // Boundary candidates are exclusively owned; this short lock also maintains
 // the existing pure in-memory helper's explicit lock convention.
 func (self *StatsEngine) foldStatsOwned() {
+	self.foldStatsOwnedRule(false)
+}
+
+// foldStatsOwned with an explicit retirement rule (foldWithLockRule).
+func (self *StatsEngine) foldStatsOwnedRule(retireIdle bool) {
 	self.mu.Lock()
 	defer self.mu.Unlock()
-	self.foldWithLock()
+	self.foldWithLockRule(retireIdle)
 }
 
 // Captures startup's control-generation comparison while holding Stats.mu.
