@@ -17,7 +17,7 @@ import (
 	gsrpctypes "github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types/codec"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/urfoundation/sn/crv4"
+	"github.com/urfoundation/sn/v2026/crv4"
 )
 
 // An actual HTTP native reader supplies SDK-encoded metadata, SCALE storage
