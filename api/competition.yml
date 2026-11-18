@@ -2556,7 +2556,7 @@ components:
             distributed:
               not: {required: [patch_retry]}
               properties:
-                reason: {enum: [retention_budget_exhausted, closed_legacy_prelaunch]}
+                reason: {enum: [retention_budget_exhausted, closed_legacy_prelaunch, sille_storage_interruption_20261117]}
             previous_failure:
               properties:
                 kind: {const: infrastructure}
@@ -2694,7 +2694,7 @@ components:
       required: [schema, reason, original_host_id, original_slot_id, original_fencing_token, original_run_id, original_started_at, original_deadline_at, source_lock_sha256, evaluator_image_digest, policy_approval_sha256, closure_evidence_sha256, native_proof_sha256]
       properties:
         schema: {type: integer, const: 1}
-        reason: {type: string, enum: [retention_budget_exhausted, closed_legacy_prelaunch, operator_requested_patch_retry]}
+        reason: {type: string, enum: [retention_budget_exhausted, closed_legacy_prelaunch, operator_requested_patch_retry, sille_storage_interruption_20261117]}
         original_host_id: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$"}
         original_slot_id: {type: integer, minimum: 1}
         original_fencing_token: {type: integer, minimum: 1}
