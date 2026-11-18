@@ -15,7 +15,7 @@ import (
 	gsrpccodec "github.com/centrifuge/go-substrate-rpc-client/v4/types/codec"
 	"golang.org/x/crypto/blake2b"
 
-	"github.com/urfoundation/sn/crv4"
+	"github.com/urfoundation/sn/v2026/crv4"
 )
 
 // Creates a deterministic sr25519 identity and canonical public key.

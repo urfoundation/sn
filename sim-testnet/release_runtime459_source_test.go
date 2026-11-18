@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/urfoundation/sn/crv4"
+	"github.com/urfoundation/sn/v2026/crv4"
 )
 
 // Retains all62 reviewed paths and the nine changed native dependencies.
