@@ -445,9 +445,10 @@ func reportServiceStart(stdout io.Writer, wait time.Duration) {
 // systemd
 
 type systemdService struct {
-	system bool
-	name   string
-	dir    string
+	system      bool
+	name        string
+	dir         string
+	currentUser func() (*user.User, error)
 	// the user a system service runs the miner as (provider service install
 	// --system --as), empty for root; read from the installed unit when not set
 	runAs string
@@ -588,7 +589,12 @@ func newSystemdService(system bool) *systemdService {
 		}
 		dir = filepath.Join(configDir, "systemd", "user")
 	}
-	return &systemdService{system: system, name: minerServiceName(), dir: dir}
+	return &systemdService{
+		system:      system,
+		name:        minerServiceName(),
+		dir:         dir,
+		currentUser: user.Current,
+	}
 }
 
 func (self *systemdService) kind() string {
@@ -958,7 +964,7 @@ func (self *systemdService) install(executable string, stateDir string, out io.W
 	}
 	if !self.system {
 		// without lingering, a user service stops at logout and waits for a login after boot
-		if current, err := user.Current(); err == nil {
+		if current, err := self.currentUser(); err == nil {
 			if _, err := cliRun("loginctl", "enable-linger", current.Username); err != nil {
 				fmt.Fprintf(out, "  %s Couldn't keep the service running after you log out (loginctl enable-linger failed).\n    Run: sudo loginctl enable-linger %s\n", cliYellow(out, "!"), current.Username)
 			}

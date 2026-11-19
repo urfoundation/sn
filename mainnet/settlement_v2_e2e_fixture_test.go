@@ -52,8 +52,18 @@ import (
 // (settlement_v2_e2e_ctf_test.go).
 func init() {
 	if len(os.Args) > 0 && os.Args[0] == "snclaim" {
-		if signer := os.Getenv(e2eAmendmentSignerEnv); signer != "" {
+		signer, signerSet := os.LookupEnv(e2eAmendmentSignerEnv)
+		if signer != "" {
 			pricesheet.MainnetSigner = common.HexToAddress(signer)
+		}
+		if len(os.Args) == 3 && os.Args[1] == e2eAmendmentSignerProbe {
+			want := os.Args[2]
+			if signerSet != (want != "") || signer != want ||
+				(signerSet && pricesheet.MainnetSigner != common.HexToAddress(want)) {
+				fmt.Fprintln(os.Stderr, "unexpected amendment signer in the snclaim fixture")
+				os.Exit(1)
+			}
+			os.Exit(0)
 		}
 		onchain.Run(os.Args[1:])
 		os.Exit(0)
@@ -62,6 +72,24 @@ func init() {
 
 // e2eAmendmentSignerEnv names the amendment signer of an snclaim run.
 const e2eAmendmentSignerEnv = "URNETWORK_E2E_AMENDMENT_SIGNER"
+
+// The test executable can inspect its own signer before onchain I/O starts.
+const e2eAmendmentSignerProbe = "--e2e-check-amendment-signer"
+
+// A real snclaim child sees only the signer supplied by the owning fixture.
+func TestSettlementV2E2ESnclaimOwnsAmendmentSignerEnvironment(t *testing.T) {
+	staleSigner := common.BytesToAddress([]byte("ambient fixture signer")).Hex()
+	ownedSigner := common.BytesToAddress([]byte("owned fixture signer")).Hex()
+	t.Setenv(e2eAmendmentSignerEnv, staleSigner)
+	fixture := &e2eFixture{t: t}
+	if _, stderr, exit := fixture.snclaim(e2eAmendmentSignerProbe, ""); exit != 0 {
+		t.Fatalf("snclaim inherited an ambient signer: exit=%d stderr=%q", exit, stderr)
+	}
+	fixture.snclaimEnv = []string{e2eAmendmentSignerEnv + "=" + ownedSigner}
+	if _, stderr, exit := fixture.snclaim(e2eAmendmentSignerProbe, ownedSigner); exit != 0 {
+		t.Fatalf("snclaim did not use its fixture's signer: exit=%d stderr=%q", exit, stderr)
+	}
+}
 
 const (
 	e2eNoID         = 1

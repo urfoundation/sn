@@ -38,10 +38,11 @@ var releaseGateMainnetExportsAwait = []string{
 }
 
 // The URNETWORK_ names of ./mainnet's sources that name no export: a test's
-// own child-process markers, an optional output directory, an expectation that
+// own child-process configuration, an optional output directory, an expectation that
 // a fixture derives from an export, and production configuration.
 var releaseGateMainnetNonExports = []string{
 	"URNETWORK_MONITOR_FIXTURE_FAILURE_CHILD", "URNETWORK_MONITOR_WORKER_STDERR_CHILD", "URNETWORK_TEST_SUCCESSOR_MEMBER_CRASH",
+	"URNETWORK_E2E_AMENDMENT_SIGNER",
 	"URNETWORK_NATIVE_FEE_EXPORT_DIRECTORY",
 	"URNETWORK_NATIVE_YUMA_POPULATED_EXPECTATION",
 	"URNETWORK_STATE_DIR", "URNETWORK_ST_PROFILE",

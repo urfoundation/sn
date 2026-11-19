@@ -1,3 +1,4 @@
+// These tests cover the persisted ownership of network sign-ins, renewals and rejection markers.
 package clientauth
 
 import (
@@ -478,6 +479,28 @@ func TestNetworkTokenRejectionIsTyped(t *testing.T) {
 	}
 }
 
+// A queued explicit sign-in reaches its cancellation select only after the
+// registration owner lock has refused it. Hold that first retry until the
+// test has inspected the committed renewal, or its context is canceled.
+type networkTokenOwnerWaitContext struct {
+	context.Context
+	waiting chan struct{}
+	retry   chan struct{}
+	once    sync.Once
+}
+
+// Signal the first real lock refusal before the normal retry timer can run.
+func (self *networkTokenOwnerWaitContext) Done() <-chan struct{} {
+	self.once.Do(func() {
+		close(self.waiting)
+		select {
+		case <-self.retry:
+		case <-self.Context.Done():
+		}
+	})
+	return self.Context.Done()
+}
+
 // An explicit sign-in that starts while a renewal sits between its read and
 // its rename waits for the renewal's owner lock, then wins: its file is
 // current, the lineage is gone, and the old sign-in's marker no longer blocks
@@ -498,85 +521,102 @@ func TestExplicitSignInWaitsForARenewalAndWins(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	waiter := &networkTokenOwnerWaitContext{
+		Context: ctx,
+		waiting: make(chan struct{}),
+		retry:   make(chan struct{}),
+	}
 	paused, release := make(chan struct{}), make(chan struct{})
+	previousHook := networkRenewalTestHooks.beforeRename
 	networkRenewalTestHooks.beforeRename = func() {
 		close(paused)
-		<-release
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
 	}
-	defer func() { networkRenewalTestHooks.beforeRename = nil }()
+	var workers sync.WaitGroup
+	defer func() {
+		cancel()
+		workers.Wait()
+		networkRenewalTestHooks.beforeRename = previousHook
+	}()
+
 	renewal := make(chan error, 1)
-	go func() {
+	workers.Go(func() {
 		ok, err := RenewNetworkToken(networkPath, "old-sign-in", "old-sign-in-renewed")
 		if err == nil && !ok {
 			err = errors.New("the renewal was discarded")
 		}
 		renewal <- err
-	}()
+	})
 	select {
 	case <-paused:
-	case <-time.After(10 * time.Second):
-		t.Fatal("the renewal did not reach its rename")
+	case <-ctx.Done():
+		t.Fatalf("the renewal did not reach its rename: %v", ctx.Err())
 	}
-
-	// watch every state the file passes through for the one that must never
-	// exist: the renewed file without its lineage
-	stopWatch := make(chan struct{})
-	watched := make(chan bool, 1)
-	go func() {
-		unprotected := false
-		for {
-			token, _ := ReadToken(networkPath)
-			_, lineageErr := os.Stat(networkPath + ".lineage")
-			if token == "old-sign-in-renewed" && errors.Is(lineageErr, os.ErrNotExist) {
-				unprotected = true
-			}
-			select {
-			case <-stopWatch:
-				watched <- unprotected
-				return
-			default:
-			}
-		}
-	}()
 
 	explicit := make(chan error, 1)
-	go func() { explicit <- WriteNetworkToken(networkPath, "new-sign-in") }()
+	workers.Go(func() {
+		explicit <- WriteNetworkTokenWithContext(waiter, networkPath, "new-sign-in")
+	})
 	select {
+	case <-waiter.waiting:
 	case err := <-explicit:
-		t.Errorf("the explicit sign-in did not wait for the renewal's owner lock (err=%v)", err)
-		explicit <- err
-	case <-time.After(300 * time.Millisecond):
+		t.Fatalf("the explicit sign-in did not wait for the renewal's owner lock: %v", err)
+	case <-ctx.Done():
+		t.Fatalf("the explicit sign-in did not reach the held owner lock: %v", ctx.Err())
 	}
-	if token, _ := ReadToken(networkPath); token == "new-sign-in" {
-		t.Error("the explicit sign-in wrote while the renewal held the owner lock")
+	if token, err := ReadToken(networkPath); err != nil || token != "old-sign-in" {
+		t.Fatalf("the explicit sign-in wrote while the renewal held the owner lock: token=%q err=%v", token, err)
 	}
 	close(release)
 	if err := <-renewal; err != nil {
 		t.Fatal(err)
 	}
+	// The queued writer has already met the real lock and cannot retry yet.
+	// Read the token and lineage while no writer can change either file.
+	renewedFingerprint := func() string {
+		t.Helper()
+		token, fingerprint, err := readNetworkCredential(networkPath)
+		if err != nil || token != "old-sign-in-renewed" {
+			t.Fatalf("committed renewal: token=%q err=%v", token, err)
+		}
+		members, err := readNetworkCredentialLineage(networkPath)
+		if err != nil || !slices.Contains(members, marker) || !slices.Contains(members, fingerprint) {
+			t.Fatalf("the renewed file was current without its lineage: members=%d err=%v", len(members), err)
+		}
+		if blocks, err := networkCredentialMarkerBlocks(networkPath, fingerprint, marker); err != nil || !blocks {
+			t.Fatalf("the renewed sign-in did not keep its rejection marker: blocks=%t err=%v", blocks, err)
+		}
+		return fingerprint
+	}
+	beforeFailedWrite := renewedFingerprint()
+	// A failed explicit write must leave the committed renewal and its lineage
+	// intact. Both stores reject this bounded fixture before publication.
+	oversized := strings.Repeat("x", maximumRegistrationBytes+1)
+	if err := WriteNetworkTokenWithContext(ctx, networkPath, oversized); err == nil || err.Error() != "registration write exceeds its finite bound" {
+		t.Fatalf("oversized sign-in: %v", err)
+	}
+	if renewedFingerprint() != beforeFailedWrite {
+		t.Fatal("the refused sign-in changed the renewed credential")
+	}
+	close(waiter.retry)
 	if err := <-explicit; err != nil {
 		t.Fatal(err)
 	}
-	close(stopWatch)
-	if <-watched {
-		t.Error("the renewed file was current without its lineage")
-	}
-
 	token, fingerprint, err := readNetworkCredential(networkPath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if token != "new-sign-in" {
-		t.Errorf("the explicit sign-in was lost: the file holds %q", token)
+		t.Fatalf("the explicit sign-in was lost: the file holds %q", token)
 	}
 	if _, err := os.Stat(networkPath + ".lineage"); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the explicit sign-in left the lineage: %v", err)
 	}
-	if token == "old-sign-in-renewed" {
-		if blocks, _ := networkCredentialMarkerBlocks(networkPath, fingerprint, marker); !blocks {
-			t.Error("a renewal of the old sign-in unblocked the revoked client")
-		}
-	} else if blocks, err := networkCredentialMarkerBlocks(networkPath, fingerprint, marker); err != nil || blocks {
+	if blocks, err := networkCredentialMarkerBlocks(networkPath, fingerprint, marker); err != nil || blocks {
 		t.Errorf("the deliberate sign-in did not unblock: blocks=%t err=%v", blocks, err)
 	}
 }

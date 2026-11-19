@@ -17,6 +17,7 @@ func TestServiceRefusesASecondMinerOnTheSameIdentity(t *testing.T) {
 		t.Skip("systemd")
 	}
 	phase2State(t)
+	fakeSystemdDiscovery(t)
 	fakeExecutable(t)
 	var calls []string
 	cliRun = func(name string, args ...string) (string, error) {

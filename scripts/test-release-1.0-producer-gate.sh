@@ -170,7 +170,7 @@ release_phase_settlement() {
   cd "$sn_repo"
   # This near-complete validator census exceeds the implicit ten-minute budget.
   # Scope its aggregate allowance here; individual stress deadlines stay fixed.
-  producer_tests='^Test(Tunnel|Attempt|DiskAttempt|TrailPolicyDepth|StatsWrite|StatsSnapshotWrite|StatsMultiBatch|StatsSettlement|Deposited|ReleaseMeasurement|ReleaseStatsV2Runtime|ReleaseHeadV2|IntentStore|SteeringIntent|ExactPoolQuality|HeadEMA|ReleaseSteeringLoop|ReleaseSettlementRefresh|ReleaseEvidenceV2|ReleaseActivationV2|ReleaseBootstrapV2|ReleaseActivationHistoryV2|ReleaseInitialBoundaryV2|ReleaseStartupV2|ReleaseStartupVerified|ReleaseStartupOwnerV2|ValidatorEvidenceCensusV2|ChainEvidence|RunRelease|ValidatorEvidence|ValidatorUpload|ReleaseClientKeyHistory|ReleaseClientKeyAuthority|ReleaseRuntimeV2|ArtifactHttpObservation|NativeSourceHash|IntentV2|ReleaseNativeCaptureV2|ReleaseCaptureV2|ReleaseArchiveV2|ReleaseHistoryAdoptionV2|ReleaseNativeObservationV2|ProductionLoader)'
+  producer_tests='^Test(Tunnel|Attempt|DiskAttempt|TrailPolicyDepth|StatsWrite|StatsSnapshotWrite|StatsMultiBatch|StatsSettlement|Deposited|ReleaseMeasurement|ReleaseStatsV2Runtime|ReleaseHeadV2|IntentStore|SteeringIntent|ExactPoolQuality|HeadEMA|ReleaseSteeringLoop|ReleaseSettlementRefresh|ReleaseEvidenceV2|ReleaseActivationV2|ReleaseBootstrapV2|ReleaseActivationHistoryV2|ReleaseInitialBoundaryV2|ReleaseStartupV2|ReleaseStartupVerified|ReleaseStartupOwnerV2|ValidatorEvidenceCensusV2|ChainEvidence|RunRelease|ValidatorEvidence|ValidatorUpload|ReleaseClientKeyHistory|ReleaseClientKeyAuthority|ReleaseRuntimeV2|ArtifactHttpObservation|NativeSourceHash|IntentV2|ReleaseNativeCaptureV2|ReleaseCaptureV2|ReleaseArchiveV2|ReleaseHistoryAdoptionV2|ReleaseNativeObservationV2|ProductionLoader|ConsentRecoveryManaged|EvidenceConsentRecovery|PreparedDepositAuditRecovery)'
   go test ./validator -run "$producer_tests" -count=1 -parallel=4 -timeout 90m
   go test -race ./validator -run "$producer_tests" -count=1 -parallel=4 -timeout 90m
 }
@@ -492,7 +492,7 @@ release_phase_connect() {
 release_gate_start connect release_phase_connect
 release_phase_sdk() {
   cd "$workspace/sdk"
-  provider_registration_tests='^Test(DeviceLocalProviderRegistration|DeviceLocalProviderConnected)'
+  provider_registration_tests='^Test(DeviceLocalProviderRegistration|DeviceLocalProviderConnected|DeviceLocalProviderClientKeyPublishedWithoutRegistration$)'
   go test . -run "$provider_registration_tests" -count=1
   go test -race . -run "$provider_registration_tests" -count=1
   token_transport_tests='^Test(ApiTokenManager|DeviceRemoteRpcPublicationWakesOnlyOutstandingRefresh|ApiCloseAndWaitJoinsRefreshWorker|DeviceLocalAppliesApiRefreshAndLogout|DeviceRemoteAppliesStandaloneApiRefreshAndLogout)'
@@ -530,7 +530,7 @@ release_phase_server_db() {
   test_env_validate_suite_resource_manifest "$TEST_ENV_SUITE_RESOURCE_MANIFEST" "$WARP_VAULT_HOME" "$WARP_CONFIG_HOME"
   # Real JWT/body ownership, signed key history and reserved Redis quotas use
   # this gate's private services; neither a compile nor Forge exercises them.
-  evidence_source_tests='^Test(StAttempt|StReserved|StClientKeyHistory|StClientKeyPublication|StClientKeyRegistrationCohort|StClientKeyRegistrationReadiness|SnAttempt|SnReserved|SnClientKey|MigrationCatalog|PublishedMigration|MainVersion650MigratesThroughClientKeyAppend|TransferContractOpenPlanRepairMigrationOrder|ApplyDbMigrations|ContractResultErrorSeparatesReliabilityFromAccountFailures|RedisCanceled|RedisHealthyPublication|RedisConfirmedPublication)'
+  evidence_source_tests='^Test(StAttempt|StReserved|StClientKeyHistory|StClientKeyPublication|StClientKeyRegistrationCohort|StClientKeyRegistrationReadiness|SnAttempt|SnReserved|SnClientKey|MigrationCatalog|PublishedMigration|MainVersion650MigratesThroughClientKeyAppend|TransferContractOpenPlanRepairMigrationOrder|ApplyDbMigrations|ContractResultErrorSeparatesReliabilityFromAccountFailures|RedisCanceled|RedisHealthyPublication|RedisConfirmedPublication|StClientKeyRegistrationRotatesFromHeadWithoutRegistration$|StClientKeyRegistrationStoresNoRegistrationCopy$)'
   go test ./api -run "$evidence_source_tests" -count=1
   go test -race ./api -run "$evidence_source_tests" -count=1
   go test ./api/handlers -run "$evidence_source_tests" -count=1

@@ -29,6 +29,7 @@ import (
 	"github.com/urfoundation/sn/protocol"
 	"github.com/urfoundation/sn/stabi"
 	"github.com/urfoundation/sn/validator"
+	"github.com/urnetwork/connect/durablevolume"
 )
 
 // Independent qualification exports are mandatory for these selected roots.
@@ -48,6 +49,105 @@ func economicProviderCompleteOriginal(t *testing.T, variable, name string) []byt
 		t.Fatal("bounded complete provider original", name, err)
 	}
 	return raw
+}
+
+// A completed export may be sealed read-only after the producer exits. Verify
+// that original before writing its exact bytes to the private policy reference.
+func economicProviderCompleteAttemptReference(t *testing.T) validator.ReleaseEvidenceV2File {
+	t.Helper()
+	const variable = "URNETWORK_PROVIDER_ATTEMPT_COMPLETED_FIXTURE_DIR"
+	const name = "authority.json"
+	const maximum = 16 * 1024 * 1024
+	directory := os.Getenv(variable)
+	path := filepath.Join(directory, name)
+	if err := validator.ValidateReleaseEvidenceV2Path(path); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || maximum < info.Size() {
+		t.Fatalf("complete attempt authority is not a bounded regular original: %v", err)
+	}
+	raw := economicProviderCompleteOriginal(t, variable, name)
+	digest := monitorReadDigest(raw)
+	reference := validator.ReleaseEvidenceV2File{Path: path, Bytes: uint64(len(raw)), SHA256: digest}
+	if info.Mode() != 0o400 {
+		// The policy reader admits direct 0600 producer output and rejects
+		// other file modes with its original validation.
+		return reference
+	}
+	root, err := os.Open(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent, err := storageOriginalRoot(t.Context(), root, directory)
+	if err == nil {
+		member := durablevolume.PreparationFile{Path: name, Kind: "file", Mode: 0o400, Bytes: reference.Bytes, Sha256: digest}
+		raw, _, err = readStorageOriginalFile(t.Context(), root, parent, member, maximum)
+	}
+	if err := errors.Join(err, root.Close()); err != nil {
+		t.Fatal(err)
+	}
+	local, err := filepath.EvalSymlinks(mainnetPrivateTestDir(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	reference.Path = filepath.Join(local, name)
+	if err := os.WriteFile(reference.Path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return reference
+}
+
+// Both the retained 0400 archive and the active 0600 producer yield the same
+// real authority. Opening and cold rereading the policy must preserve its
+// original file, bytes, digest and embedded scratch path.
+func TestEconomicProviderCompleteAttemptReferenceKeepsTheOriginal(t *testing.T) {
+	policy, original := economicProviderAttemptPolicyFixture(t)
+	for _, mode := range []os.FileMode{0o400, 0o600} {
+		directory, err := filepath.EvalSymlinks(mainnetPrivateTestDir(t))
+		if err != nil {
+			t.Fatal(err)
+		}
+		path := filepath.Join(directory, "authority.json")
+		if err := os.WriteFile(path, original, mode); err != nil {
+			t.Fatal(err)
+		}
+		before, err := os.Lstat(path)
+		if err != nil || before.Mode() != mode {
+			t.Fatalf("original authority mode %o: %v", mode, err)
+		}
+		t.Setenv("URNETWORK_PROVIDER_ATTEMPT_COMPLETED_FIXTURE_DIR", directory)
+		policy.AttemptAuthority = economicProviderCompleteAttemptReference(t)
+		if _, err := policy.openAttemptSource(t.Context()); err != nil {
+			t.Fatalf("complete provider policy could not open its %o original: %v", mode, err)
+		}
+		reference, _, err := policy.attemptReference()
+		if err != nil {
+			t.Fatal(err)
+		}
+		cold, err := validator.ReadReleaseEvidenceV2File(t.Context(), reference, reference.Bytes)
+		if err != nil || !bytes.Equal(cold, original) || policy.AttemptAuthority.SHA256 != monitorReadDigest(original) {
+			t.Fatalf("policy reference differs from its %o original: %v", mode, err)
+		}
+		active, err := os.Lstat(reference.Path)
+		if err != nil || active.Mode() != 0o600 || os.SameFile(before, active) != (mode == 0o600) {
+			t.Fatalf("policy reference did not retain the expected file identity for %o: %v", mode, err)
+		}
+		after, err := os.Lstat(path)
+		if err != nil || !os.SameFile(before, after) || before.Mode() != after.Mode() {
+			t.Fatalf("the %o original changed: %v", mode, err)
+		}
+		retained, err := os.ReadFile(path)
+		if err != nil || !bytes.Equal(retained, original) {
+			t.Fatalf("the %o original bytes changed: %v", mode, err)
+		}
+		if mode == 0o400 {
+			reference.Path = path
+			if data, err := validator.ReadReleaseEvidenceV2File(t.Context(), reference, reference.Bytes); err == nil || data != nil {
+				t.Fatal("the retained 0400 original passed as a live 0600 reference")
+			}
+		}
+	}
 }
 
 // The exported trial artifact supplies every provider identity. Only its
@@ -137,8 +237,7 @@ func economicProviderCompleteFixture(t *testing.T) (economicConservationPolicy, 
 	if err := payoutartifact.Sign(artifact, publisher); err != nil {
 		t.Fatal(err)
 	}
-	attemptRaw := economicProviderCompleteOriginal(t, "URNETWORK_PROVIDER_ATTEMPT_COMPLETED_FIXTURE_DIR", "authority.json")
-	selected := &economicProviderMeasurementPolicy{Schema: economicProviderMeasurementPolicySchema, AttributionSigner: authoritySigner.Hex(), WholeWorkAuthoritySigner: authoritySigner.Hex(), WalletEndpoint: "https://synthetic-wallet.example", AttemptAuthority: validator.ReleaseEvidenceV2File{Path: filepath.Join(os.Getenv("URNETWORK_PROVIDER_ATTEMPT_COMPLETED_FIXTURE_DIR"), "authority.json"), Bytes: uint64(len(attemptRaw)), SHA256: monitorReadDigest(attemptRaw)}, MaximumOriginalBytes: 32 * 1024 * 1024}
+	selected := &economicProviderMeasurementPolicy{Schema: economicProviderMeasurementPolicySchema, AttributionSigner: authoritySigner.Hex(), WholeWorkAuthoritySigner: authoritySigner.Hex(), WalletEndpoint: "https://synthetic-wallet.example", AttemptAuthority: economicProviderCompleteAttemptReference(t), MaximumOriginalBytes: 32 * 1024 * 1024}
 	pool := strconv.FormatUint(artifact.NoID, 10)
 	policy := economicConservationPolicy{EntitlementSources: &economicConservationEntitlementPolicy{Sources: []economicConservationEntitlementSource{{PoolId: pool, DeploymentId: artifact.DeploymentID, ProviderMeasurements: selected}}}}
 	census := &economicConservationEntitlementCensus{Schema: economicEntitlementCensusSchema, Start: artifact.Start, End: artifact.End, RootSigner: crypto.PubkeyToAddress(rootKey.PublicKey).Hex(), Artifact: *artifact, ProviderOriginals: originals}
