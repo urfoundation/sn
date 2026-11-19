@@ -205,7 +205,8 @@ func minerExtenderGuidance(reason string, bindFix string, euid int) string {
 }
 
 // minerExtenderStandings keeps each provider slot's standing for the status
-// file. Only one slot of a run carries the role, so the others report off.
+// file. Only the direct slot of a run carries the role, so the others report
+// off, and a run of proxy slots reports off in every slot.
 // Safe for concurrent use.
 type minerExtenderStandings struct {
 	stateLock sync.Mutex

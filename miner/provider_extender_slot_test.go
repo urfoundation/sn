@@ -24,17 +24,15 @@ import (
 	"github.com/urnetwork/sdk"
 )
 
-// Each slot the run starts reaches its device, and exactly one asks for the role.
-// A run with a proxy file starts proxy slots alone (readProxySettings), and one
-// of them holds the role, so the host still has its extender. The file's order
-// doesn't choose which, since readProxySettings reads a map.
-func TestProviderRunAsksForTheExtenderRoleInOneSlot(t *testing.T) {
+// Each slot the run starts reaches its device, and only the direct slot asks for
+// the role. A run with a proxy file starts proxy slots alone (readProxySettings),
+// and none of them asks, whatever the file's order, since a proxy slot never
+// runs the role: it binds and forwards on this host, outside the proxy every
+// other egress of the slot takes (connect#227, owner 2026-11-18). Before, the
+// proxy slot whose name sorted first asked for it.
+func TestProviderRunAsksForTheExtenderRoleOnlyInTheDirectSlot(t *testing.T) {
 	first := &connect.ProxySettings{Network: "tcp", Address: "192.0.2.30:1080"}
 	second := &connect.ProxySettings{Network: "tcp", Address: "192.0.2.31:1080"}
-	holder, other := first, second
-	if providerRegistrationSlot(second) < providerRegistrationSlot(first) {
-		holder, other = second, first
-	}
 	for _, c := range []struct {
 		name    string
 		members []*connect.ProxySettings
@@ -48,16 +46,16 @@ func TestProviderRunAsksForTheExtenderRoleInOneSlot(t *testing.T) {
 			name:    "a proxy file",
 			members: []*connect.ProxySettings{first, second},
 			expect: map[string]bool{
-				providerRegistrationSlot(holder): true,
-				providerRegistrationSlot(other):  false,
+				providerRegistrationSlot(first):  false,
+				providerRegistrationSlot(second): false,
 			},
 		},
 		{
 			name:    "a proxy file in the other order",
 			members: []*connect.ProxySettings{second, first},
 			expect: map[string]bool{
-				providerRegistrationSlot(holder): true,
-				providerRegistrationSlot(other):  false,
+				providerRegistrationSlot(first):  false,
+				providerRegistrationSlot(second): false,
 			},
 		},
 		{
@@ -173,8 +171,9 @@ func TestProviderProxySlotDeviceProvidesWithoutTheExtenderRole(t *testing.T) {
 	}
 }
 
-// The role stays with one slot across restarts and the file's order, since the
-// operator's row for the host's key follows whichever client last activated it.
+// The run's extender stack, and the role with it when the slot is direct, stays
+// with one slot across restarts and the file's order, since the gossip node's
+// identity and the operator's row for the host's key follow that slot's client.
 // Credentials aren't part of a slot's name, so rotating them doesn't move it.
 func TestProviderExtenderSlotHoldsAcrossOrderAndCredentials(t *testing.T) {
 	a := &connect.ProxySettings{Network: "tcp", Address: "192.0.2.40:1080"}
