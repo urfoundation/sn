@@ -98,11 +98,21 @@ checks again every five minutes.
 - `--port` serves the status of every operator. The providers themselves run
   without a status port.
 - With `--all-operators`, the first provider process to take TCP 443 serves the
-  extender for the host.
-- A provider with a proxy file runs one extender for the host, in one of its
-  slots, with or without `--all-operators`. The extender runs from the host, not
-  through a proxy, so the host's own address needs TCP 443 reachable, and its
-  relayed traffic doesn't use the proxy's bandwidth. All the slots provide as usual.
+  extender for the host. Only a provider without a proxy file runs one.
+- Each proxy slot sends everything through its proxy: its connections to the
+  platform, its exit traffic and its gossip. The platform sees the proxy's
+  address, so the slot is placed at the proxy's location. A SOCKS proxy carries
+  TCP only, so a proxy slot's exit refuses UDP and ping, and the slot opens no
+  peer-to-peer connections. It fails the quality probe's HTTP/3 checks.
+- A provider with a proxy file runs no extender. The extender binds and forwards
+  on the host, outside the slots' proxies, so no proxy slot runs it. A provider
+  without a proxy file runs it in its direct slot.
+- A proxy slot shows no SN25 head-breadth unit, capture the flag unit or extender
+  unit: the network sees it at its proxy's address, and a proxy is no host. Run a
+  direct slot, a provider without a proxy file, to show your host's own. A proxy
+  slot still carries traffic and earns its pool share by usage, unless it is
+  bound to a fleet. `provider fleet bind` and `provider fleet sign` warn when the
+  client is one of this host's proxy slots, so bind direct devices only.
 - A provider process runs one extender network client for all its slots: the
   directory of known extenders, the sampler that fills it and the gossip node. They
   run in the extender slot, through that slot's proxy, and the other slots read the

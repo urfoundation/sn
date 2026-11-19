@@ -1059,7 +1059,12 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 			extenderKeySeed, _ = readProviderExtenderKeySeed(clientId)
 			extenderKeyClientId = clientId
 		}
-		settings := providerSlotDeviceSettings(self.closeReportDomainHash, extenderNode)
+		// the provider extender role is asked for on the direct slot alone: it
+		// binds and forwards on this host, outside a proxy slot's proxy, so a
+		// run of proxy slots runs none (connect#227, owner 2026-11-18). The sdk
+		// holds it off in a proxied space whatever is asked.
+		extenderRole := extenderNode && proxySettings == nil
+		settings := providerSlotDeviceSettings(self.closeReportDomainHash, extenderRole)
 		settings.KeyMaterial = providerDeviceKeyMaterial(seed, certPem, keyPem, extenderKeySeed, extenderNode)
 		applyProviderMemoryTarget(settings, self.memoryPlan.DeviceMemoryTargetByteCount)
 		settings.ProviderDialContextSettings = self.testEgressDialer
@@ -1110,7 +1115,7 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 		// one line per change, so the activation prints once it settles and
 		// nothing repeats while it holds (connect/EXTENDER.md F3, G3)
 		extenderStatusListener := newProviderExtenderStatusListener(output, index).withStanding(extenderStandings, extenderBindFix)
-		if extenderNode {
+		if extenderRole {
 			extenderStatusListener.portMapping = portMapping
 		}
 		extenderStatusSub := device.AddExtenderProvideStatusChangeListener(extenderStatusListener)
@@ -1219,12 +1224,18 @@ func providerStatePath(name string) (string, error) {
 // filename. The direct (non-proxy) provider keeps the simple legacy-adjacent
 // name.
 func providerClientJwtPath(proxySettings *connect.ProxySettings) (string, error) {
+	return providerStatePath(providerClientJwtName(proxySettings))
+}
+
+// providerClientJwtName is the file name of a slot's client credential in its
+// state directory.
+func providerClientJwtName(proxySettings *connect.ProxySettings) string {
 	if proxySettings == nil {
-		return providerStatePath(".provider.jwt")
+		return ".provider.jwt"
 	}
 	key := proxySettings.Network + "\x00" + proxySettings.Address
 	sum := sha256.Sum256([]byte(key))
-	return providerStatePath(fmt.Sprintf(".provider-%x.jwt", sum[:8]))
+	return fmt.Sprintf(".provider-%x.jwt", sum[:8])
 }
 
 // readProviderClientKeySeed loads the Ed25519 seed for the provider
@@ -1261,8 +1272,8 @@ func writeProviderClientKeySeed(seed []byte) error {
 // providerDeviceKeyMaterial is the identity material the provider device is
 // built with. The space keeps no local state, so the extender's keys live in
 // the provider state directory and ride the key material of the one slot whose
-// space runs the run's gossip node and the provider extender role
-// (`extenderNode`, the extender slot):
+// space runs the run's gossip node, and the provider extender role when that
+// slot is the direct one (`extenderNode`, the extender slot):
 //   - the extender identity seed (connect/EXTENDER.md B1, G2): without it the
 //     role would activate under a new key every launch and the operator would
 //     revoke the old one as fast as it publishes it.
@@ -1651,8 +1662,12 @@ type ProxyAuth struct {
 }
 
 func readProxySettings() []*connect.ProxySettings {
-	proxyConfig := readProxyConfig()
+	return proxySettingsOf(readProxyConfig())
+}
 
+// proxySettingsOf is one slot's settings for each proxy server of a proxy
+// configuration.
+func proxySettingsOf(proxyConfig *ProxyConfig) []*connect.ProxySettings {
 	if proxyConfig.Servers == nil {
 		return nil
 	}
