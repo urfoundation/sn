@@ -55,7 +55,9 @@ weights.
 A fleet is scored on the devices the validator measures. At most 7 devices of
 each fleet draw ahead of other providers into the measured cohort: the cohort's
 size divided by the 200 seats. So bind at most 7 devices, unless the others are
-already measured.
+already measured, and bind direct devices only. From November 19, 2026, a proxy
+slot shows no head-breadth unit
+([notice](2026-11-19-proxy-slots-show-no-unit.md)).
 
 From epoch 8, the head's share of the providers' emission follows capture the
 flag's split, as [its notice](2026-11-11-capture-the-flag.md) says. Rewards are
