@@ -1219,12 +1219,18 @@ func providerStatePath(name string) (string, error) {
 // filename. The direct (non-proxy) provider keeps the simple legacy-adjacent
 // name.
 func providerClientJwtPath(proxySettings *connect.ProxySettings) (string, error) {
+	return providerStatePath(providerClientJwtName(proxySettings))
+}
+
+// providerClientJwtName is the file name of a slot's client credential in its
+// state directory.
+func providerClientJwtName(proxySettings *connect.ProxySettings) string {
 	if proxySettings == nil {
-		return providerStatePath(".provider.jwt")
+		return ".provider.jwt"
 	}
 	key := proxySettings.Network + "\x00" + proxySettings.Address
 	sum := sha256.Sum256([]byte(key))
-	return providerStatePath(fmt.Sprintf(".provider-%x.jwt", sum[:8]))
+	return fmt.Sprintf(".provider-%x.jwt", sum[:8])
 }
 
 // readProviderClientKeySeed loads the Ed25519 seed for the provider
@@ -1651,8 +1657,12 @@ type ProxyAuth struct {
 }
 
 func readProxySettings() []*connect.ProxySettings {
-	proxyConfig := readProxyConfig()
+	return proxySettingsOf(readProxyConfig())
+}
 
+// proxySettingsOf is one slot's settings for each proxy server of a proxy
+// configuration.
+func proxySettingsOf(proxyConfig *ProxyConfig) []*connect.ProxySettings {
 	if proxyConfig.Servers == nil {
 		return nil
 	}
