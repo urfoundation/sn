@@ -1353,9 +1353,17 @@ double-count supply. A score unit counts only if it is *routable* — the valida
 trail hop through it (`VALIDATOR.md` §7), so liveness is baked into the metric and there is no separate
 quality term.
 
+**A proxy slot shows no unit (owner decision, 2026‑11‑19).** A unit is the address block of a host the fleet
+runs. A provider whose platform connections say they come through a proxy counts at no address of its own.
+Every connection of an sn miner proxy slot says so; connect marks each one it dials through a proxy. The
+server records the zero hash on such a provider's trail hops, so it adds no unit to its fleet, though it is
+measured like any other provider. It is also no capture the flag candidate (§8.7) and no extender unit
+(§8.6.2). Its host shows its own block through a direct slot, a run without a proxy file. Without this rule,
+each proxy's /29 or /48 would be a unit of its own, and buying proxies would buy head breadth.
+
 ```
 for top-level-miner UID u (a fleet — a hotkey with bound client_ids C_u, §11.4):
-    IPs(u)   = { distinct keyed prefix hash h : some c ∈ C_u routed a verified trail hop from h } # VALIDATOR.md §7
+    IPs(u)   = { distinct keyed prefix hash h ≠ 0 : some c ∈ C_u routed a verified trail hop from h } # VALIDATOR.md §7; 0 = a proxy slot's hop
     claim(h) = #{ bound fleets u' : h ∈ IPs(u') }                                                # split across sharers
     score(u) = Σ over h ∈ IPs(u) of  1 / claim(h)         # split-adjusted unique routable-IP count
     head_weight[u] = EMA(score(u))                        # weight IS the smoothed IP score (decision B):
@@ -1728,6 +1736,8 @@ provider.
   - *The trade‑off:* an extender that is up only around `end(k)` counts for the whole epoch. Activation is
     self‑service and the boundary is predictable, so this is cheap to game. The gain is limited by the
     units (a block counts once, however many hosts appear in it) and by the cap.
+  - A record whose provider client said its platform connections come through a proxy is not active: a
+    proxy slot is no host (§8.4).
 - (E2, the first draft's hourly forwarding record, is removed by the same decision.)
 - **(E3) Distinct.** One record per provider client and per address: active records that share a provider
   client, an IPv4 address or an IPv6 /64, directly or through other records, count once, for the record
