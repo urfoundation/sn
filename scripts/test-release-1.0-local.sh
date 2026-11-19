@@ -547,7 +547,7 @@ release_phase_sn_v2() {
   # seconds under race and 566 without, and a later race run timed out at
   # Go's implicit ten minutes, so both modes have an explicit deadline; the
   # whole ledger and checker packages above take seconds.
-  settlement_v2_tests='^Test(Ledger|ClaimV2|MainUsageClaimDaemonV2|V2|Withdraw|SubmitCarriesValue|SettlementV2|ProductionSettlementV2|ProductionRenderedSuccessorKeepsSettlementV2|ReleaseRuntimeRunsLedgerAudit)'
+  settlement_v2_tests='^Test(Ledger|ClaimV2|MainUsageClaimDaemonV2|V2|Withdraw|SubmitCarriesValue|SettlementV2|ProductionSettlementV2|ProductionRenderedSuccessorKeepsSettlementV2|ReleaseRuntimeRunsLedgerAudit|CaptureTheFlagViewSelectors$|ReadSettlementV2AmendmentsFallback$)'
   go test ./merkle ./protocol ./miner ./miner/onchain ./validator -run "$settlement_v2_tests" -count=1 -timeout 30m
   go test -race ./merkle ./protocol ./miner ./miner/onchain ./validator -run "$settlement_v2_tests" -count=1 -timeout 30m
 }
@@ -841,7 +841,7 @@ release_gate_start connect-shuffle-14 release_phase_connect_shuffle_14
 release_gate_start connect-shuffle-15 release_phase_connect_shuffle_15
 release_phase_sdk() {
   cd "$workspace/sdk"
-  provider_registration_tests='^Test(DeviceLocalProviderRegistration|DeviceLocalProviderConnected)'
+  provider_registration_tests='^Test(DeviceLocalProviderRegistration|DeviceLocalProviderConnected|DeviceLocalProviderClientKeyPublishedWithoutRegistration$)'
   go test . -run "$provider_registration_tests" -count=1
   go test -race . -run "$provider_registration_tests" -count=1
   go test ./... -run '^$'
@@ -855,7 +855,7 @@ release_phase_sdk() {
   # CL-2 and CL-4 (VERSION2-FINAL.md §11, §15.7): the settlement v2 balances
   # the apps show, in every account state and beside the v1 claims, and the
   # v2 claims with their vault2 bindings and ledger proofs.
-  sdk_ledger_v2_tests='^Test(SnLedger|BuildTestLedgerTreeMatchesTheVectors|SnChainSettingsVault2Address|Ledger|PackLedger|DecodeLedger|EthCallFrom|TransactionReceiptLogs)'
+  sdk_ledger_v2_tests='^Test(SnLedger|BuildTestLedgerTreeMatchesTheVectors|SnChainSettingsVault2Address|Ledger|PackLedger|DecodeLedger|EthCallFrom|TransactionReceiptLogs|ClaimBatcherReleaseCode$|SnChainSettingsClaimBatcherAddress$|Vault2Pools$)'
   go test . ./sn/evm ./sn/merkle -run "$sdk_ledger_v2_tests" -count=1
   go test -race . ./sn/evm ./sn/merkle -run "$sdk_ledger_v2_tests" -count=1
   # The SDK's contracts with the sibling checkouts, which these tests read:
@@ -957,7 +957,7 @@ if [[ "${RUN_SERVER_DB_TESTS:-0}" == "1" ]]; then
     test_env_validate_suite_resource_manifest "$TEST_ENV_SUITE_RESOURCE_MANIFEST" "$WARP_VAULT_HOME" "$WARP_CONFIG_HOME"
     # Real JWT/body ownership, signed key history and reserved Redis quotas use
     # this gate's private services; neither a compile nor Forge exercises them.
-    evidence_source_tests='^Test(StAttempt|StReserved|StClientKeyHistory|StClientKeyPublication|StClientKeyRegistrationCohort|StClientKeyRegistrationReadiness|SnAttempt|SnReserved|SnClientKey|MigrationCatalog|PublishedMigration|MainVersion650MigratesThroughClientKeyAppend|TransferContractOpenPlanRepairMigrationOrder|ApplyDbMigrations|ContractResultErrorSeparatesReliabilityFromAccountFailures|AccountFeedbackNetwork|FeedbackIndexFollowsPublishedAutomationMigrations|RedisCanceled|RedisHealthyPublication|RedisConfirmedPublication)'
+    evidence_source_tests='^Test(StAttempt|StReserved|StClientKeyHistory|StClientKeyPublication|StClientKeyRegistrationCohort|StClientKeyRegistrationReadiness|SnAttempt|SnReserved|SnClientKey|MigrationCatalog|PublishedMigration|MainVersion650MigratesThroughClientKeyAppend|TransferContractOpenPlanRepairMigrationOrder|ApplyDbMigrations|ContractResultErrorSeparatesReliabilityFromAccountFailures|AccountFeedbackNetwork|FeedbackIndexFollowsPublishedAutomationMigrations|RedisCanceled|RedisHealthyPublication|RedisConfirmedPublication|StClientKeyRegistrationRotatesFromHeadWithoutRegistration$|StClientKeyRegistrationStoresNoRegistrationCopy$)'
     go test ./api -run "$evidence_source_tests" -count=1
     go test -race ./api -run "$evidence_source_tests" -count=1
     go test ./api/handlers -run "$evidence_source_tests" -count=1
@@ -1008,7 +1008,7 @@ if [[ "${RUN_SERVER_DB_TESTS:-0}" == "1" ]]; then
     # on this gate's private services. Under load the race run's ./controller
     # reached Go's implicit ten-minute deadline, at 600.6 and 601.6 seconds,
     # and normal mode took 509 to 521, so both modes have an explicit one.
-    ledger_v2_tests='^Test(StLedgerV2|LedgerV2|LedgerObject|StConfigSelectsLedgerV2|StConfigRefusesMalformedLedgerV2|StSyncEventsMirrorsLedgerV2|StV1DriverStopsAtFirstV2Epoch|StSyncChainKeepsV1BelowFirstV2Epoch|WorkloadsRunLedgerV2|SnLedger|StSubtensorStorageKeys|StConfigSelectsPruneAlertPositions|StV1FinalizationOfAV2EpochNotifiesNothing|StEpochEarningsKeepV1ForV1Epochs|EpochEarningsTemplateWithAV2Amount|RouterInstallsTheLedgerBuilder|StV2EpochCommands|ProviderWalletEpochRetainedRefusesUnusableSubnet|StV1Close|StV1GasFloor|StV1Deposit|StV1PendingReservation|StOperatorGasRemainingLiability|StOperatorGasPending|StOperatorGasRevertOfAPendingExpiredDeposit|StDepositReservedAttemptAdmitsOnlyAnExpiredDeposit)'
+    ledger_v2_tests='^Test(StLedgerV2|LedgerV2|LedgerObject|StConfigSelectsLedgerV2|StConfigRefusesMalformedLedgerV2|StSyncEventsMirrorsLedgerV2|StV1DriverStopsAtFirstV2Epoch|StSyncChainKeepsV1BelowFirstV2Epoch|WorkloadsRunLedgerV2|SnLedger|StSubtensorStorageKeys|StConfigSelectsPruneAlertPositions|StV1FinalizationOfAV2EpochNotifiesNothing|StEpochEarningsKeepV1ForV1Epochs|EpochEarningsTemplateWithAV2Amount|RouterInstallsTheLedgerBuilder|StV2EpochCommands|ProviderWalletEpochRetainedRefusesUnusableSubnet|StV1Close|StV1GasFloor|StV1Deposit|StV1PendingReservation|StOperatorGasRemainingLiability|StOperatorGasPending|StOperatorGasRevertOfAPendingExpiredDeposit|StDepositReservedAttemptAdmitsOnlyAnExpiredDeposit|StExtenderShadow|CoreStClientLedgerV2ClaimedAtReadsOneBlockInBoundedBatches$|StExtenderPoolMetrics$|StExtenderPoolSettings$|StExtenderReplayOfTheWorkedExample$|StV2ExtenderCommandsParse$|WorkloadsRunCtfDriverSteps$)'
     go test . ./api ./bringyourctl ./controller ./model ./startifact ./taskworker ./taskworker/work -run "$ledger_v2_tests" -count=1 -timeout 30m
     go test -race . ./api ./bringyourctl ./controller ./model ./startifact ./taskworker ./taskworker/work -run "$ledger_v2_tests" -count=1 -timeout 30m
     # The monitor's schema contracts of the published migration suffix, from

@@ -163,6 +163,7 @@ func TestSystemdUnitsAsUserGrantOnlyTheBind(t *testing.T) {
 	t.Setenv("URNETWORK_UPDATE_URL", "")
 	t.Setenv("URNETWORK_AUTO_UPDATE", "")
 	t.Setenv("URNETWORK_CONNECT_EXTRA_ROOT_CA_FILE", "")
+	t.Setenv(minerPortMappingEnv, "")
 	units := systemdUnitSet("urnetwork-provider", "/home/alice/.local/bin/provider", "/home/alice/.urnetwork", true, "alice", "/usr/bin/systemctl")
 	want := `# Installed by provider service install --system --as=alice. Remove with: sudo provider service uninstall --system
 [Unit]

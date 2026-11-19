@@ -12,8 +12,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/user"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -35,6 +37,20 @@ func phase2State(t *testing.T) string {
 	t.Setenv("URNETWORK_SERVICE_NAME", "")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
 	return dir
+}
+
+// Provides the executable marker and system unit directory that the real
+// discovery reads. The caller's cliRun fixture handles service commands.
+func fakeSystemdDiscovery(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "systemctl"), []byte("#!/bin/sh\nexit 1\n"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+	previousSystemUnitDir := systemdSystemUnitDir
+	systemdSystemUnitDir = filepath.Join(dir, "units")
+	t.Cleanup(func() { systemdSystemUnitDir = previousSystemUnitDir })
 }
 
 func fakeJwt(claims map[string]any) string {
@@ -440,6 +456,10 @@ func TestServiceInstallWithSystemd(t *testing.T) {
 	}
 	defer func() { cliRun = defaultCliRun }()
 	manager := newSystemdService(false)
+	const username = "miner-fixture"
+	manager.currentUser = func() (*user.User, error) {
+		return &user.User{Username: username}, nil
+	}
 	var out bytes.Buffer
 	stateDir, _ := providerStateDir()
 	if err := manager.install("/bin/provider", stateDir, &out); err != nil {
@@ -448,10 +468,13 @@ func TestServiceInstallWithSystemd(t *testing.T) {
 	if !manager.installed() {
 		t.Fatal("unit not written")
 	}
-	joined := strings.Join(calls, "\n")
-	for _, want := range []string{"systemctl --user daemon-reload", "systemctl --user enable --now urnetwork-provider.service urnetwork-provider-update.timer", "loginctl enable-linger"} {
-		if !strings.Contains(joined, want) {
-			t.Fatalf("missing %q in\n%s", want, joined)
+	for _, want := range []string{
+		"systemctl --user daemon-reload",
+		"systemctl --user enable --now urnetwork-provider.service urnetwork-provider-update.timer",
+		"loginctl enable-linger " + username,
+	} {
+		if !slices.Contains(calls, want) {
+			t.Fatalf("missing %q in\n%s", want, strings.Join(calls, "\n"))
 		}
 	}
 	if err := manager.uninstall(&out); err != nil || manager.installed() {
@@ -580,6 +603,7 @@ func TestTheOfficialInstallerKeepsItsUpdates(t *testing.T) {
 		t.Skip("the Linux installer")
 	}
 	phase2State(t)
+	fakeSystemdDiscovery(t)
 	// the installer's unit mines ~/.urnetwork
 	home := t.TempDir()
 	t.Setenv("HOME", home)
