@@ -46,7 +46,7 @@ func TestRuntime491SelectiveMetagraphApiRejectsForeignIdentity(t *testing.T) {
 		Field string
 		Value any
 	}{
-		{Field: "specVersion", Value: 489}, {Field: "specVersion", Value: 492}, {Field: "specName", Value: "synthetic-other-runtime"}, {Field: "transactionVersion", Value: 2}, {Field: "stateVersion", Value: 2},
+		{Field: "specVersion", Value: 489}, {Field: "specVersion", Value: 493}, {Field: "specName", Value: "synthetic-other-runtime"}, {Field: "transactionVersion", Value: 2}, {Field: "stateVersion", Value: 2},
 	} {
 		var value map[string]any
 		if err := json.Unmarshal([]byte(runtime491TestVersionReply), &value); err != nil {

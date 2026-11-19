@@ -53,8 +53,8 @@ func runtimeSuccessorStorageTestMetadata(t *testing.T, name string, size int, sh
 
 // A successor is admitted only if the owner census, eligibility and treasury
 // custody storage it decodes keep their shapes. Runtime488 passed this in
-// production on 2026-11-06; runtime490 (2026-11-10) and runtime491 (2026-11-16)
-// must pass it too, or the reviewed API tuple alone would still leave the
+// production on 2026-11-06; runtime490 (2026-11-10), runtime491 (2026-11-16)
+// and runtime492 (2026-11-19) must pass it too, or the reviewed API tuple alone would still leave the
 // validator refusing them.
 func TestReviewedRuntimeSuccessorsKeepProductionStorage(t *testing.T) {
 	for _, runtime := range []struct {
@@ -64,6 +64,7 @@ func TestReviewedRuntimeSuccessorsKeepProductionStorage(t *testing.T) {
 		{name: "runtime488-metadata.scale.gz.base64", size: 392151, sha256: "66804d7b7f326f3285f900a1533df30c17ffa1d2855a5c3f3559ae05471446b7", hash: "0x9ae276aa9166d8d4c72deb8d14e802df2171df3c3232198bbff65d5fe205e0ca"},
 		{name: "runtime490-metadata.scale.gz.base64", size: 395984, sha256: "6c1f9314e97e88d9ec4ffbdc1e2f7335e86c2b41bf27e726bef5bd3fa5305401", hash: "0x58fd4d5d2a68ee7d6491c98979127b3ecedd54c7fbc0fd6a04794bade14458d3"},
 		{name: "runtime491-metadata.scale.gz.base64", size: 395751, sha256: "5e7d5b553f5fd70d2fa6e53a529f28c811e8c23686ccae45975bcfeb053df137", hash: "0xae0df84c73d0dd04ebcab7d184a228b9e49d9817fa127f2203c627afe29d24a0"},
+		{name: "runtime492-metadata.scale.gz.base64", size: 395745, sha256: "ca6174da65c56320bc449b0c1c98d6202c65339c40955eebcc914538a27bb878", hash: "0xc132138eacebe032e0871d2a2cbd75abad88d19a2bf8640205e268206d6d0cd0"},
 	} {
 		t.Run(runtime.name, func(t *testing.T) {
 			metadata := runtimeSuccessorStorageTestMetadata(t, runtime.name, runtime.size, runtime.sha256, runtime.hash)
