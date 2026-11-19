@@ -13,7 +13,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	validatorcomponent "github.com/urfoundation/sn/validator"
+	validatorcomponent "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Both retained receipt names classify empty and missing without accepting
