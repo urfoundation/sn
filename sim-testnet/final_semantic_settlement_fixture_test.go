@@ -13,7 +13,7 @@ import (
 	"sort"
 	"testing"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // The public closure is the producer's exact transaction, including its

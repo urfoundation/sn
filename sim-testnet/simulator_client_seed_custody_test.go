@@ -17,8 +17,8 @@ import (
 	"testing"
 	"time"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
-	"github.com/urnetwork/connect"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
+	"github.com/urnetwork/connect/v2026"
 )
 
 // Owns a two-operator, one-epoch filesystem fixture; the configured proof depth

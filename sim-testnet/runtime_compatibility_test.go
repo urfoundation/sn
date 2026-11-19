@@ -19,7 +19,7 @@ import (
 	gsrpcrpc "github.com/centrifuge/go-substrate-rpc-client/v4/rpc"
 	gsrpcstate "github.com/centrifuge/go-substrate-rpc-client/v4/rpc/state"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
-	"github.com/urfoundation/sn/crv4"
+	"github.com/urfoundation/sn/v2026/crv4"
 )
 
 // A synthetic next runtime retains the reviewed consumed interface while
