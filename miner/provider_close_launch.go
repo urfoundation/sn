@@ -23,28 +23,30 @@ func ProviderDeviceSettings(domainHash [32]byte) *sdk.DeviceLocalSettings {
 	return settings
 }
 
-// The device settings of one slot of a provider run. One slot runs the provider
-// extender role (connect/EXTENDER.md G1, G2), the one providerExtenderSlot names.
-// A host binds the carrier ports once, and only that slot's space runs a gossip
-// node and has an extender identity to activate (connect#227): the other
-// slots' spaces read its extender stack. A slot otherwise provides the same
-// with or without the role.
-func providerSlotDeviceSettings(domainHash [32]byte, extenderSlot bool) *sdk.DeviceLocalSettings {
+// The device settings of one slot of a provider run. At most one slot runs the
+// provider extender role (connect/EXTENDER.md G1, G2): the slot providerExtenderSlot
+// names, when it is the direct slot. A host binds the carrier ports once, and
+// only that slot's space runs a gossip node and has an extender identity
+// (connect#227): the other slots' spaces read its extender stack. A proxy slot
+// never runs the role, since the role binds and forwards on this host, outside
+// the proxy every other egress of the slot takes (owner 2026-11-18, "route
+// through the proxy"); the sdk holds the role off in a proxied space whatever
+// this asks. A slot otherwise provides the same with or without the role.
+func providerSlotDeviceSettings(domainHash [32]byte, extenderRole bool) *sdk.DeviceLocalSettings {
 	settings := ProviderDeviceSettings(domainHash)
-	settings.ProvideExtenderEnabled = extenderSlot
+	settings.ProvideExtenderEnabled = extenderRole
 	return settings
 }
 
-// The slot of a provider run that holds the extender role: the direct slot when
-// the run has one, otherwise the proxy slot whose name sorts first. A run with a
-// proxy file has only proxy slots. The name comes from the proxy's network and
-// address alone, so restarts, the file's order and rotated credentials leave the
-// role where it is, and only removing that proxy or adding one that sorts first
-// moves it.
-//
-// The role runs from the host whichever slot holds it: its activations and its
-// forward dials leave out the slot's proxy, so the operator dials back to the host
-// that holds the ports.
+// The slot of a provider run that hosts the run's extender stack -- the
+// directory, the network client that samples it and the gossip node, which run
+// through the slot's own egress (connect#227) -- and that holds the provider
+// extender role when it is the direct slot: the direct slot when the run has
+// one, otherwise the proxy slot whose name sorts first. A run with a proxy file
+// has only proxy slots, so it hosts the stack in a proxy slot and runs no role
+// (owner 2026-11-18). The name comes from the proxy's network and address alone,
+// so restarts, the file's order and rotated credentials leave the stack where it
+// is, and only removing that proxy or adding one that sorts first moves it.
 func providerExtenderSlot(providers []*connect.ProxySettings) string {
 	extenderSlot := ""
 	for _, proxySettings := range providers {
