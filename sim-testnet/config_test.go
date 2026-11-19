@@ -606,14 +606,35 @@ func TestGovernanceProfilesRemainEnvironmentSeparated(t *testing.T) {
 }
 
 func TestRepositoryDiscoveryUsesModuleIdentity(t *testing.T) {
-	r := testResolvedConfig(t)
-	configPath := filepath.Join(r.Repos.SN, "sim-testnet", "testnet.yml")
+	workspace := t.TempDir()
+	// A conventional name with the wrong module must lose to the real module
+	// identity in a sibling checkout. Vault and config are existence markers.
+	for relative, content := range map[string]string{
+		"sn-checkout/go.mod":        "module github.com/urfoundation/sn\n",
+		"server/go.mod":             "module example.com/unrelated\n",
+		"server-checkout/go.mod":    "module github.com/urnetwork/server\n",
+		"vault/main/st.yml":         "synthetic: true\n",
+		"config/local/settings.yml": "synthetic: true\n",
+	} {
+		path := filepath.Join(workspace, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := RepoPaths{
+		SN: filepath.Join(workspace, "sn-checkout"), Server: filepath.Join(workspace, "server-checkout"),
+		Vault: filepath.Join(workspace, "vault"), PlatformConfig: filepath.Join(workspace, "config"),
+	}
+	configPath := filepath.Join(want.SN, "sim-testnet", "testnet.yml")
 	got, err := discoverRepos(configPath, LoadOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.SN != r.Repos.SN || got.Server != r.Repos.Server || got.Vault != r.Repos.Vault || got.PlatformConfig != r.Repos.PlatformConfig {
-		t.Fatalf("discovered repositories = %+v, want %+v", got, r.Repos)
+	if got != want {
+		t.Fatalf("discovered repositories = %+v, want %+v", got, want)
 	}
 }
 

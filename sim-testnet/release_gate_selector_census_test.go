@@ -600,9 +600,24 @@ func TestReleaseGateSelectorCensusRefusesARenamedAlternative(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	producerSelector, err := releaseConnectPolicySelectorAssignment(string(producer), "producer_tests")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(producerSelector, "^Test(") || !strings.HasSuffix(producerSelector, ")") {
+		t.Fatalf("producer_tests is missing its anchored test group: %q", producerSelector)
+	}
+	alternatives := strings.Split(strings.TrimSuffix(strings.TrimPrefix(producerSelector, "^Test("), ")"), "|")
+	productionLoader := slices.Index(alternatives, "ProductionLoader")
+	if productionLoader < 0 || slices.Contains(alternatives[productionLoader+1:], "ProductionLoader") {
+		t.Fatal("producer_tests must contain one ProductionLoader alternative")
+	}
+	alternatives[productionLoader] = "ProductionLoaderRenamed"
+	producerAssignment := "producer_tests='" + producerSelector + "'"
+	renamedProducerAssignment := "producer_tests='^Test(" + strings.Join(alternatives, "|") + ")'"
 	for _, change := range []struct{ script, old, new, stale string }{
 		{script: local, old: "StHeadBoundCkeysFromEvents(WindowOverlap|UnbindDodge)", new: "StHeadBoundCkeysFromEvents(WindowOverlap|UnbindDodgeRenamed)", stale: "^TestStHeadBoundCkeysFromEventsUnbindDodgeRenamed$ selects no test of ../../server/model"},
-		{script: string(producer), old: "|ProductionLoader)'", new: "|ProductionLoaderRenamed)'", stale: "^TestProductionLoaderRenamed selects no test of ../validator"},
+		{script: string(producer), old: producerAssignment, new: renamedProducerAssignment, stale: "^TestProductionLoaderRenamed selects no test of ../validator"},
 		{script: string(builder), old: "'^TestNativeFeeOutcomeExportSettlementFixtures$'", new: "'^TestNativeFeeOutcomeExportSettlementFixturesRenamed$'", stale: "^TestNativeFeeOutcomeExportSettlementFixturesRenamed$ selects no test of ../mainnet"},
 	} {
 		if strings.Count(change.script, change.old) != 1 {

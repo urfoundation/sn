@@ -109,15 +109,19 @@ func TestSolidityStaticGateRejectsOmittedOrCommentOnlyEvidenceRoot(t *testing.T)
 }
 
 // runSolidityStaticGate runs the real static script with stand-ins for
-// Slither, solc and forge. The fake Slither records each root it analyzes and
-// reports a medium finding for the root named by finding: with a failing exit,
-// or with a successful one when silent is set. The fake forge prints layout as
-// STSettlement2's storage layout, phaseC as STSettlement2PhaseC's and ctf as
-// STSettlement2Ctf's.
+// account discovery, Slither, solc and forge. Slither records every analyzed
+// root and reports a medium finding for the selected root. The silent case
+// reports the finding with a successful exit. Forge prints the supplied
+// STSettlement2, STSettlement2PhaseC and STSettlement2Ctf layouts.
 func runSolidityStaticGate(t *testing.T, finding string, silent bool, layout, phaseC, ctf string) (string, []string, error) {
 	t.Helper()
 	bin := t.TempDir()
 	for name, body := range map[string]string{
+		"getent": `if [[ $# != 2 || "$1" != passwd || "$2" != "$(id -u)" ]]; then
+  printf 'unexpected fixture account lookup: %s\n' "$*" >&2
+  exit 74
+fi
+printf 'fixture:x:%s:%s::%s:/bin/bash\n' "$2" "$(id -g)" "$FAKE_ACCOUNT_HOME"`,
 		"slither": `if [[ "$1" == --version ]]; then echo 0.11.6; exit 0; fi
 printf '%s\n' "$1" >> "$FAKE_SLITHER_ROOTS"
 if [[ "$1" == "$FAKE_SLITHER_FINDING" ]]; then
@@ -155,14 +159,14 @@ true`,
 	}
 	command := exec.CommandContext(t.Context(), "bash", "../scripts/test-solidity-static.sh")
 	command.Env = append(os.Environ(), "PATH="+bin+string(os.PathListSeparator)+os.Getenv("PATH"),
-		"SLITHER_BIN="+filepath.Join(bin, "slither"), "SOLC_BIN="+filepath.Join(bin, "solc"),
+		"SLITHER_BIN="+filepath.Join(bin, "slither"), "SOLC_BIN="+filepath.Join(bin, "solc"), "FAKE_ACCOUNT_HOME="+bin,
 		"SLITHER_FOUNDRY_OUT="+t.TempDir(), "SLITHER_FOUNDRY_CACHE_PATH="+t.TempDir(),
 		"FAKE_SLITHER_ROOTS="+roots, "FAKE_SLITHER_FINDING="+finding, "FAKE_SLITHER_SILENT="+silentValue,
 		"FAKE_FORGE_LAYOUT="+layoutPath, "FAKE_FORGE_LAYOUT_PHASE_C="+phaseCPath, "FAKE_FORGE_LAYOUT_CTF="+ctfPath)
 	output, err := command.CombinedOutput()
 	analyzed, readErr := os.ReadFile(roots)
 	if readErr != nil {
-		t.Fatalf("no root was analyzed: %v\n%s", readErr, output)
+		t.Fatalf("no root was analyzed: %v (gate: %v)\n%s", readErr, err, output)
 	}
 	return string(output), strings.Fields(string(analyzed)), err
 }

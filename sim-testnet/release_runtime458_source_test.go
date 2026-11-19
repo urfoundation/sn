@@ -42,6 +42,11 @@ exit "$RUNTIME_TEST_STATUS"
 printf 'cargo reached after exact genesis\n' >"$RUNTIME_TEST_DIR/cargo"
 exit 73
 `,
+		// The checker discovers this tool before reaching our stopping Cargo stub.
+		"bin/xxd": `#!/usr/bin/env bash
+printf 'unexpected artifact decode\n' >"$RUNTIME_TEST_DIR/xxd"
+exit 74
+`,
 		"bin/sleep": `#!/usr/bin/env bash
 printf 'unexpected pacing\n' >>"$RUNTIME_TEST_DIR/sleep"
 exit 0
@@ -64,7 +69,11 @@ func runRuntime458ArtifactShell(t *testing.T, dir string, status string, args ..
 	command.Dir = dir
 	command.Env = append(os.Environ(), "PATH="+filepath.Join(dir, "bin")+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"RUNTIME_TEST_DIR="+dir, "RUNTIME_TEST_STATUS="+status, "RUNTIME_METADATA_PROBE_TARGET_DIR="+filepath.Join(dir, "target"), "TMPDIR="+dir)
-	return command.CombinedOutput()
+	output, err := command.CombinedOutput()
+	if _, statErr := os.Stat(filepath.Join(dir, "xxd")); !os.IsNotExist(statErr) {
+		t.Fatalf("artifact decode escaped the synthetic Cargo boundary: %v\n%s", statErr, output)
+	}
+	return output, err
 }
 
 // Reads the actual function rather than reproducing its transport decisions.

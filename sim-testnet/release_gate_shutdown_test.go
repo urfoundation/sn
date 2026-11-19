@@ -123,7 +123,8 @@ func TestReleaseShutdownPublicRuntimeReturnsOwnedWorkerResult(t *testing.T) {
 		{path: "../validator/release_shutdown.go", function: "runReleaseOperatorWorkers", callee: "Wait"},
 		{path: "../validator/release_shutdown.go", function: "runReleaseOperatorWorkers", callee: "close"},
 		{path: "../validator/release_steer.go", function: "Run", callee: "runReleaseSteeringLoopWithPermissions"},
-		{path: "../validator/release_steer.go", function: "Run", callee: "runReleaseSteeringOperation"},
+		{path: "../validator/release_steer.go", function: "Run", callee: "runProductionSteering"},
+		{path: "../validator/production_steering_loop.go", function: "runProductionSteering", callee: "runReleaseProductionSteeringLoopWithCutWait"},
 		{path: "../validator/release_steer.go", function: "runReleaseSteeringOperation", callee: "operation"},
 		{path: "../validator/release_steer.go", function: "runReleaseSteeringLoop", callee: "runReleaseSteeringLoopWithDeferral"},
 		{path: "../validator/release_steer.go", function: "runReleaseSteeringLoopWithDeferral", callee: "runReleaseSteeringLoopWithPermissions"},
@@ -146,9 +147,15 @@ func TestReleaseShutdownPublicRuntimeReturnsOwnedWorkerResult(t *testing.T) {
 			t.Errorf("%s omits actual shutdown call %s", check.function, check.callee)
 		}
 	}
-	// Each bounded steering operation runs the actual submission.
-	if !releaseClosureFunctionCallArguments(t, "../validator/release_steer.go", "Run", "runReleaseSteeringOperation")["SubmitOnce"] {
-		t.Error("Run omits actual shutdown call SubmitOnce")
+	// Both entry paths hand the real submission to the same bounded owner.
+	for _, check := range []struct{ path, function, owner, argument string }{
+		{path: "../validator/release_steer.go", function: "Run", owner: "runConfiguredReleaseSteeringOperation", argument: "SubmitOnce"},
+		{path: "../validator/production_steering_loop.go", function: "runProductionSteering", owner: "runConfiguredReleaseSteeringOperation", argument: "SubmitOnce"},
+		{path: "../validator/release_steering_settings.go", function: "runConfiguredReleaseSteeringOperation", owner: "runReleaseSteeringOperation", argument: "operation"},
+	} {
+		if !releaseClosureFunctionCallArguments(t, check.path, check.function, check.owner)[check.argument] {
+			t.Errorf("%s does not pass %s to the shutdown owner %s", check.function, check.argument, check.owner)
+		}
 	}
 	if releaseClosureFunctionCalls(t, "../validator/release_shutdown_inner.go", "recordReleasePendingError")["update"] {
 		t.Fatal("uncertain pending error handler rewrites the restart authority")
