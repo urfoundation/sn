@@ -13,7 +13,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urnetwork/server/startifact"
+	"github.com/urnetwork/server/v2026/startifact"
 )
 
 // Generate only synthetic signing material; tests never need wallet access.
