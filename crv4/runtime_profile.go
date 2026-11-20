@@ -324,6 +324,14 @@ func ValidateProvisionalRuntimeMetadata(metadata *types.Metadata) error {
 // reserves the Operational priority for the sudo key, none of which is read
 // here. Its consumed metadata interfaces are unchanged. Pinned in
 // runtime492_metadata_test.go.
+// Runtime493 (subtensor v493, 8b407e40; Finney from block 9549412, 2026-11-20)
+// declares every runtime API at 492's version except the unrelated
+// GammaRuntimeApi, now version2 because gamma deposits lose their spender;
+// v492..v493 retires the gamma spender model (spend_gamma, mint_gamma,
+// set_service and their events and storage change shape) and makes the Yuma
+// timelocked commit cap per hotkey sudo-configurable, defaulting to the former
+// fixed 10. None of it is read here. Its consumed metadata interfaces are
+// unchanged. Pinned in runtime493_metadata_test.go.
 // This exception grants no source or artifact authority: each caller still
 // authenticates its exact block artifact and checks its consumed interfaces.
 func validateProvisionalRuntimeApis(raw json.RawMessage) error {
@@ -348,12 +356,12 @@ func validateProvisionalRuntimeApis(raw json.RawMessage) error {
 		}
 		value, err := decodeRuntimeVersionUint("SubnetInfoRuntimeApi", pair[1], 32)
 		if found || err != nil || value != 2 && value != 3 {
-			return errors.New("consumed SubnetInfoRuntimeApi is not version2 or reviewed runtime481/482/483/484/486/488/490/491/492 version3")
+			return errors.New("consumed SubnetInfoRuntimeApi is not version2 or reviewed runtime481/482/483/484/486/488/490/491/492/493 version3")
 		}
 		if value == 3 {
 			identity, err := DecodeRuntimeVersionIdentity(raw)
-			if err != nil || identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 481, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 482, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 483, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 484, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 486, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 488, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 490, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 491, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 492, TransactionVersion: 1, StateVersion: 1}) {
-				return errors.Join(errors.New("consumed SubnetInfoRuntimeApi version3 requires the reviewed node-subtensor/481/1/1 or node-subtensor/482/1/1 or node-subtensor/483/1/1 or node-subtensor/484/1/1 or node-subtensor/486/1/1 or node-subtensor/488/1/1 or node-subtensor/490/1/1 or node-subtensor/491/1/1 or node-subtensor/492/1/1 tuple"), err)
+			if err != nil || identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 481, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 482, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 483, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 484, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 486, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 488, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 490, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 491, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 492, TransactionVersion: 1, StateVersion: 1}) && identity != (RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 493, TransactionVersion: 1, StateVersion: 1}) {
+				return errors.Join(errors.New("consumed SubnetInfoRuntimeApi version3 requires the reviewed node-subtensor/481/1/1 or node-subtensor/482/1/1 or node-subtensor/483/1/1 or node-subtensor/484/1/1 or node-subtensor/486/1/1 or node-subtensor/488/1/1 or node-subtensor/490/1/1 or node-subtensor/491/1/1 or node-subtensor/492/1/1 or node-subtensor/493/1/1 tuple"), err)
 			}
 		}
 		found = true
