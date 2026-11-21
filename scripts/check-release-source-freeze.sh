@@ -24,20 +24,20 @@ case "$dependency_mode" in
 esac
 workspace="${1:-$(dirname "$sn_repo")}"
 
-release_repos=(sn server connect sdk glog goidenticons proxy userwireguard warp gvisor sidecar vault xops config)
+release_repos=(sn server connect sdk glog goidenticons proxy userwireguard warp gvisor sidecar operator-core vault xops config)
 # A module is live when a released binary or library builds from it: a release
 # build's main module, or a module whose packages one links. connect/sctp backs
 # every github.com/pion/sctp replacement, and SN's substrate RPC fork backs
 # SN's and the server's replacement of the centrifuge client. The server links
 # the sidecar module, and sidecar/smtpproof backs SN's and the server's
-# replacement of the sidecar's mail prover module. They require it ahead of
-# the first package that links it, so its go.mod already takes part in their
-# version selection.
+# replacements of the sidecar's mail prover, go-smtp fork and mox subset.
+# operator-core supplies the host contract linked by sidecar and the server.
 live_modules=(
   connect
   connect/sctp
   glog
   goidenticons
+  operator-core
   proxy
   sdk
   sdk/build
@@ -46,6 +46,8 @@ live_modules=(
   server
   sidecar
   sidecar/smtpproof
+  sidecar/third_party/go-smtp
+  sidecar/third_party/mox
   sn
   sn/third_party/go-substrate-rpc-client
   sn/third_party/npipe
@@ -61,35 +63,34 @@ live_modules=(
 # - connect/vlessinterop tests the VLESS client against Xray-core.
 # - sdk/cgo/build holds native build output and no package.
 # - sdk/packaging builds and publishes the language packages around sdk/cgo.
+# - operator-core/coretest supplies test fixtures only.
 # - server/connect/sim-latency/baseline is a separate dataset. Its module
-#   boundary keeps preserved analysis inputs out of executable server packages.
+#   and its nested reproduction module keep preserved analysis inputs out of
+#   executable server packages.
 # - sidecar/cli builds the ur binary, which the sidecar's own release publishes.
 # - sidecar/mlsinterop holds the differential MLS and git test peers.
-# - sidecar/sidecarctl builds the operations binary.
 non_release_modules=(
   connect/tools/flightgate-devices
   connect/vlessinterop
+  operator-core/coretest
   sdk/cgo/build
   sdk/packaging
   server/connect/sim-latency/baseline
+  server/connect/sim-latency/baseline/prelaunch-cold-r9-2026-10-25/principal-reproduction
   sidecar/cli
   sidecar/mlsinterop
-  sidecar/sidecarctl
 )
 
-# Release builds compile the gVisor fork through the gvisor.dev/gvisor
-# replacements of SN and the server, so its repository provenance is checked
-# like every other. Its go.mod is the fork's and is not kept tidy. No gate job
-# or release build uses it as a main module, and the tidy checks of SN, the
-# server and Connect cover the module graphs that consume it, so it is
-# inventoried and not tidied.
-fork_modules=(gvisor)
+# gVisor, pgx and quic-go are used as replacements. Their upstream module
+# files are inventoried, and each consuming module's tidy check covers its
+# selected dependency graph.
+fork_modules=(gvisor server/third_party/pgx server/third_party/quic-go)
 
 expected_upstream() {
   case "$1" in
     glog | userwireguard) printf 'origin/master\n' ;;
     gvisor) printf 'origin/go\n' ;;
-    sn | server | connect | sdk | goidenticons | proxy | warp | sidecar | vault | xops | config) printf 'origin/main\n' ;;
+    sn | server | connect | sdk | goidenticons | proxy | warp | sidecar | operator-core | vault | xops | config) printf 'origin/main\n' ;;
     *) return 1 ;;
   esac
 }
@@ -107,6 +108,7 @@ expected_origin() {
     warp) printf 'github.com/urnetwork/warp\n' ;;
     gvisor) printf 'github.com/urnetwork/gvisor\n' ;;
     sidecar) printf 'github.com/urnetwork/sidecar\n' ;;
+    operator-core) printf 'github.com/urnetwork/operator-core\n' ;;
     vault) printf 'github.com/urnetwork/vault\n' ;;
     xops) printf 'github.com/urnetwork/xops\n' ;;
     config) printf 'github.com/urnetwork/config\n' ;;
