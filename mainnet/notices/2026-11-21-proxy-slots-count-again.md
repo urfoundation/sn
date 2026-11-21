@@ -17,12 +17,6 @@ proxy slot counts like any other provider:
   of its address.
 - **Extender pool.** Its extender records count as active like any other.
 
-The network operator no longer judges a provider by the exit its quality probe
-sees, either. For part of November 20 and 21, the server judged some providers'
-Quality by the probed exit and counted a provider whose exit differed from the
-networks it connected from at no unit, the same way. That is withdrawn too. A
-provider is judged by the address it connects from, as before November 20.
-
 ## What stays the same
 
 - Clients and the network operators choose providers by latency and speed. A
