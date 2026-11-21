@@ -4,9 +4,11 @@ package main
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -15,7 +17,7 @@ import (
 // census repositories.
 func buildFixtureConfig(mode string) buildConfig {
 	config := buildConfig{Schema: buildSchema, CandidateId: "synthetic", Version: "synthetic", SourceDateEpoch: 1, Workspace: "/synthetic/workspace", Output: "/synthetic/output", DependencyMode: mode}
-	names := []string{"sn", "server", "proxy", "glog", "goidenticons", "userwireguard", "warp"}
+	names := []string{"sn", "server", "proxy", "glog", "quic-go", "goidenticons", "userwireguard", "warp"}
 	if mode == "local" {
 		names = append(names, "connect", "sdk", "gvisor")
 	}
@@ -99,6 +101,7 @@ func TestReleaseBuildLocalModeAdmitsOnlyCensusCheckouts(t *testing.T) {
 		{"github.com/urnetwork/sdk", "v0.0.0", "../sdk", "sdk", ""},
 		{"github.com/urnetwork/connect", "v0.0.0", "../connect", "connect", ""},
 		{"github.com/pion/sctp", "v1.11.1", "../connect/sctp", "connect", "sctp"},
+		{"github.com/urnetwork/quic-go", "v0.0.0", "../quic-go", "quic-go", ""},
 		{"gvisor.dev/gvisor", "v0.0.0-20260909230408-9b1144b679cb", "../gvisor", "gvisor", ""},
 	}
 	for _, target := range targets {
@@ -162,6 +165,124 @@ func TestReleaseBuildLocalReplaceOutsideCensusIsRefused(t *testing.T) {
 	}
 	if _, err := buildModuleRepository(t.Context(), config, filepath.Join(workspace, "elsewhere")); err == nil || !strings.Contains(err.Error(), "escapes the pinned source closure") {
 		t.Fatalf("replacement outside the census was not refused: %v", err)
+	}
+}
+
+// Both modes take URnetwork's quic-go from its own census checkout, as they take
+// glog: a census without it, or with it at another path or unpinned, is refused.
+func TestReleaseBuildCensusRequiresUrnetworkQuicGo(t *testing.T) {
+	for _, mode := range []string{"pinned", "local"} {
+		for _, change := range []string{"missing", "path", "commit", "tree"} {
+			config := buildFixtureConfig(mode)
+			for index, repo := range config.Repositories {
+				if repo.Name != "quic-go" {
+					continue
+				}
+				switch change {
+				case "missing":
+					config.Repositories = append(config.Repositories[:index], config.Repositories[index+1:]...)
+				case "path":
+					config.Repositories[index].Path = "server/third_party/quic-go"
+				case "commit":
+					config.Repositories[index].Commit = "main"
+				case "tree":
+					config.Repositories[index].Tree = ""
+				}
+				break
+			}
+			if err := config.validate(); err == nil {
+				t.Errorf("%s mode accepted a %s quic-go census repository", mode, change)
+			}
+		}
+	}
+}
+
+// Every directory that SN's go.mod substitutes for a module belongs to a census
+// repository in each mode that keeps the substitution, so module capture admits
+// it; pinned mode versions the four modules that pin.sh pins instead. Before
+// URnetwork's quic-go joined the census, capture refused its ../quic-go sibling
+// with "local module escapes the pinned source closure".
+func TestReleaseBuildCensusOwnsEveryLocalReplacement(t *testing.T) {
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(filepath.Join("..", "..", "go.mod"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	replacements := map[string]string{}
+	for _, line := range strings.Split(string(raw), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || fields[0] != "replace" {
+			continue
+		}
+		arrow := slices.Index(fields, "=>")
+		if len(fields) < 4 || arrow < 2 || arrow+1 >= len(fields) {
+			t.Fatalf("go.mod replace directive %q is not one this test reads", line)
+		}
+		if target := fields[arrow+1]; strings.HasPrefix(target, "./") || strings.HasPrefix(target, "../") {
+			replacements[fields[1]] = target
+		}
+	}
+	if replacements["github.com/urnetwork/quic-go"] != "../quic-go" {
+		t.Fatalf("SN's go.mod no longer substitutes ../quic-go for URnetwork's quic-go: %v", replacements)
+	}
+	versioned := map[string]bool{"github.com/urnetwork/connect": true, "github.com/urnetwork/sdk": true, "github.com/pion/sctp": true, "gvisor.dev/gvisor": true}
+	for _, mode := range []string{"pinned", "local"} {
+		workspace, err := filepath.EvalSymlinks(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		census := releaseCensus(mode)
+		config := buildConfig{Workspace: workspace, Output: t.TempDir(), DependencyMode: mode, Git: toolPin{Path: git}}
+		for _, name := range slices.Sorted(maps.Keys(census)) {
+			config.Repositories = append(config.Repositories, repositoryPin{Name: name, Path: census[name]})
+		}
+		// Innermost first, so a library inside SN is its own repository.
+		roots := slices.SortedFunc(maps.Values(census), func(a, b string) int { return len(b) - len(a) })
+		initialized := map[string]bool{}
+		for _, module := range slices.Sorted(maps.Keys(replacements)) {
+			if mode == "pinned" && versioned[module] {
+				continue
+			}
+			directory := filepath.Join(workspace, "sn", replacements[module])
+			// The census repository that holds the directory tracks its go.mod;
+			// outside the census, a clean repository of its own does.
+			root := directory
+			for _, path := range roots {
+				if relative, err := filepath.Rel(filepath.Join(workspace, path), directory); err == nil && filepath.IsLocal(relative) {
+					root = filepath.Join(workspace, path)
+					break
+				}
+			}
+			if err := os.MkdirAll(directory, 0700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(directory, "go.mod"), []byte("module "+module+"\n"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			relative, err := filepath.Rel(root, filepath.Join(directory, "go.mod"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			commands := [][]string{{"add", "--", relative}}
+			if !initialized[root] {
+				initialized[root] = true
+				commands = append([][]string{{"init", "--quiet"}}, commands...)
+			}
+			for _, args := range commands {
+				if _, err := buildQuery(t.Context(), root, buildEnvironment(config.Output), git, args...); err != nil {
+					t.Fatal(err)
+				}
+			}
+			owner, err := buildModuleRepository(t.Context(), config, directory)
+			if err != nil {
+				t.Errorf("%s mode refused %s => %s: %v", mode, module, replacements[module], err)
+			} else if module == "github.com/urnetwork/quic-go" && owner.Name != "quic-go" {
+				t.Errorf("%s mode assigned URnetwork's quic-go to the %s checkout", mode, owner.Name)
+			}
+		}
 	}
 }
 
