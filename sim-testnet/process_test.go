@@ -23,8 +23,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/quic-go/quic-go"
 	"github.com/urnetwork/connect"
+	quic "github.com/urnetwork/quic-go"
 	servercontroller "github.com/urnetwork/server/controller"
 )
 
