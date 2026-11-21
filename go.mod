@@ -212,12 +212,26 @@ replace github.com/urnetwork/sdk => ../sdk
 // A dependency's replaces are ignored, so select the sibling SCTP fork here too.
 replace github.com/pion/sctp => ../connect/sctp
 
+// Server builds quic-go from its own copy, and server/connect, which
+// sim-testnet runs, uses the copy's ConnGroup and http3.Server's
+// ReadHeaderTimeout (../server/third_party/quic-go/URNETWORK.md). Dependency
+// replaces are not inherited, so select the same source here, or SN cannot
+// compile against server main. The miner, validator and snclaim reach quic-go
+// through connect, so they build with this copy too.
+replace github.com/quic-go/quic-go => ../server/third_party/quic-go
+
 replace github.com/urnetwork/server => ../server
 
 // Server builds pgx from its own fork, and server main calls the fork's
 // pgxpool.Conn.ReleaseWithIdleReturn. Dependency replaces are not inherited,
 // so select the same source here, or SN cannot compile against server main.
 replace github.com/jackc/pgx/v5 => ../server/third_party/pgx
+
+// Server builds go-redis from its own copy, and server main sets the copy's
+// SkipConnCheckWithin (../server/third_party/go-redis/URNETWORK.md). Dependency
+// replaces are not inherited, so select the same source here, or SN cannot
+// compile against server main.
+replace github.com/redis/go-redis/v9 => ../server/third_party/go-redis
 
 // The server module also imports Warp; dependency replaces are not inherited.
 replace github.com/urnetwork/warp => ../warp
