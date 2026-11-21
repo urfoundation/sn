@@ -114,7 +114,6 @@ func fleetSign(opts docopt.Opts, manifest *protocol.FleetManifest, stdout io.Wri
 	if err != nil {
 		return err
 	}
-	fleetWarnProxySlot(stderr, clientId)
 	binding, err := fleetBindingForClient(opts, manifest, clientId)
 	if err != nil {
 		return err
