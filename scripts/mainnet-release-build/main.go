@@ -317,6 +317,21 @@ func (self buildConfig) dependencyMode() string {
 	return self.DependencyMode
 }
 
+// The exact repository closure of a dependency mode, by name and
+// workspace-relative path. SN and server replace URnetwork's quic-go with the
+// ../quic-go sibling in both modes, as they replace glog, so both censuses
+// hold that checkout. Local mode adds the checkouts of the API modules and the
+// gVisor fork.
+func releaseCensus(mode string) map[string]string {
+	census := map[string]string{"sn": "sn", "server": "server", "proxy": "proxy", "glog": "glog", "quic-go": "quic-go", "goidenticons": "goidenticons", "userwireguard": "userwireguard", "warp": "warp", "forge-std": "sn/evm/lib/forge-std", "openzeppelin-contracts": "sn/evm/lib/openzeppelin-contracts", "openzeppelin-contracts-upgradeable": "sn/evm/lib/openzeppelin-contracts-upgradeable"}
+	if mode == "local" {
+		for _, name := range []string{"connect", "sdk", "gvisor"} {
+			census[name] = name
+		}
+	}
+	return census
+}
+
 // Fixed role/output scope avoids accidentally narrowing to a convenient subset.
 func (self buildConfig) validate() error {
 	if self.ContractCatalog != "" && self.ContractCatalog != "retained" && self.ContractCatalog != "fresh" {
@@ -338,12 +353,7 @@ func (self buildConfig) validate() error {
 	if err != nil || relative == "." || filepath.IsLocal(relative) {
 		return errors.New("build output must be outside the source workspace")
 	}
-	wanted := map[string]string{"sn": "sn", "server": "server", "proxy": "proxy", "glog": "glog", "goidenticons": "goidenticons", "userwireguard": "userwireguard", "warp": "warp", "forge-std": "sn/evm/lib/forge-std", "openzeppelin-contracts": "sn/evm/lib/openzeppelin-contracts", "openzeppelin-contracts-upgradeable": "sn/evm/lib/openzeppelin-contracts-upgradeable"}
-	if self.dependencyMode() == "local" {
-		for _, name := range []string{"connect", "sdk", "gvisor"} {
-			wanted[name] = name
-		}
-	}
+	wanted := releaseCensus(self.dependencyMode())
 	if len(self.Repositories) != len(wanted) {
 		return errors.New("release requires the complete source and Solidity library closure")
 	}

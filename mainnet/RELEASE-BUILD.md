@@ -46,11 +46,13 @@ The config schema is `urnetwork-mainnet-release-build-v1`. Required fields are
 the `go`, `forge`, `solc` and `git` tool objects (`path`, `sha256`), and
 `repositories`. Each repository object supplies `name`, workspace-relative
 `path`, full Git `commit` and `tree`. The exact repository census is SN, server,
-proxy, glog, goidenticons, userwireguard, warp, and the three Solidity libraries
-forge-std, openzeppelin-contracts and openzeppelin-contracts-upgradeable. Local
-dependency mode adds connect, sdk and gvisor. The code repositories use their
-repository name as path; libraries use
-`sn/evm/lib/<name>`. Tool paths must identify real executable files, not symlinks.
+proxy, glog, quic-go, goidenticons, userwireguard, warp, and the three Solidity
+libraries forge-std, openzeppelin-contracts and
+openzeppelin-contracts-upgradeable. quic-go is URnetwork's fork,
+`github.com/urnetwork/quic-go`, which SN and server replace with `../quic-go`
+in both modes, as they replace glog. Local dependency mode adds connect, sdk
+and gvisor. The code repositories use their repository name as path; libraries
+use `sn/evm/lib/<name>`. Tool paths must identify real executable files, not symlinks.
 The caller must provision reviewed module/compiler dependencies before the
 offline build. The manifest retains the complete config, input hashes, tool
 version logs, compiler commands and exits.
@@ -66,14 +68,15 @@ SCTP fork and the gVisor fork from. `local` builds from the working checkouts:
 both main modules must replace `github.com/urnetwork/sdk`,
 `github.com/urnetwork/connect`, `github.com/pion/sctp` and `gvisor.dev/gvisor`
 with exactly `../sdk`, `../connect`, `../connect/sctp` and `../gvisor`, and the
-census adds those three repositories. The builder binds each of them as it
-binds every other repository: a physical clean checkout at the recorded commit
+census adds those three repositories. A local build also takes
+`github.com/urnetwork/quic-go` from exactly the quic-go checkout. The builder
+binds each of them as it binds every other repository: a physical clean checkout at the recorded commit
 and tree, its module files retained, and its name and commit recorded for every
 module a binary links. No module archive is retained. `pinned`, which is also
 the meaning of an omitted field, so that an existing config keeps its meaning,
 admits only the checksum-bound versions in `validateReleaseModule`'s table
 (`scripts/mainnet-release-build/sources.go`), retains their three module
-archives and keeps the ten-repository census, so the gVisor fork must be a
+archives and keeps the eleven-repository census, so the gVisor fork must be a
 published module. Any other value fails closed, and the manifest records the
 mode explicitly. Main keeps the local substitutions and builds in local mode. A
 build version first pins a copy of SN and server and then builds that copy in

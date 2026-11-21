@@ -16,7 +16,7 @@ commits.
 
 | File | Change |
 | --- | --- |
-| `go.mod` | Four `replace` directives become versioned (below), and their comments are rewritten. The `require` lines stay at `v0.0.0`. Every other replacement stays local: server, warp, proxy, userwireguard, glog and goidenticons are in the pinned census, and `./third_party/...` is inside SN. |
+| `go.mod` | Four `replace` directives become versioned (below), and their comments are rewritten. The `require` lines stay at `v0.0.0`. Every other replacement stays local: server, warp, proxy, userwireguard, glog, quic-go and goidenticons are in the pinned census, and `./third_party/...` is inside SN. |
 | `go.sum` | Eight lines: the `h1:` and `/go.mod h1:` sums of the four modules. |
 | `scripts/mainnet-release-build/sources.go` | `validateReleaseModule`'s table. For sdk, connect and pion/sctp: the replacement path, version, `Sum` and `GoModSum`. |
 | `scripts/mainnet-release-build/sources_test.go` | `buildFixturePromotedApiModules`, the same three rows. |
@@ -93,7 +93,7 @@ git -C "$W/server" commit -a -F "$W/pin-server.msg"
 (cd "$W/sn" && GOWORK=off go mod download) && (cd "$W/server" && GOWORK=off go mod download)
 ```
 
-Then build with `"dependency_mode": "pinned"` and the ten pinned-census
+Then build with `"dependency_mode": "pinned"` and the eleven pinned-census
 repositories, recording SN and server at their pin commits and trees. The
 builder runs with `GOPROXY=off`, so the module cache of the user who runs it
 must already hold the modules: the last line fills it.

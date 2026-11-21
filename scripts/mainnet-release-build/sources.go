@@ -166,13 +166,15 @@ func validateReleaseRpcFork(config buildConfig, module buildModule) error {
 	return errors.New("substrate RPC module must resolve to the reviewed fork in the pinned SN repository")
 }
 
-// A local build compiles the API modules and the gVisor fork from their own
-// census checkouts, at the recorded commit, and from no other directory.
+// A local build compiles the API modules, URnetwork's quic-go and the gVisor
+// fork from their own census checkouts, at the recorded commit, and from no
+// other directory.
 func validateLocalReleaseModule(config buildConfig, module buildModule) error {
 	targets := map[string][2]string{
 		"github.com/urnetwork/sdk":     {"sdk", ""},
 		"github.com/urnetwork/connect": {"connect", ""},
 		"github.com/pion/sctp":         {"connect", "sctp"},
+		"github.com/urnetwork/quic-go": {"quic-go", ""},
 		"gvisor.dev/gvisor":            {"gvisor", ""},
 	}
 	target, ok := targets[module.Path]
