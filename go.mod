@@ -13,10 +13,10 @@ require (
 	github.com/holiman/uint256 v1.3.2
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/klauspost/compress v1.20.2
-	github.com/quic-go/quic-go v0.61.0
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7
 	github.com/urnetwork/connect v0.0.0
 	github.com/urnetwork/glog v0.0.0
+	github.com/urnetwork/quic-go v0.0.0
 	github.com/urnetwork/sdk v0.0.0
 	github.com/urnetwork/server v0.0.0
 	github.com/vedhavyas/go-subkey/v2 v2.0.0
@@ -174,7 +174,6 @@ require (
 	github.com/ulikunitz/xz v0.5.15 // indirect
 	github.com/urnetwork/goidenticons v0.0.0 // indirect
 	github.com/urnetwork/proxy v0.0.0 // indirect
-	github.com/urnetwork/quic-go v0.0.0 // indirect
 	github.com/urnetwork/userwireguard v0.0.0 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
@@ -212,14 +211,6 @@ replace github.com/urnetwork/sdk => ../sdk
 
 // A dependency's replaces are ignored, so select the sibling SCTP fork here too.
 replace github.com/pion/sctp => ../connect/sctp
-
-// Server builds quic-go from its own copy, and server/connect, which
-// sim-testnet runs, uses the copy's ConnGroup and http3.Server's
-// ReadHeaderTimeout (../server/third_party/quic-go/URNETWORK.md). Dependency
-// replaces are not inherited, so select the same source here, or SN cannot
-// compile against server main. The miner, validator and snclaim reach quic-go
-// through connect, so they build with this copy too.
-replace github.com/quic-go/quic-go => ../server/third_party/quic-go
 
 replace github.com/urnetwork/server => ../server
 

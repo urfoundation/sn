@@ -26,8 +26,8 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/quic-go/quic-go"
 	"github.com/urnetwork/connect"
+	quic "github.com/urnetwork/quic-go"
 	"github.com/urnetwork/sdk"
 	servercontroller "github.com/urnetwork/server/controller"
 
