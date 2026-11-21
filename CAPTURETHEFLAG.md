@@ -340,17 +340,13 @@ epoch. A sample records whether the miner is present (P1 or X1, below) and its c
   else its IPv6 /48 (`server/model/verify_head_model.go`). It is keyed exactly as §8.4 keys it. The sampler
   pins it in the verify window `e<k>` where nothing has yet, as the SN Top board does. A provider the model
   never pins, such as one that shares its IPv4 address, takes the /29 of its live IPv4 address, else the /48
-  of its IPv6 address, unpinned, so P4 still keeps the lowest client id behind the address. A provider whose
-  platform connections said they come through a proxy has no unit (WHITEPAPER §8.4), whatever a sample
-  recorded before it said so. Like any member without a unit, it fails as having no valid location (reason
-  `no_location`).
+  of its IPv6 address, unpinned, so P4 still keeps the lowest client id behind the address.
 
 **Extenders.** An extender record `x` of NO `n` is a candidate in country `c` for epoch `k` when:
 
 - **(X1) Active at `end(k)`.** E1 of §8.6.2 holds: the record, signed by `n`'s root key, is active and
   unrevoked, and at least one of its addresses is active. A provider client with several records is judged
-  by its active record with the lowest extender id, else by its lowest record. A record whose provider
-  client said its platform connections come through a proxy is not active (E1).
+  by its active record with the lowest extender id, else by its lowest record.
 - **(X2) Present in `c` for half the epoch.** At least half of the non‑excused samples found it active with
   an address whose challenge passed within the sample's quarter hour, and with `c` as its country.
 - **(X3) Its country is `c` at `end(k)`, and it did not move.** That is the record's country: the derived

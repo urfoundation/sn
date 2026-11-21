@@ -1,5 +1,10 @@
 # Notice: a proxy slot shows no head, capture the flag or extender unit
 
+> **Withdrawn on November 21, 2026.** A proxy slot counts like any other
+> provider again. See the
+> [notice of November 21](2026-11-21-proxy-slots-count-again.md). The text
+> below is kept as it was published.
+
 November 19, 2026. All times are UTC. This takes effect with the network
 operator's server release of November 19, 2026. It applies to proxy slots of the
 provider release that sends every egress of a proxy slot through its proxy.

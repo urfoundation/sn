@@ -732,14 +732,7 @@ grace: an epoch of the mirror's length, or a mainnet epoch (50400 12-second bloc
 seven days) when the mirror does not carry it. A trail's hops pin in the window of its
 SEED, so one trail never mixes two windows. A poison trail's hop reads the pin but
 never sets one. A second family does not double a provider's head score. The seed hop,
-which never scores (§7.6), records its own source's hash. A provider whose platform
-transports said they leave through a proxy records the zero egress-IP-hash on every hop
-it confirms, whatever its pin. connect sends `X-UR-Egress-Proxy: 1` on every transport
-it dials through a proxy, and the sn miner's proxy slots send it. The zero hash names no
-prefix and shows no unit, and every validator path skips it. The provider stays
-attributable at the proxy's address and is measured like any other. Its pin is neither
-read nor set, and the server marks it for an epoch and a day after its last such
-transport.
+which never scores (§7.6), records its own source's hash.
 
 ### 8.2 Eligibility invariant: one provider ⇄ one egress IP per family
 
@@ -982,7 +975,7 @@ for each measured provider p (client_id c, a_p ≥ a_min, server-assigned hops o
 Q_n = aggregate{ q_p : p is a TAIL provider of NO n }            # WHITEPAPER §8.4 (tail only)
 
 # HEAD: split-adjusted distinct routable egress-IP count per fleet (D27)
-IPs(u)   = { egress-IP-hash h ≠ 0 : some client_id ∈ fleet(u) egressed a verified hop from h }   # §8 (hash at the configured granularity); 0 = a proxy slot (§8.1)
+IPs(u)   = { egress-IP-hash h : some client_id ∈ fleet(u) egressed a verified hop from h }   # §8 (hash at the configured granularity)
 claim(h) = #{ top-miner fleets u' : h ∈ IPs(u') }               # how many top miners share this hash
 score(u) = Σ over h ∈ IPs(u) of  1 / claim(h)                   # EMA-smoothed; the top-level miner's weight, directly
 ```
@@ -1154,7 +1147,7 @@ release-1.0 scope (§9.3); steering both tiers is one extra sub-vector, not a ne
 ### 11.4 Why a top miner cannot farm its own head weight
 
 The head channel pays a fleet **directly** on its `score` — its count of distinct
-routable egress-IP-hashes (§11.1). Five rules keep the count honest:
+routable egress-IP-hashes (§11.1). Four rules keep the count honest:
 
 - **Only routable IPs count — server-assigned, seed excluded (§7.6).** A hash enters a
   fleet's `IPs(u)` only if a **verified trail hop egressed from it**, and a fleet cannot
@@ -1168,9 +1161,6 @@ routable egress-IP-hashes (§11.1). Five rules keep the count honest:
   `1/claim(h)`, so spinning up overlapping exit IPs (or colluding fleets fronting one IP
   pool) **cannot** multiply credit — breadth of distinct routable score units is the
   only thing that moves the score.
-- **A proxy is no host.** A provider that says its transports leave through a proxy
-  records the zero hash (§8.1), so the proxies a fleet buys add no unit. The SN Top
-  board, capture the flag and the extender censuses read the same mark.
 - **Self-weight mask + independent baseline, provisional until §10.** A validator's
   head/tail vector zeroes its own UID and the NOs it lists in `controlled_no_ids`
   (§11.3); a config may not list every configured NO, which would leave no weight.
