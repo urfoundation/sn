@@ -15,7 +15,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/urnetwork/server/model"
+	"github.com/urnetwork/server/v2026/model"
 	"gopkg.in/yaml.v3"
 )
 
