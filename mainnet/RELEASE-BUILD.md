@@ -105,6 +105,31 @@ with compiled bytes. Fresh mode refuses any nonexact contract; retained mode
 refuses any selected identity that differs from the historical catalogue. The
 manifest's `contract_catalog` is always explicit, including when config omits it.
 
+In retained mode on current main, ReserveSink, SettlementVault and
+ERC1967Proxy are byte-exact, and Coordinator and ValidatorEvidence are not
+(found 2026-11-21). For those two contracts, the compiled creation and runtime
+bytes equal the catalogue's except for the 32-byte IPFS digest in Solidity's
+CBOR metadata trailer, so their executable code is identical. That rules out
+the optimizer, via-IR and the compiler build, and compiling with or without
+tests and scripts gives the same digests. The cause is that a metadata digest
+commits to every source in a contract's import closure, and each of these two
+contracts imports a contract whose source changed after its catalogue bytes
+were generated, without changing the importer's code:
+
+- Coordinator imports `STSettlementVault.sol`, which changed in `3b39de98`,
+  after Coordinator's bytes were generated at `73ad8558`.
+- ValidatorEvidence imports `STCoordinator.sol`, which changed in `1f46fd18`,
+  and `STSettlementVault.sol`, which changed in `3b39de98`. Both changes came
+  after its bytes were generated at `91572dfa`.
+
+Restoring only those imported files to their versions at `73ad8558` and
+`91572dfa`, and compiling with the pinned toolchain, reproduces both catalogue
+entries byte for byte, creation and runtime. The retained bytes are therefore
+reproducible from the sources as they stood when they were generated, but not
+from main. A fresh catalogue would select today's digests. Any change to
+`STSettlementVault.sol` or `STCoordinator.sol` moves the metadata digest of
+every contract that imports it, even when that contract's code is unchanged.
+
 The September 30 server API mismatch was reproduced before repair: four of
 thirteen server commands compiled and nine failed. SN's four commands compiled.
 Server `898dc8f3b211d1e2fca1b0a0c970f7673b36fd7b` first replaced stale sibling
