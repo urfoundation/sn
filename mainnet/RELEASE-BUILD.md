@@ -53,6 +53,11 @@ openzeppelin-contracts-upgradeable. quic-go is URnetwork's fork,
 in both modes, as they replace glog. Local dependency mode adds connect, sdk
 and gvisor. The code repositories use their repository name as path; libraries
 use `sn/evm/lib/<name>`. Tool paths must identify real executable files, not symlinks.
+No module graph or binary may contain a module that the release-1.0 source
+freeze excludes from release qualification (`non_release_modules` in
+`scripts/check-release-source-freeze.sh`, which `releaseExcludedModules` in
+`scripts/mainnet-release-build/excluded.go` repeats). The builder refuses one
+found by its declared path, its effective path or its directory.
 The caller must provision reviewed module/compiler dependencies before the
 offline build. The manifest retains the complete config, input hashes, tool
 version logs, compiler commands and exits.

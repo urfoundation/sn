@@ -130,9 +130,16 @@ func executeBuild(ctx context.Context, config buildConfig, rawConfig []byte) err
 			return err
 		}
 	}
+	excluded, err := releaseExcludedModuleIdentities(config)
+	if err != nil {
+		return err
+	}
 	for _, name := range []string{"sn", "server"} {
 		modules, err := captureBuildModules(ctx, config, name)
 		if err != nil {
+			return err
+		}
+		if err := validateReleaseExcludedModules("the "+name+" module graph", modules, excluded); err != nil {
 			return err
 		}
 		manifest.Modules[name] = modules
@@ -216,6 +223,9 @@ func executeBuild(ctx context.Context, config buildConfig, rawConfig []byte) err
 			return err
 		}
 		if err := validateLinkedBuildModules(info, manifest.Modules[role.Repository]); err != nil {
+			return err
+		}
+		if err := validateBinaryExcludedModules(role.Id, info, manifest.Modules[role.Repository], excluded); err != nil {
 			return err
 		}
 		if err := writeBuildJson(filepath.Join(config.Output, "inputs", role.Id+"-buildinfo.json"), info); err != nil {

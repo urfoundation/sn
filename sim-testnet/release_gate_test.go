@@ -1422,7 +1422,7 @@ func TestLocalReleaseGateRechecksCompleteWorkspaceAtEnd(t *testing.T) {
 	if err := verifyReleaseGatePrivateServiceProfile(script); err != nil {
 		t.Fatal(err)
 	}
-	const repositories = "release_repos=(sn server connect sdk glog goidenticons proxy userwireguard warp gvisor vault xops config)"
+	const repositories = "release_repos=(sn server connect sdk glog quic-go goidenticons proxy userwireguard warp gvisor vault xops config)"
 	if !strings.Contains(script, repositories) || !strings.Contains(script, `for repo in "${release_repos[@]}"`) {
 		t.Fatal("local release gate does not check every release repository")
 	}
@@ -1736,14 +1736,17 @@ func TestReleaseGatesExerciseContractSenderRoleDiagnostic(t *testing.T) {
 // it; the source freeze verifies each live module tidy and only inventories
 // the others.
 var releaseSourceFreezeLiveModules = []string{
-	"connect", "connect/sctp", "glog", "goidenticons", "proxy", "sdk", "sdk/build",
-	"sdk/cgo", "sdk/js", "server", "sn", "sn/third_party/go-substrate-rpc-client",
+	"connect", "connect/sctp", "glog", "goidenticons", "proxy", "quic-go", "sdk", "sdk/build",
+	"sdk/cgo", "sdk/js", "server", "server/third_party/go-redis", "server/third_party/pgx", "sn", "sn/third_party/go-substrate-rpc-client",
 	"sn/third_party/npipe", "userwireguard", "warp", "xops/echo",
 }
 
 var releaseSourceFreezeNonReleaseModules = []string{
 	"connect/tools/flightgate-devices", "connect/vlessinterop", "sdk/cgo/build",
 	"sdk/packaging", "server/connect/sim-latency/baseline",
+	"server/connect/sim-latency/baseline/prelaunch-cold-r9-2026-10-25/principal-reproduction",
+	"server/tools/competition-census-memory-projector", "server/tools/competition-qa-capacity-guard",
+	"server/tools/competition-qualification-index", "server/tools/competition-worker-image-archive",
 }
 
 // The gVisor fork reaches release binaries through local replacements: its
@@ -1760,7 +1763,7 @@ func releaseSourceFreezeModuleArray(t *testing.T, script, name string) []string 
 	return strings.Fields(declarations[0][1])
 }
 
-// Construct all thirteen repositories and every classified Go module without
+// Construct all fourteen repositories and every classified Go module without
 // making ordinary tests depend on the developer's current dirty worktree.
 func releaseSourceFreezeFixture(t *testing.T) string {
 	t.Helper()
@@ -1780,12 +1783,12 @@ func releaseSourceFreezeFixture(t *testing.T) string {
 	var rewrites [][2]string
 	branches := map[string]string{
 		"sn": "main", "server": "main", "connect": "main", "sdk": "main",
-		"glog": "master", "goidenticons": "main", "proxy": "main", "userwireguard": "master",
+		"glog": "master", "quic-go": "main", "goidenticons": "main", "proxy": "main", "userwireguard": "master",
 		"warp": "main", "gvisor": "go", "vault": "main", "xops": "main", "config": "main",
 	}
 	origins := map[string]string{
 		"sn": "urfoundation/sn", "server": "urnetwork/server",
-		"connect": "urnetwork/connect", "sdk": "urnetwork/sdk", "glog": "urnetwork/glog",
+		"connect": "urnetwork/connect", "sdk": "urnetwork/sdk", "glog": "urnetwork/glog", "quic-go": "urnetwork/quic-go",
 		"goidenticons": "urnetwork/goidenticons", "proxy": "urnetwork/proxy", "userwireguard": "urnetwork/userwireguard",
 		"warp": "urnetwork/warp", "gvisor": "urnetwork/gvisor", "vault": "urnetwork/vault", "xops": "urnetwork/xops", "config": "urnetwork/config",
 	}
@@ -1859,7 +1862,7 @@ func releaseSourceFreezeFixture(t *testing.T) string {
 }
 
 // The freeze command accepts a complete clean fixture and emits an exact
-// thirteen-repository revision/upstream snapshot.
+// fourteen-repository revision/upstream snapshot.
 func TestReleaseSourceFreezeRecordsCompleteCleanWorkspace(t *testing.T) {
 	workspace := releaseSourceFreezeFixture(t)
 	command := exec.Command("../scripts/check-release-source-freeze.sh", workspace)
@@ -1868,12 +1871,12 @@ func TestReleaseSourceFreezeRecordsCompleteCleanWorkspace(t *testing.T) {
 		t.Fatalf("clean source freeze: %v", err)
 	}
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-	if len(lines) != 13 {
-		t.Fatalf("source freeze recorded %d repositories, want 13: %s", len(lines), output)
+	if len(lines) != 14 {
+		t.Fatalf("source freeze recorded %d repositories, want 14: %s", len(lines), output)
 	}
 	expectedOrigins := map[string]string{
 		"sn": "github.com/urfoundation/sn", "server": "github.com/urnetwork/server",
-		"connect": "github.com/urnetwork/connect", "sdk": "github.com/urnetwork/sdk", "glog": "github.com/urnetwork/glog",
+		"connect": "github.com/urnetwork/connect", "sdk": "github.com/urnetwork/sdk", "glog": "github.com/urnetwork/glog", "quic-go": "github.com/urnetwork/quic-go",
 		"goidenticons": "github.com/urnetwork/goidenticons", "proxy": "github.com/urnetwork/proxy", "userwireguard": "github.com/urnetwork/userwireguard",
 		"warp": "github.com/urnetwork/warp", "gvisor": "github.com/urnetwork/gvisor", "vault": "github.com/urnetwork/vault", "xops": "github.com/urnetwork/xops", "config": "github.com/urnetwork/config",
 	}
@@ -2006,6 +2009,97 @@ func TestReleaseSourceFreezeRequiresGvisorProvenance(t *testing.T) {
 	runTestGit(t, gvisorRoot, "add", "README.md")
 	runTestGit(t, gvisorRoot, "commit", "-qm", "unpublished gVisor source")
 	run("is not reachable from origin/go")
+}
+
+// Connect and the server import URnetwork's quic-go from its own repository,
+// so the freeze holds it to the same provenance as every other repository:
+// present, clean, the reviewed origin rather than upstream quic-go, and
+// published on origin/main.
+func TestReleaseSourceFreezeRequiresQuicGoProvenance(t *testing.T) {
+	workspace := releaseSourceFreezeFixture(t)
+	quicRoot := filepath.Join(workspace, "quic-go")
+	output, err := exec.Command("../scripts/check-release-source-freeze.sh", workspace).Output()
+	if err != nil {
+		t.Fatalf("published quic-go fork was refused: %v", err)
+	}
+	if !regexp.MustCompile(`(?m)^quic-go\t[0-9a-f]{40}\torigin/main\tgithub\.com/urnetwork/quic-go$`).Match(output) {
+		t.Fatalf("source freeze did not record quic-go's provenance:\n%s", output)
+	}
+	run := func(want string) {
+		t.Helper()
+		output, err := exec.Command("../scripts/check-release-source-freeze.sh", workspace).CombinedOutput()
+		if err == nil || !strings.Contains(string(output), want) {
+			t.Fatalf("quic-go source admission wanted %q: %v\n%s", want, err, output)
+		}
+	}
+	retained := filepath.Join(workspace, ".retained-quic-go")
+	if err := os.Rename(quicRoot, retained); err != nil {
+		t.Fatal(err)
+	}
+	run("release repository is missing or not a Git checkout: " + quicRoot)
+	inventory, err := exec.Command("bash", "-c", `set -euo pipefail; source ../scripts/release-gate-jobs.sh; workspace="$1"; release_gate_diagnostic_inventory`, "bash", workspace).CombinedOutput()
+	if err == nil || !strings.Contains(string(inventory), "incomplete diagnostic Git checkout: quic-go") {
+		t.Fatalf("diagnostic inventory omitted the missing quic-go checkout: %v\n%s", err, inventory)
+	}
+	if err := os.Rename(retained, quicRoot); err != nil {
+		t.Fatal(err)
+	}
+	readme := filepath.Join(quicRoot, "README.md")
+	if err := os.WriteFile(readme, []byte("modified\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	run("tracked, staged, or untracked changes: quic-go")
+	if err := os.WriteFile(readme, []byte("fixture\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Upstream quic-go is not URnetwork's fork.
+	runTestGit(t, quicRoot, "config", "remote.origin.url", "git@github.com:quic-go/quic-go.git")
+	run("origin github.com/quic-go/quic-go, want github.com/urnetwork/quic-go")
+	runTestGit(t, quicRoot, "config", "remote.origin.url", "git@github.com:urnetwork/quic-go.git")
+	if err := os.WriteFile(readme, []byte("unpublished\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runTestGit(t, quicRoot, "add", "README.md")
+	runTestGit(t, quicRoot, "commit", "-qm", "unpublished quic-go source")
+	run("is not reachable from origin/main")
+}
+
+// Every sibling checkout from which SN's go.mod takes a module is one of the
+// fenced release repositories, so a release cannot compile a sibling that no
+// gate checks. URnetwork's quic-go joined when connect and the server began
+// importing it.
+func TestReleaseGatesFenceEverySiblingThatSNReplaces(t *testing.T) {
+	gomod, err := os.ReadFile("../go.mod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script, err := os.ReadFile("../scripts/check-release-source-freeze.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fenced := releaseSourceFreezeModuleArray(t, string(script), "release_repos")
+	siblings := map[string]bool{}
+	for _, line := range strings.Split(string(gomod), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || fields[0] != "replace" {
+			continue
+		}
+		arrow := slices.Index(fields, "=>")
+		if len(fields) < 4 || arrow < 2 || arrow+1 >= len(fields) {
+			t.Fatalf("go.mod replace directive %q is not one this test reads", line)
+		}
+		if target, ok := strings.CutPrefix(fields[arrow+1], "../"); ok {
+			siblings[strings.Split(target, "/")[0]] = true
+		}
+	}
+	if !siblings["quic-go"] {
+		t.Fatal("SN's go.mod no longer takes a module from the ../quic-go sibling")
+	}
+	for sibling := range siblings {
+		if !slices.Contains(fenced, sibling) {
+			t.Errorf("SN compiles the ../%s sibling, which no release gate fences", sibling)
+		}
+	}
 }
 
 // Cleanliness and provenance must be established before a tracked verifier can
@@ -2327,8 +2421,8 @@ func TestReleaseSourceFreezeDoesNotTidyNonReleaseModules(t *testing.T) {
 	if err != nil {
 		t.Fatalf("untidy non-release modules were refused: %v\n%s", err, stderr.String())
 	}
-	if lines := strings.Split(strings.TrimSpace(string(output)), "\n"); len(lines) != 13 {
-		t.Fatalf("source freeze recorded %d repositories, want 13: %s", len(lines), output)
+	if lines := strings.Split(strings.TrimSpace(string(output)), "\n"); len(lines) != 14 {
+		t.Fatalf("source freeze recorded %d repositories, want 14: %s", len(lines), output)
 	}
 	verified := []string{}
 	for _, match := range regexp.MustCompile(`(?m)^verify tidy Go module: (.+)$`).FindAllStringSubmatch(stderr.String(), -1) {
@@ -2855,7 +2949,7 @@ func TestProducerGatePinsRuntime458ArtifactAndEncodingRegressions(t *testing.T) 
 // repository set. The retired operator-proxy module is no longer checked out,
 // tested or frozen by any of them.
 func TestReleaseGatesFenceOneRepositorySetWithoutOperatorProxy(t *testing.T) {
-	const repositories = "sn server connect sdk glog goidenticons proxy userwireguard warp gvisor vault xops config"
+	const repositories = "sn server connect sdk glog quic-go goidenticons proxy userwireguard warp gvisor vault xops config"
 	declaration := "release_repos=(" + repositories + ")"
 	for _, gate := range []struct {
 		path        string
