@@ -48,6 +48,9 @@ func testReleaseLockFixture(t *testing.T) *ReleaseLock {
 	lock.EVMBuild["fleet_batcher_storage_layout_hash"] = FleetBatcherStorageLayoutHash
 	lock.EVMBuild["validator_evidence_storage_layout_hash"] = ValidatorEvidenceStorageLayoutHash
 	lock.EVMBuild["abi_hash"] = generatedABIHash()
+	// A lock rendered since URnetwork's quic-go joined the observation pins its
+	// source; the checked-in lock was attested before then.
+	lock.Repositories["quic_go_go_source_hash"] = "sha256:" + strings.Repeat("5", 64)
 	if err := validateReleaseLockStatic(lock); err != nil {
 		t.Fatalf("complete generated release fixture: %v", err)
 	}
@@ -251,6 +254,80 @@ func TestReleaseLockRenderingDropsRetiredOperatorProxyPins(t *testing.T) {
 	}
 }
 
+// Every fresh observation pins URnetwork's quic-go source beside the other
+// sibling modules; an observation without it is incomplete.
+func TestReleaseLockObservationRequiresUrnetworkQuicGo(t *testing.T) {
+	observation := testReleaseLockObservation(t, testReleaseLockFixture(t))
+	if err := validateReleaseLockObservation(observation); err != nil {
+		t.Fatalf("complete release observation was refused: %v", err)
+	}
+	delete(observation.Repositories, "quic_go_go_source_hash")
+	if err := validateReleaseLockObservation(observation); err == nil || !strings.Contains(err.Error(), "quic_go_go_source_hash is missing") {
+		t.Fatalf("release observation without quic-go's source pin was accepted: %v", err)
+	}
+}
+
+// A lock attested before URnetwork's quic-go was its own repository, as the
+// checked-in lock was, stays admissible without the pin. It cannot pass a gate
+// against a workspace that has quic-go, and a fresh rendering adds the pin.
+func TestReleaseLockAttestedBeforeQuicGoIsAdmittedUntilRerendered(t *testing.T) {
+	fresh := testReleaseLockFixture(t)
+	observation := testReleaseLockObservation(t, fresh)
+	attested := testReleaseLockFixture(t)
+	delete(attested.Repositories, "quic_go_go_source_hash")
+	if err := validateReleaseLockStatic(attested); err != nil {
+		t.Fatalf("lock attested before quic-go was refused: %v", err)
+	}
+	ignored := releaseKeySet(releaseRepositoryAnnotationKeys, releaseRepositoryRetiredKeys)
+	if err := compareLockSection("repositories", fresh.Repositories, observation.Repositories, ignored); err != nil {
+		t.Fatalf("lock that pins quic-go differs from its own observation: %v", err)
+	}
+	if err := compareLockSection("repositories", attested.Repositories, observation.Repositories, ignored); err == nil || !strings.Contains(err.Error(), "quic_go_go_source_hash") {
+		t.Fatalf("lock without quic-go's pin passed against a workspace that has quic-go: %v", err)
+	}
+	candidate, err := releaseLockWithObservation(attested, observation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if candidate.Repositories["quic_go_go_source_hash"] != observation.Repositories["quic_go_go_source_hash"] {
+		t.Fatalf("fresh rendering did not pin quic-go: %v", candidate.Repositories["quic_go_go_source_hash"])
+	}
+	if err := validateReleaseLockStatic(candidate); err != nil {
+		t.Fatalf("fresh rendering with quic-go's pin was refused: %v", err)
+	}
+	attested.Repositories["quic_go_go_source_hash"] = "sha256:unresolved"
+	if err := validateReleaseLockStatic(attested); err == nil {
+		t.Fatal("lock with a malformed quic-go pin was admitted")
+	}
+}
+
+// Observation hashes the Go source of every sibling module that a release lock
+// pins, URnetwork's quic-go among them, each under the schema's observed key.
+func TestReleaseLockHashesUrnetworkQuicGoSource(t *testing.T) {
+	workspace, cfg := releaseObservationWorkspaceTest(t)
+	hashes, modules, err := observeReleaseGoSources(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if modules["quic-go"] != filepath.Join(workspace, "quic-go") || !releaseSHA256.MatchString(hashes["quic_go_go_source_hash"]) {
+		t.Fatalf("observation did not hash quic-go's source: %q %q", modules["quic-go"], hashes["quic_go_go_source_hash"])
+	}
+	observed := map[string]bool{}
+	for _, key := range releaseRepositoryObservedKeys {
+		if strings.HasSuffix(key, "_go_source_hash") {
+			observed[key] = true
+		}
+	}
+	if len(hashes) != len(observed) {
+		t.Fatalf("observed Go source pins %v, want exactly %v", hashes, observed)
+	}
+	for key := range hashes {
+		if !observed[key] {
+			t.Errorf("observation hashed %s, which the release schema does not observe", key)
+		}
+	}
+}
+
 func TestCleanReleaseRepositorySnapshotRejectsDirtyAndMissingWorktrees(t *testing.T) {
 	root := t.TempDir()
 	runTestGit(t, root, "init", "-q")
@@ -292,7 +369,7 @@ func releaseObservationWorkspaceTest(t *testing.T) (string, *ResolvedConfig) {
 	t.Helper()
 	workspace := t.TempDir()
 	for _, relative := range []string{
-		"sn", "server", "vault", "config", "connect", "sdk", "glog",
+		"sn", "server", "vault", "config", "connect", "sdk", "glog", "quic-go",
 		"goidenticons", "proxy", "userwireguard", "warp", "xops", "sn/evm/lib/forge-std",
 		"sn/evm/lib/openzeppelin-contracts", "sn/evm/lib/openzeppelin-contracts-upgradeable",
 	} {
@@ -333,7 +410,7 @@ func TestReleaseLockObservationDoesNotRequireOperatorProxy(t *testing.T) {
 		names[repository.Name] = true
 	}
 	expected := []string{
-		"sn", "server", "vault", "platform-config", "connect", "sdk", "glog", "goidenticons", "proxy",
+		"sn", "server", "vault", "platform-config", "connect", "sdk", "glog", "quic-go", "goidenticons", "proxy",
 		"userwireguard", "warp", "xops", "forge-std", "openzeppelin-contracts", "openzeppelin-contracts-upgradeable",
 	}
 	for _, name := range expected {

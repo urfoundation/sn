@@ -817,6 +817,40 @@ var subtensorNodeReleaseFiles = []string{
 	"main/ansible/host_files/snow/subtensor/subtensor-monitor.sudoers",
 }
 
+// The sibling modules whose Go source a release lock pins beside SN's and the
+// server's. URnetwork's quic-go joined when connect and the server began
+// importing it from its own repository instead of the server's copy.
+var releaseGoSourceModules = []string{"connect", "sdk", "glog", "quic-go", "goidenticons", "proxy", "userwireguard"}
+
+// A module's observed Go source pin. A hyphenated name takes underscores, as
+// platform_config_source_hash does.
+func releaseGoSourceHashKey(name string) string {
+	return strings.ReplaceAll(name, "-", "_") + "_go_source_hash"
+}
+
+// The Go source pins of SN, the server and every sibling module, by observed
+// key, with each module's root.
+func observeReleaseGoSources(cfg *ResolvedConfig) (map[string]string, map[string]string, error) {
+	parent := filepath.Dir(cfg.Repos.SN)
+	modules := map[string]string{"sn": cfg.Repos.SN, "server": cfg.Repos.Server}
+	for _, name := range releaseGoSourceModules {
+		root, err := moduleRoot(parent, name)
+		if err != nil {
+			return nil, nil, err
+		}
+		modules[name] = root
+	}
+	hashes := map[string]string{}
+	for name, root := range modules {
+		hash, err := goReleaseSourceHash(root)
+		if err != nil {
+			return nil, nil, fmt.Errorf("hash %s module: %w", name, err)
+		}
+		hashes[releaseGoSourceHashKey(name)] = hash
+	}
+	return hashes, modules, nil
+}
+
 func observeReleaseLockUnchecked(cfg *ResolvedConfig) (*releaseLockObservation, error) {
 	if cfg == nil || cfg.Repos.SN == "" || cfg.Repos.Server == "" {
 		return nil, errors.New("release repository paths are incomplete")
@@ -854,20 +888,12 @@ func observeReleaseLockUnchecked(cfg *ResolvedConfig) (*releaseLockObservation, 
 	}
 
 	parent := filepath.Dir(cfg.Repos.SN)
-	modules := map[string]string{"sn": cfg.Repos.SN, "server": cfg.Repos.Server}
-	for _, name := range []string{"connect", "sdk", "glog", "goidenticons", "proxy", "userwireguard"} {
-		root, rootErr := moduleRoot(parent, name)
-		if rootErr != nil {
-			return nil, rootErr
-		}
-		modules[name] = root
+	hashes, modules, err := observeReleaseGoSources(cfg)
+	if err != nil {
+		return nil, err
 	}
-	for name, root := range modules {
-		hash, hashErr := goReleaseSourceHash(root)
-		if hashErr != nil {
-			return nil, fmt.Errorf("hash %s module: %w", name, hashErr)
-		}
-		observation.Repositories[name+"_go_source_hash"] = hash
+	for key, hash := range hashes {
+		observation.Repositories[key] = hash
 	}
 	observation.Repositories["sdk_mobile_build_tree_hash"], err = sdkMobileBuildTreeHash(modules["sdk"])
 	if err != nil {

@@ -24,22 +24,27 @@ case "$dependency_mode" in
 esac
 workspace="${1:-$(dirname "$sn_repo")}"
 
-release_repos=(sn server connect sdk glog goidenticons proxy userwireguard warp gvisor vault xops config)
+release_repos=(sn server connect sdk glog quic-go goidenticons proxy userwireguard warp gvisor vault xops config)
 # A module is live when a released binary or library builds from it: a release
 # build's main module, or a module whose packages one links. connect/sctp backs
-# every github.com/pion/sctp replacement, and SN's substrate RPC fork backs
-# SN's and the server's replacement of the centrifuge client.
+# every github.com/pion/sctp replacement, SN's substrate RPC fork backs SN's
+# and the server's replacement of the centrifuge client, the server's pgx and
+# go-redis copies back SN's and the server's replacements of those modules, and
+# quic-go is URnetwork's fork, which connect and the server import.
 live_modules=(
   connect
   connect/sctp
   glog
   goidenticons
   proxy
+  quic-go
   sdk
   sdk/build
   sdk/cgo
   sdk/js
   server
+  server/third_party/go-redis
+  server/third_party/pgx
   sn
   sn/third_party/go-substrate-rpc-client
   sn/third_party/npipe
@@ -57,12 +62,22 @@ live_modules=(
 # - sdk/packaging builds and publishes the language packages around sdk/cgo.
 # - server/connect/sim-latency/baseline is a separate dataset. Its module
 #   boundary keeps preserved analysis inputs out of executable server packages.
+#   Its prelaunch-cold-r9-2026-10-25/principal-reproduction module is part of
+#   that dataset.
+# - server/tools/competition-* are standalone competition tools.
+# The mainnet release builder refuses any module graph or binary that contains
+# one of them (scripts/mainnet-release-build/excluded.go).
 non_release_modules=(
   connect/tools/flightgate-devices
   connect/vlessinterop
   sdk/cgo/build
   sdk/packaging
   server/connect/sim-latency/baseline
+  server/connect/sim-latency/baseline/prelaunch-cold-r9-2026-10-25/principal-reproduction
+  server/tools/competition-census-memory-projector
+  server/tools/competition-qa-capacity-guard
+  server/tools/competition-qualification-index
+  server/tools/competition-worker-image-archive
 )
 
 # Release builds compile the gVisor fork through the gvisor.dev/gvisor
@@ -77,7 +92,7 @@ expected_upstream() {
   case "$1" in
     glog | userwireguard) printf 'origin/master\n' ;;
     gvisor) printf 'origin/go\n' ;;
-    sn | server | connect | sdk | goidenticons | proxy | warp | vault | xops | config) printf 'origin/main\n' ;;
+    sn | server | connect | sdk | quic-go | goidenticons | proxy | warp | vault | xops | config) printf 'origin/main\n' ;;
     *) return 1 ;;
   esac
 }
@@ -89,6 +104,7 @@ expected_origin() {
     connect) printf 'github.com/urnetwork/connect\n' ;;
     sdk) printf 'github.com/urnetwork/sdk\n' ;;
     glog) printf 'github.com/urnetwork/glog\n' ;;
+    quic-go) printf 'github.com/urnetwork/quic-go\n' ;;
     goidenticons) printf 'github.com/urnetwork/goidenticons\n' ;;
     proxy) printf 'github.com/urnetwork/proxy\n' ;;
     userwireguard) printf 'github.com/urnetwork/userwireguard\n' ;;

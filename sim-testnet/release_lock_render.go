@@ -52,6 +52,7 @@ var releaseRepositoryObservedKeys = []string{
 	"connect_go_source_hash",
 	"sdk_go_source_hash",
 	"glog_go_source_hash",
+	"quic_go_go_source_hash",
 	"goidenticons_go_source_hash",
 	"proxy_go_source_hash",
 	"userwireguard_go_source_hash",
@@ -91,6 +92,26 @@ var releaseRepositoryAnnotationKeys = []string{
 var releaseRepositoryRetiredKeys = []string{
 	"operator_proxy_go_source_hash",
 	"operator_proxy_commit",
+}
+
+// URnetwork's quic-go became its own repository in November 2026; until then
+// the server built it from its own copy. Every fresh observation and rendering
+// pins its source, while a lock attested before then lacks the pin and stays
+// admissible until a rendering adds it.
+var releaseRepositoryIntroducedKeys = []string{
+	"quic_go_go_source_hash",
+}
+
+// A lock requires every observed repository pin except an introduced one,
+// which it may lack, and admits the retired and introduced pins, checking each
+// one it carries.
+func releaseRepositoryLockSchema() (required, optional []string) {
+	for _, key := range releaseRepositoryObservedKeys {
+		if !slices.Contains(releaseRepositoryIntroducedKeys, key) {
+			required = append(required, key)
+		}
+	}
+	return required, slices.Concat(releaseRepositoryRetiredKeys, releaseRepositoryIntroducedKeys)
 }
 
 type releaseRepository struct {
@@ -187,7 +208,7 @@ func releaseObservationRepositories(cfg *ResolvedConfig) ([]releaseRepository, e
 		{Name: "vault", Root: cfg.Repos.Vault},
 		{Name: "platform-config", Root: cfg.Repos.PlatformConfig},
 	}
-	for _, name := range []string{"connect", "sdk", "glog", "goidenticons", "proxy", "userwireguard", "warp"} {
+	for _, name := range []string{"connect", "sdk", "glog", "quic-go", "goidenticons", "proxy", "userwireguard", "warp"} {
 		root, err := moduleRoot(parent, name)
 		if err != nil {
 			return nil, err
@@ -360,7 +381,8 @@ func validateReleaseLockStaticFields(lock *ReleaseLock) error {
 	if err := validateReleaseLockSectionSchema("evm_build", lock.EVMBuild, releaseEVMObservedKeys, releaseEVMAnnotationKeys, nil); err != nil {
 		return err
 	}
-	if err := validateReleaseLockSectionSchema("repositories", lock.Repositories, releaseRepositoryObservedKeys, releaseRepositoryAnnotationKeys, releaseRepositoryRetiredKeys); err != nil {
+	required, optional := releaseRepositoryLockSchema()
+	if err := validateReleaseLockSectionSchema("repositories", lock.Repositories, required, releaseRepositoryAnnotationKeys, optional); err != nil {
 		return err
 	}
 	if err := validateReleaseLockSectionSchema("interfaces", lock.Interfaces, releaseInterfaceObservedKeys, nil, nil); err != nil {
