@@ -74,7 +74,8 @@ func (self *Chain) validateSourceRuntimeCapabilityAt(block types.Hash, mecid *ui
 		proof.metadata != self.Meta || proof.blockHash == (types.Hash{}) || block != (types.Hash{}) && proof.blockHash != block ||
 		proof.identity.Version.SpecName != "node-subtensor" || self.Runtime.SpecName != proof.identity.Version.SpecName ||
 		uint32(self.Runtime.SpecVersion) != proof.identity.Version.SpecVersion || uint32(self.Runtime.TransactionVersion) != proof.identity.Version.TransactionVersion ||
-		proof.identity.Version.SpecVersion == 0 || proof.identity.Version.TransactionVersion != 1 || proof.identity.Version.StateVersion != 1 {
+		proof.identity.Version.SpecVersion == 0 || proof.identity.Version.TransactionVersion != 1 && !reviewedRaisedTransactionVersion(proof.identity.Version) ||
+		proof.identity.Version.StateVersion != 1 {
 		return errors.New("crv4: source successor lacks an exact authenticated block view")
 	}
 	baseline, err := runtimeProfileBaseline()
