@@ -7,7 +7,7 @@ require (
 	github.com/centrifuge/go-substrate-rpc-client/v4 v4.2.2-0.20240919131012-e3b938563803
 	github.com/consensys/gnark-crypto v0.22.0
 	github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815
-	github.com/ethereum/go-ethereum v1.17.10
+	github.com/ethereum/go-ethereum v1.17.1
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/gorilla/websocket v1.5.4-0.20240701034025-d67f41855da4
 	github.com/holiman/uint256 v1.3.2
@@ -60,7 +60,6 @@ require (
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/ferranbt/fastssz v1.0.0 // indirect
 	github.com/filecoin-project/go-clock v0.1.0 // indirect
-	github.com/fjl/jsonw v0.1.0 // indirect
 	github.com/flynn/noise v1.1.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/gagliardetto/binary v0.8.0 // indirect
