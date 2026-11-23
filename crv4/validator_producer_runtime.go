@@ -29,7 +29,8 @@ func ValidateValidatorProducerRuntimeArtifactContext(ctx context.Context, chain 
 	if !artifact.authenticationProof.transport.matches(chain) {
 		return &runtimeTransportObservationError{}
 	}
-	if artifact.Version.SpecName != "node-subtensor" || artifact.Version.SpecVersion == 0 || artifact.Version.TransactionVersion != 1 || artifact.Version.StateVersion != 1 {
+	if artifact.Version.SpecName != "node-subtensor" || artifact.Version.SpecVersion == 0 ||
+		artifact.Version.TransactionVersion != 1 && !reviewedRaisedTransactionVersion(artifact.Version) || artifact.Version.StateVersion != 1 {
 		return errors.New("validator producer runtime family or encoding version is unsupported")
 	}
 	if err := validateValidatorProducerMetadata(artifact.Metadata); err != nil {

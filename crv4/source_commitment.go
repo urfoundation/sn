@@ -67,7 +67,10 @@ func preparedSourceEncoding(prepared *PreparedSubmission) (call, fields, payload
 		return nil, nil, nil, errors.New("crv4: source preparation is absent")
 	}
 	source := prepared.SourceCommitment
-	encodingSupported := source.RuntimeSpec != 0 && source.TransactionVersion == 1
+	// The bytes below are this family's layout; a raised transaction version
+	// changes only the signed u32, and only for an exact reviewed identity.
+	encodingSupported := source.RuntimeSpec != 0 && (source.TransactionVersion == 1 || reviewedRaisedTransactionVersion(RuntimeVersionIdentity{
+		SpecName: "node-subtensor", SpecVersion: source.RuntimeSpec, TransactionVersion: source.TransactionVersion, StateVersion: 1}))
 	if source.CompatibilityProfile != "" {
 		encodingSupported = source.CompatibilityProfile == ProvisionalRuntimeCompatibilityProfile && source.RuntimeSpec > ReviewedRuntimeSpecVersion && source.TransactionVersion == 1
 	}

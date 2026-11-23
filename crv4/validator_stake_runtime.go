@@ -24,7 +24,7 @@ func validateValidatorReadRuntimeAtContext(ctx context.Context, chain *Chain, ar
 		return errors.New("validator runtime read purpose is unsupported")
 	}
 	version := artifact.Version
-	if version.SpecName != "node-subtensor" || version.TransactionVersion != 1 || version.StateVersion != 1 {
+	if version.SpecName != "node-subtensor" || version.TransactionVersion != 1 && !reviewedRaisedTransactionVersion(version) || version.StateVersion != 1 {
 		return errors.New("validator stake runtime family or encoding versions are unsupported")
 	}
 	if artifact.CompatibilityProfile != "" {

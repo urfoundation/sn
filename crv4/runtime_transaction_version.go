@@ -1,0 +1,28 @@
+// A runtime's transaction version is signed data (CheckTxVersion's additional
+// field). The producer encoding family began at transaction version 1; a
+// raised version joins it only as an exact reviewed identity.
+package crv4
+
+import "slices"
+
+// Runtime494 (subtensor v494, a68c6e8c; Finney from block 9570596,
+// 2026-11-23) is the first node-subtensor runtime to raise its transaction
+// version, from 1 to 2, because it appends calls: the delegated-weight
+// SubtensorModule calls at 170-174 and Commitments.set_commitment_to at 3.
+// Every call, event and storage item the producer consumes keeps its index and
+// encoding, and the signed-extension set is unchanged (CheckMetadataHash
+// included), so its transaction version 2 changes only the signed value that
+// the signer already takes from the authenticated runtime. Pinned in
+// runtime494_metadata_test.go. Any other identity, including a later spec at
+// transaction version 2, stays outside the family until its own review.
+var reviewedRaisedTransactionVersions = []RuntimeVersionIdentity{
+	{SpecName: "node-subtensor", SpecVersion: 494, TransactionVersion: 2, StateVersion: 1},
+}
+
+// Reports whether this exact identity raised its transaction version above the
+// family's original 1 and was reviewed as encoding-identical for the producer.
+// It grants no artifact authority: callers still authenticate the block's
+// exact artifact and check its consumed interfaces.
+func reviewedRaisedTransactionVersion(version RuntimeVersionIdentity) bool {
+	return version.TransactionVersion != 1 && slices.Contains(reviewedRaisedTransactionVersions, version)
+}
