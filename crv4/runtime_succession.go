@@ -146,7 +146,12 @@ func authenticateRuntimeSuccessorAtContext(ctx context.Context, chain *Chain, bl
 	if approved == nil {
 		return nil, nil, nil
 	}
-	if version.SpecName != approved.Version.SpecName || version.TransactionVersion != approved.Version.TransactionVersion ||
+	// A successor keeps its anchor's transaction version, unless it is an exact
+	// reviewed identity whose raised version left the producer encoding intact.
+	// Every anchor is at version 1, so that review is relative to the original.
+	transactionVersion := version.TransactionVersion == approved.Version.TransactionVersion ||
+		approved.Version.TransactionVersion == 1 && reviewedRaisedTransactionVersion(version)
+	if version.SpecName != approved.Version.SpecName || !transactionVersion ||
 		version.StateVersion != approved.Version.StateVersion || version.SpecVersion <= approved.Version.SpecVersion {
 		return nil, nil, fmt.Errorf("runtime at %s has identity %s, which is not a successor of approved %s", blockHash.Hex(), describeRuntimeVersion(version), describeRuntimeVersion(approved.Version))
 	}
