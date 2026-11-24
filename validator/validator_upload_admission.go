@@ -155,6 +155,7 @@ type validatorUploadRefreshReport struct {
 	evmHeadAge         time.Duration
 	nativeHeadAge      time.Duration
 	ranges             uint64
+	rangeReads         uint64
 	events             uint64
 	admitted           int
 	retained           int
@@ -183,14 +184,19 @@ type ValidatorUploadAdmission struct {
 	// under stateLock.
 	verifiedHistory     map[[32]byte]VerifiedReleaseActivationV2
 	lastRefreshDuration time.Duration
-	activationFailures  map[[32]byte]error
-	stateLock           sync.Mutex
-	entries             map[[32]byte]*validatorUploadAdmissionEntry
-	ownerSlots          map[ValidatorUploadOwner]*validatorUploadOwnerSlots
-	validUntil          time.Time
-	lastError           error
-	closed              bool
-	leases              sync.WaitGroup
+	// Closed discovery ranges' rows by range start, owned by the refresh loop
+	// like verifiedHistory. A process starts empty and scans cold once.
+	closedRanges         map[uint64]*validatorUploadClosedRange
+	closedRangeRows      int
+	closedRangeRowBudget int
+	activationFailures   map[[32]byte]error
+	stateLock            sync.Mutex
+	entries              map[[32]byte]*validatorUploadAdmissionEntry
+	ownerSlots           map[ValidatorUploadOwner]*validatorUploadOwnerSlots
+	validUntil           time.Time
+	lastError            error
+	closed               bool
+	leases               sync.WaitGroup
 }
 
 // File custody and canonical context syntax precede the first RPC. The API
@@ -273,7 +279,8 @@ func newValidatorUploadAdmissionState(ctx context.Context, chain *ChainClient, n
 	owner := &ValidatorUploadAdmission{ctx: ownerCtx, cancel: cancel, done: make(chan struct{}), ready: make(chan struct{}), chain: chain, native: native, config: config,
 		discoveryDigests: digests, clock: time.Now, refreshReport: printValidatorUploadRefreshReport,
 		verifiedHistory: make(map[[32]byte]VerifiedReleaseActivationV2, len(digests)), activationFailures: make(map[[32]byte]error, len(digests)),
-		entries: make(map[[32]byte]*validatorUploadAdmissionEntry), ownerSlots: make(map[ValidatorUploadOwner]*validatorUploadOwnerSlots), lastError: errors.New("validator staging admission has not refreshed")}
+		entries: make(map[[32]byte]*validatorUploadAdmissionEntry), ownerSlots: make(map[ValidatorUploadOwner]*validatorUploadOwnerSlots), lastError: errors.New("validator staging admission has not refreshed"),
+		closedRanges: make(map[uint64]*validatorUploadClosedRange), closedRangeRowBudget: maximumValidatorUploadKeptRows}
 	if config.ProvisionalRetainedContextAuthority {
 		if err := owner.installProvisionalRetainedContextAuthority(retainedContexts); err != nil {
 			cancel()
@@ -629,19 +636,20 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 		next[owner] = verified
 		return nil
 	}
-	discoveryRanges := self.config.MaximumRanges
-	if self.config.ProvisionalSeededDiscoveryOnly {
-		discoveryRanges = 0
-	}
-	for range discoveryRanges {
-		end := observer.Number
-		if observer.Number-start >= self.config.BlocksPerRange {
-			end = start + self.config.BlocksPerRange - 1
-		}
-		events, err := self.chain.ValidatorUploadActivationEventsContext(ctx, self.config.Deployment, start, end, self.config.BlocksPerRange, maximumValidatorUploadRangeRows, permitted.hotkeys, observer)
-		if err != nil {
+	var ranges []validatorUploadRange
+	if !self.config.ProvisionalSeededDiscoveryOnly {
+		var err error
+		if ranges, err = validatorUploadDiscoveryRanges(start, observer.Number, self.config.BlocksPerRange, self.config.MaximumRanges); err != nil {
 			return err
 		}
+	}
+	rangeEvents, rangeReads, err := self.discoverValidatorUploadRanges(ctx, ranges, permitted.hotkeys, observer)
+	if err != nil {
+		return err
+	}
+	report.rangeReads = uint64(rangeReads)
+	for rangeIndex, scanned := range ranges {
+		start, end, events := scanned.from, scanned.to, rangeEvents[rangeIndex]
 		report.ranges++
 		report.events += uint64(len(events))
 		for index := range events {
@@ -659,10 +667,6 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 				return err
 			}
 		}
-		if end == observer.Number {
-			break
-		}
-		start = end + 1
 	}
 	// Event order resolves multiple real rotations in one block. Reference
 	// seeds are considered afterward and cannot replace a later publication.
@@ -1044,9 +1048,9 @@ func printValidatorUploadRefreshReport(report validatorUploadRefreshReport) {
 	if report.err != nil {
 		outcome = "failed: " + report.err.Error()
 	}
-	line := fmt.Sprintf("validator staging refresh %s; took %s, EVM head age %s, native head age %s, %d ranges, %d events, %d admitted, %d retained, valid until %s; not admitted [%s]",
+	line := fmt.Sprintf("validator staging refresh %s; took %s, EVM head age %s, native head age %s, %d ranges (%d read), %d events, %d admitted, %d retained, valid until %s; not admitted [%s]",
 		outcome, report.finished.Sub(report.started).Round(time.Millisecond), report.evmHeadAge.Round(time.Millisecond), report.nativeHeadAge.Round(time.Millisecond),
-		report.ranges, report.events, report.admitted, report.retained, report.validUntil.UTC().Format(time.RFC3339), strings.Join(causes, "; "))
+		report.ranges, report.rangeReads, report.events, report.admitted, report.retained, report.validUntil.UTC().Format(time.RFC3339), strings.Join(causes, "; "))
 	fmt.Fprintln(os.Stderr, strings.ReplaceAll(line, "\n", " | "))
 }
 

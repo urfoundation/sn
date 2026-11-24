@@ -233,6 +233,7 @@ func TestValidatorUploadAdmissionDuplicateSlotCannotBlockFreshObject(t *testing.
 func TestValidatorUploadAdmissionVPKRotationPreservesOwnerAndActiveMinima(t *testing.T) {
 	t.Parallel()
 	fixture := newValidatorUploadAuthorityTestFixture(t)
+	fixture.keepDiscoveryRangeOpen()
 	owner := validatorUploadAdmissionTestState(t, fixture)
 	header, sessionHash, digest := validatorUploadAdmissionTestHeader(t, fixture, fixture.authority.Expected, 0x41, "current-api-client", []byte("object"))
 	prior, err := owner.beginAt(t.Context(), header, sessionHash, 1, digest, 6, fixture.now)
@@ -285,6 +286,7 @@ func TestValidatorUploadAdmissionVPKRotationPreservesOwnerAndActiveMinima(t *tes
 func TestValidatorUploadAdmissionIncompleteRefreshClearsAndCancelsLeases(t *testing.T) {
 	t.Parallel()
 	fixture := newValidatorUploadAuthorityTestFixture(t)
+	fixture.keepDiscoveryRangeOpen()
 	owner := validatorUploadAdmissionTestState(t, fixture)
 	header, sessionHash, digest := validatorUploadAdmissionTestHeader(t, fixture, fixture.authority.Expected, 0x41, "current-api-client", []byte("object"))
 	lease, err := owner.beginAt(t.Context(), header, sessionHash, 1, digest, 6, fixture.now)
