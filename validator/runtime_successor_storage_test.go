@@ -54,8 +54,9 @@ func runtimeSuccessorStorageTestMetadata(t *testing.T, name string, size int, sh
 // A successor is admitted only if the owner census, eligibility and treasury
 // custody storage it decodes keep their shapes. Runtime488 passed this in
 // production on 2026-11-06; runtime490 (2026-11-10), runtime491 (2026-11-16),
-// runtime492 (2026-11-19), runtime493 (2026-11-20) and runtime494 (2026-11-23, transaction version 2) must pass it too, or the
-// reviewed API tuple alone would still leave the validator refusing them.
+// runtime492 (2026-11-19), runtime493 (2026-11-20), runtime494 (2026-11-23, transaction version 2) and runtime495
+// (2026-11-24, transaction version 2) must pass it too, or the reviewed API tuple alone would still leave the validator
+// refusing them.
 func TestReviewedRuntimeSuccessorsKeepProductionStorage(t *testing.T) {
 	for _, runtime := range []struct {
 		name, sha256, hash string
@@ -67,6 +68,7 @@ func TestReviewedRuntimeSuccessorsKeepProductionStorage(t *testing.T) {
 		{name: "runtime492-metadata.scale.gz.base64", size: 395745, sha256: "ca6174da65c56320bc449b0c1c98d6202c65339c40955eebcc914538a27bb878", hash: "0xc132138eacebe032e0871d2a2cbd75abad88d19a2bf8640205e268206d6d0cd0"},
 		{name: "runtime493-metadata.scale.gz.base64", size: 395608, sha256: "4ed0c6997e668a995c9dc4ea4c8d587d1625c193fc3361a7781e49156a8db9df", hash: "0x25137f5e9ee03a4fbf1d6eade4bafb8e65a72a1f94a68526d495e3c944c1ed04"},
 		{name: "runtime494-metadata.scale.gz.base64", size: 406936, sha256: "a2f8737e3b8acdf7bffbd764c587c5696e7bec9b2453be8d69bcc990306bf093", hash: "0x5378d4cbeebda6a70798f94f6c7ba6a10551bb54ff3506d96902e8b0cac12d3a"},
+		{name: "runtime495-metadata.scale.gz.base64", size: 409264, sha256: "cfebbb78baf01a47a9b0bbd97888b46d07a593594f65ca7df231fa9b1b097343", hash: "0x15e58ecd5d479b0aff4e811f8e108db7b97715c288fe67c7d6fe659708f40ed6"},
 	} {
 		t.Run(runtime.name, func(t *testing.T) {
 			metadata := runtimeSuccessorStorageTestMetadata(t, runtime.name, runtime.size, runtime.sha256, runtime.hash)

@@ -80,7 +80,7 @@ func TestRuntime494SelectiveMetagraphApiRejectsForeignIdentity(t *testing.T) {
 		Field string
 		Value any
 	}{
-		{Field: "specVersion", Value: 493}, {Field: "specVersion", Value: 495}, {Field: "specName", Value: "synthetic-other-runtime"},
+		{Field: "specVersion", Value: 493}, {Field: "specVersion", Value: 496}, {Field: "specName", Value: "synthetic-other-runtime"},
 		{Field: "transactionVersion", Value: 1}, {Field: "transactionVersion", Value: 3}, {Field: "stateVersion", Value: 2},
 	} {
 		var value map[string]any
@@ -142,7 +142,7 @@ func TestRuntime494RaisedTransactionVersionIsExact(t *testing.T) {
 		{SpecName: "node-subtensor", SpecVersion: 494, TransactionVersion: 1, StateVersion: 1},
 		{SpecName: "node-subtensor", SpecVersion: 494, TransactionVersion: 3, StateVersion: 1},
 		{SpecName: "node-subtensor", SpecVersion: 493, TransactionVersion: 2, StateVersion: 1},
-		{SpecName: "node-subtensor", SpecVersion: 495, TransactionVersion: 2, StateVersion: 1},
+		{SpecName: "node-subtensor", SpecVersion: 496, TransactionVersion: 2, StateVersion: 1},
 		{SpecName: "node-subtensor", SpecVersion: 494, TransactionVersion: 2, StateVersion: 2},
 		{SpecName: "synthetic-other-runtime", SpecVersion: 494, TransactionVersion: 2, StateVersion: 1},
 	} {
