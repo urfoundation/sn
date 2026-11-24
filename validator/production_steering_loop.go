@@ -76,6 +76,7 @@ func runReleaseProductionSteeringLoopWithCutWait(ctx context.Context, submit fun
 		transition := releaseErrorMarker[*productionSteeringTransition](err)
 		preparation := releaseErrorMarker[*productionPreparationPending](err)
 		authentication := releaseErrorMarker[*productionOperatorAuthenticationPending](err)
+		runtimeHold := productionSteeringRuntimeHoldOf(err)
 		cutWait := productionSteeringCutWait(err)
 		if !cutWait {
 			cutWaitSince, cutWaits = time.Time{}, 0
@@ -137,6 +138,17 @@ func runReleaseProductionSteeringLoopWithCutWait(ctx context.Context, submit fun
 					if !wait() {
 						return releaseRuntimeError(ctx, pendingErr)
 					}
+				}
+			}
+		case runtimeHold != nil:
+			// Only a release that admits the chain's runtime can change this
+			// answer, so the refusal spends no failures and cannot end the
+			// process. It looks again at the gap hold's slower pace.
+			failures, pendingErr = 0, nil
+			observeProductionRuntimeHold(ctx, progress, runtimeHold)
+			for range productionRuntimeHoldPolls - 1 {
+				if !wait() {
+					return releaseRuntimeError(ctx, pendingErr)
 				}
 			}
 		case cutWait && now().Sub(cutWaitSince) <= cutWaitLimit:

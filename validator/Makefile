@@ -26,7 +26,7 @@ package: build
 		stage=$$(mktemp -d build/package.XXXXXXXX); \
 		trap 'rm -rf "$$stage"' EXIT HUP INT TERM; \
 		cp build/$$os/$$arch/validator "$$stage/validator"; \
-		cp README.md release.yml mainnet-profile.json "$$stage/"; \
+		cp README.md RELEASING.md mainnet-profile.json "$$stage/"; \
 		COPYFILE_DISABLE=1 tar -czf "build/releases/validator-$(VALIDATOR_VERSION)-$$os-$$arch.tar.gz" -C "$$stage" .; \
 		rm -rf "$$stage"; \
 	done

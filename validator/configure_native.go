@@ -7,6 +7,8 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/urfoundation/sn/crv4"
@@ -20,8 +22,46 @@ func readReleaseConfigureNativeSnapshot(ctx context.Context, profile *releaseMai
 		return releaseConfigureNativeSnapshot{}, err
 	}
 	defer native.API.Client.Close()
+	return readReleaseConfigureNativeSnapshotOn(ctx, native, profile, os.Stderr)
+}
+
+// The read on an owned connection. A profile that opts into successor
+// admission installs it first, as the generated config's own connections do,
+// so setup works on the runtime the chain runs now, not only the anchor.
+func readReleaseConfigureNativeSnapshotOn(ctx context.Context, native *crv4.Chain, profile *releaseMainnetProfile, log io.Writer) (releaseConfigureNativeSnapshot, error) {
+	if err := enableReleaseConfigureRuntimeSuccession(native, profile, log); err != nil {
+		return releaseConfigureNativeSnapshot{}, err
+	}
 	return crv4.ReadRuntimeObservationContext(ctx, native, func(ctx context.Context) (releaseConfigureNativeSnapshot, error) {
 		return readReleaseConfigureNativeBoundary(ctx, native, profile)
+	})
+}
+
+// The profile's approved artifact is the only anchor. A successor is admitted
+// only when the producer interface and the owner and treasury storage the
+// generated config decodes are unchanged, exactly as enableReleaseRuntimeSuccession
+// admits one for that config. Without the opt-in the connection stays exact.
+func enableReleaseConfigureRuntimeSuccession(native *crv4.Chain, profile *releaseMainnetProfile, log io.Writer) error {
+	if native == nil || profile == nil {
+		return errors.New("setup runtime successor admission is incomplete")
+	}
+	if profile.Config.RuntimeSuccessorProfile == "" {
+		return nil
+	}
+	if profile.Config.RuntimeSuccessorProfile != crv4.ValidatorProducerRuntimeProfile {
+		return fmt.Errorf("bundled mainnet profile names runtime successor profile %q, not %s", profile.Config.RuntimeSuccessorProfile, crv4.ValidatorProducerRuntimeProfile)
+	}
+	anchor := releaseNativeRuntimeIdentity(&profile.Config)
+	return native.EnableRuntimeSuccession(types.Hash(profile.Proposal.Runtime.GenesisHash), crv4.ValidatorProducerRuntimeProfile, []crv4.RuntimeArtifactIdentity{anchor}, func(successor crv4.RuntimeSuccessor) error {
+		if err := validateReleaseRuntimeSuccessorStorage(successor.Metadata, true); err != nil {
+			return err
+		}
+		if log != nil {
+			fmt.Fprintf(log, "validator: admitted runtime %s/%d code=%s metadata=%s at %s as a %s successor of approved %d\n",
+				successor.Artifact.Version.SpecName, successor.Artifact.Version.SpecVersion, successor.Artifact.CodeHash, successor.Artifact.MetadataHash,
+				successor.BlockHash.Hex(), crv4.ValidatorProducerRuntimeProfile, successor.Approved.Version.SpecVersion)
+		}
+		return nil
 	})
 }
 

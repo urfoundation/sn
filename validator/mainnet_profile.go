@@ -61,5 +61,10 @@ func readReleaseMainnetProfile() (*releaseMainnetProfile, error) {
 	if spec, ok := crv4.ReviewedNativeOwnerSourceSpec(profile.Proposal.Runtime.SourceCommit); !ok || spec != profile.Config.RuntimeSpec {
 		return nil, errors.New("bundled mainnet profile runtime differs from its reviewed producer source")
 	}
+	// A generated config follows authenticated successors of its approved
+	// runtime only through this opt-in; any other value is refused.
+	if profile.Config.RuntimeSuccessorProfile != "" && profile.Config.RuntimeSuccessorProfile != crv4.ValidatorProducerRuntimeProfile {
+		return nil, errors.New("bundled mainnet profile names an unknown runtime successor profile")
+	}
 	return &profile, nil
 }
