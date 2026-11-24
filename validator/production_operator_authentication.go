@@ -352,6 +352,16 @@ func newProductionReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op Op
 		api.StartJwtRefresh()
 		return nil
 	}
+	// every api request carries the validator's bearer and rate class token
+	uninstallIdentity, err := installReleaseValidatorAPIIdentity(op, credential, state.uploadSource)
+	if err != nil {
+		return nil, err
+	}
+	closeWithIdentity := closeResources
+	closeResources = func() error {
+		uninstallIdentity()
+		return closeWithIdentity()
+	}
 	transferred = true
 	return &releaseOperatorRuntime{measurement: measurement, stats: state.stats, engine: owner, close: newReleaseOperatorClose(state.stats, op.StateDir, closeResources), attemptUpload: upload, attemptSource: state.uploadSource, attemptLedger: state.ledger, authentication: owner}, nil
 }

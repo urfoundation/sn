@@ -82,7 +82,7 @@ func newHttpAttemptStreamV2Reader(origin string, bounds AttemptCutV2Bounds, meta
 	return &HTTPAttemptStreamV2Reader{
 		endpoint: *endpoint, metadataBytes: metadataBytes,
 		recordBytes: bounds.Records.MaxChunkBytes, proofBytes: bounds.Proofs.MaxChunkBytes,
-		client: &http.Client{Transport: releaseAPIHTTPTransport, CheckRedirect: func(*http.Request, []*http.Request) error {
+		client: &http.Client{Transport: validatorAPITransport(releaseAPIHTTPTransport), CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		}},
 	}, nil

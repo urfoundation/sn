@@ -30,7 +30,7 @@ func readReleaseServerKeysV2WithCapture(ctx context.Context, cfg *ReleaseConfig,
 
 // Redirects stay refused; the shared API transport health-checks HTTP/2.
 func newReleaseServerKeysV2Client() *http.Client {
-	return &http.Client{Timeout: releaseHttpGetAttemptTimeout, Transport: releaseAPIHTTPTransport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	return &http.Client{Timeout: releaseHttpGetAttemptTimeout, Transport: validatorAPITransport(releaseAPIHTTPTransport), CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 }
 
 // The public owner fixes client policy; tests inject only transport and timing.

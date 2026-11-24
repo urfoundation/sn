@@ -65,7 +65,7 @@ func releaseAttemptUploadConfiguredReplicasV2(cfg *ReleaseConfig, origins []stri
 			writer.endpoint != expected.endpoint || writer.metadataBytes != expected.metadataBytes ||
 			writer.recordBytes != expected.recordBytes || writer.proofBytes != expected.proofBytes ||
 			writer.client == nil || writer.client.Timeout != expected.client.Timeout || writer.client.CheckRedirect == nil ||
-			writer.client.Transport != expected.client.Transport || writer.client.Jar != nil {
+			!sameValidatorAPITransport(writer.client.Transport, expected.client.Transport) || writer.client.Jar != nil {
 			return nil, errors.New("release attempt upload concrete writer differs from its admitted route or bounds")
 		}
 		// Function identity cannot prove credential ownership. The private

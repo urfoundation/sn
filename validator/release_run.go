@@ -735,6 +735,21 @@ func startReleaseOperatorWithAdmission(ctx context.Context, cfg *ReleaseConfig, 
 			return key, true, nil
 		},
 	}
+	// every api request carries the validator's bearer and rate class token
+	uninstallIdentity, err := installReleaseValidatorAPIIdentity(op, func() string {
+		if cancelled.Load() || ctx.Err() != nil {
+			return ""
+		}
+		return api.GetByJwt()
+	}, attemptState.uploadSource)
+	if err != nil {
+		return nil, errors.Join(err, closeResources())
+	}
+	closeWithIdentity := closeResources
+	closeResources = func() error {
+		uninstallIdentity()
+		return closeWithIdentity()
+	}
 	return &releaseOperatorRuntime{
 		measurement:   measurement,
 		attemptUpload: upload,
