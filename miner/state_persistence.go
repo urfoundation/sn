@@ -93,7 +93,7 @@ type minerHostFacts struct {
 	mountInfo []byte
 }
 
-// readMinerHostFacts reads the facts below root, which is "/" outside tests,
+// Reads the facts below root, which is "/" outside tests,
 // with getenv for the environment.
 func readMinerHostFacts(root string, getenv func(string) string) minerHostFacts {
 	mountInfo, err := os.ReadFile(filepath.Join(root, "proc", "self", "mountinfo"))
@@ -103,7 +103,7 @@ func readMinerHostFacts(root string, getenv func(string) string) minerHostFacts 
 	return minerHostFacts{container: minerContainerKind(root, getenv), mountInfo: mountInfo}
 }
 
-// minerContainerKind names the application container this process runs in,
+// Names the application container this process runs in,
 // or "" for none. Kubernetes comes first: its pods can carry another runtime's
 // marker too.
 func minerContainerKind(root string, getenv func(string) string) string {
@@ -146,7 +146,7 @@ type minerMount struct {
 	fsType     string
 }
 
-// parseMinerMountInfo reads /proc/self/mountinfo (proc(5)). Each line is the
+// Reads /proc/self/mountinfo (proc(5)). Each line is the
 // mount id, the parent id, major:minor, the root, the mount point, the mount
 // options and optional fields up to a lone "-", then the filesystem type, the
 // source and the superblock options. Paths escape space, tab, newline and
@@ -193,7 +193,7 @@ func unescapeMinerMountPath(path string) string {
 	return unescaped.String()
 }
 
-// minerMountOf is the mount that holds path: of the mounts at path or one of
+// The mount that holds path: of the mounts at path or one of
 // its parents, the deepest, and of those at one point the last listed, which
 // hides the earlier.
 func minerMountOf(mounts []minerMount, path string) (minerMount, bool) {
@@ -213,7 +213,7 @@ func minerMountOf(mounts []minerMount, path string) (minerMount, bool) {
 	return mounts[best], true
 }
 
-// minerResolvedPath is path with the symbolic links of its deepest existing
+// The path with the symbolic links of its deepest existing
 // parent resolved, as mountinfo names it. A directory not made yet resolves
 // through the parent that will hold it.
 func minerResolvedPath(path string) string {
@@ -246,7 +246,7 @@ type minerStatePersistence struct {
 	lost string
 }
 
-// assessMinerStatePersistence decides from facts whether dir is lost with its
+// Decides from facts whether dir is lost with its
 // container or the machine's memory.
 func assessMinerStatePersistence(facts minerHostFacts, dir string) minerStatePersistence {
 	persistence := minerStatePersistence{dir: filepath.Clean(dir), container: facts.container}
@@ -273,7 +273,7 @@ type minerStateSubstitution struct {
 	problem string
 }
 
-// readMinerStateSubstitution reads the wrapper's substitution from getenv,
+// Reads the wrapper's substitution from getenv,
 // nil when it made none, or when it names stateDir itself.
 func readMinerStateSubstitution(getenv func(string) string, stateDir string) *minerStateSubstitution {
 	dir := strings.TrimSpace(getenv(minerStateSubstitutedDirEnv))
@@ -283,7 +283,7 @@ func readMinerStateSubstitution(getenv func(string) string, stateDir string) *mi
 	return &minerStateSubstitution{dir: filepath.Clean(dir), problem: strings.TrimSpace(getenv(minerStateSubstitutedProblemEnv))}
 }
 
-// minerContainerImage is the image to name in a fix for the miner at
+// The image to name in a fix for the miner at
 // executable.
 func minerContainerImage(executable string) string {
 	if executable == minerCommunityProviderBinary {
@@ -292,7 +292,7 @@ func minerContainerImage(executable string) string {
 	return "<image>"
 }
 
-// minerDoctorCommand is how a person runs provider doctor on the miner at
+// How a person runs provider doctor on the miner at
 // executable: in the community image, through its wrapper, the image's
 // command on the PATH, which runs doctor on the state directory the miner
 // uses.
@@ -303,7 +303,7 @@ func minerDoctorCommand(executable string) string {
 	return "provider doctor"
 }
 
-// minerStatePersistenceFinding is the finding for a state directory that is
+// The finding for a state directory that is
 // lost, nil for one that is kept. created says this start registered a new
 // device; substitution is the wrapper's, or nil; image names the container's
 // image in the fix.

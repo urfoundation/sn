@@ -115,7 +115,7 @@ func (self *minerFindings) current() []minerFinding {
 	return findings
 }
 
-// checkStatePersistence tells of a state directory lost with its container or
+// Tells of a state directory lost with its container or
 // the machine's memory, once per run: in findings, as a diagnostics record and
 // as a block in the finding log. created says this run generated its key, so
 // it registers a new device.
@@ -136,7 +136,7 @@ func (self providerRunSettings) checkStatePersistence(facts minerHostFacts, outp
 	}
 }
 
-// newReleaseCheck is the run's release check, in container (one of
+// The run's release check, in container (one of
 // minerContainer*, or ""): a finding goes into findings, the diagnostics and
 // the finding log.
 func (self providerRunSettings) newReleaseCheck(output *providerDiagnostics, findings *minerFindings, container string) *minerReleaseCheck {
@@ -156,7 +156,7 @@ func (self providerRunSettings) newReleaseCheck(output *providerDiagnostics, fin
 	}
 }
 
-// startOperatorSupervisorChecks makes the supervisor of provide
+// Makes the supervisor of provide
 // --all-operators' checks, the ones its children leave to it: how this host
 // keeps the state directory every operator's lies below, at start, and the
 // release check and, while no proxy file sends the children's exits through

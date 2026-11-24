@@ -37,7 +37,7 @@ const minerExitDnsName = "example.com"
 // The largest DNS message, which bounds an answer's read.
 const minerExitDnsMaxMessageBytes = 64 * 1024
 
-// minerExitDnsQuery asks the DNS over HTTPS server at dohUrl for the
+// Asks the DNS over HTTPS server at dohUrl for the
 // addresses of name, in the RFC 8484 wire format clients send, over TLS
 // verified as connect's DNS over HTTPS client verifies it (its resolver
 // settings' TLS configuration, else the system's roots), and reports whether
@@ -99,7 +99,7 @@ type minerExitDnsResult struct {
 	timeout time.Duration
 }
 
-// checkMinerExitDns asks every server at once, each within timeout.
+// Asks every server at once, each within timeout.
 func checkMinerExitDns(ctx context.Context, timeout time.Duration, dohUrls []string) minerExitDnsResult {
 	result := minerExitDnsResult{answered: map[string]bool{}, timeout: timeout}
 	var stateLock sync.Mutex
@@ -216,7 +216,7 @@ type minerExitDnsCheck struct {
 	report func(minerFinding)
 }
 
-// check asks the servers once. No answer sets the finding and reports it; an
+// Asks the servers once. No answer sets the finding and reports it; an
 // answer clears it.
 func (self *minerExitDnsCheck) check(ctx context.Context) {
 	result := checkMinerExitDns(ctx, self.settings.QueryTimeout, self.dohUrls)
@@ -235,7 +235,7 @@ func (self *minerExitDnsCheck) check(ctx context.Context) {
 	}
 }
 
-// start checks FirstCheckDelay after it is called and then every
+// Checks FirstCheckDelay after it is called and then every
 // CheckInterval, until ctx ends or stop is called. stop joins the loop.
 func (self *minerExitDnsCheck) start(ctx context.Context) (stop func()) {
 	ctx, cancel := context.WithCancel(ctx)
