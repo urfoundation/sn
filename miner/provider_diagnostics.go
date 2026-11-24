@@ -46,6 +46,8 @@ const (
 	providerStateNotPersistent
 	// a newer release is out and nothing here installs it (release_check.go)
 	providerUpdateAvailable
+	// no DNS over HTTPS server clients use answers from here (exit_dns.go)
+	providerExitDnsBlocked
 )
 
 // The guidance of a rejected or no longer renewable network sign-in. The
@@ -209,6 +211,8 @@ func (self *providerDiagnostics) observeGuided(event providerDiagnosticEvent, pr
 		domain, code = "keys", minerFindingStateNotPersistent
 	case providerUpdateAvailable:
 		code = minerFindingUpdateAvailable
+	case providerExitDnsBlocked:
+		code = minerFindingExitDnsBlocked
 	}
 	if event != providerExtenderObserved {
 		extender = nil

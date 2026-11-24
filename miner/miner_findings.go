@@ -19,6 +19,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/urnetwork/connect"
 )
 
 // The closed codes of a finding.
@@ -28,6 +30,9 @@ const (
 	minerFindingStateNotPersistent = "state_not_persistent"
 	// a newer release is out and nothing here installs it
 	minerFindingUpdateAvailable = "update_available"
+	// none of the DNS over HTTPS servers clients resolve names with through
+	// this device answers from its network (exit_dns.go)
+	minerFindingExitDnsBlocked = "exit_dns_blocked"
 )
 
 // One thing the miner found wrong. Title is a line for a status row; Summary
@@ -154,9 +159,10 @@ func (self providerRunSettings) newReleaseCheck(output *providerDiagnostics, fin
 // startOperatorSupervisorChecks makes the supervisor of provide
 // --all-operators' checks, the ones its children leave to it: how this host
 // keeps the state directory every operator's lies below, at start, and the
-// release check until ctx ends. Both write their findings to log. stop joins
-// the release check.
-func startOperatorSupervisorChecks(ctx context.Context, hostRoot string, settings *minerReleaseCheckSettings, log io.Writer) (stop func()) {
+// release check and, while no proxy file sends the children's exits through
+// proxies, the exit DNS check until ctx ends. They write their findings to
+// log. stop joins the checks.
+func startOperatorSupervisorChecks(ctx context.Context, hostRoot string, settings *minerReleaseCheckSettings, exitDnsSettings *minerExitDnsCheckSettings, log io.Writer) (stop func()) {
 	facts := readMinerHostFacts(hostRoot, os.Getenv)
 	executable, _ := cliExecutable()
 	image := minerContainerImage(executable)
@@ -177,7 +183,18 @@ func startOperatorSupervisorChecks(ctx context.Context, hostRoot string, setting
 		},
 		settings: settings,
 	}
-	return release.start(ctx)
+	stopRelease := release.start(ctx)
+	stopExitDns := func() {}
+	if len(readProxySettings()) == 0 {
+		exitDns := &minerExitDnsCheck{settings: exitDnsSettings, dohUrls: connect.DefaultDnsResolverSettings().RemoteDohUrlsIpv4, findings: newMinerFindings(), report: func(finding minerFinding) {
+			writeMinerFindingBlock(log, finding)
+		}}
+		stopExitDns = exitDns.start(ctx)
+	}
+	return func() {
+		stopExitDns()
+		stopRelease()
+	}
 }
 
 // Writes finding to a log as a framed block: a rule, the title, the summary,

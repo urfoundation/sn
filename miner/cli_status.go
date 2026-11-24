@@ -84,6 +84,7 @@ const minerContainerUpdateWhy = "only a new image updates a container's miner"
 var minerFindingLabels = map[string]string{
 	minerFindingStateNotPersistent: "Identity",
 	minerFindingUpdateAvailable:    "Version",
+	minerFindingExitDnsBlocked:     "Exit DNS",
 }
 
 type minerUpdateReport struct {
@@ -515,6 +516,17 @@ func doctorCmd(opts docopt.Opts, stdout io.Writer) int {
 		}
 	}
 
+	// the exit's DNS: do the encrypted DNS servers that clients, and the
+	// network's quality check, resolve names with through this device answer
+	// from here (exit_dns.go)
+	exitDns := checkMinerExitDns(context.Background(), settings.ExitDnsTimeout, connect.DefaultDnsResolverSettings().RemoteDohUrlsIpv4)
+	if exitDns.ok() {
+		w.row(true, "Exit DNS", exitDns.detail())
+	} else {
+		fail("Exit DNS", exitDns.detail())
+		w.explain(exitDns.summary(), exitDns.fix(0 < len(readProxySettings())))
+	}
+
 	// the version: is a newer release out that nothing here installs
 	// (release_check.go)
 	current := cliBareVersion()
@@ -581,11 +593,15 @@ type doctorSettings struct {
 	// ReleaseTimeout bounds the read of the release feed: 15 seconds, a
 	// GitHub answer with room for a slow link.
 	ReleaseTimeout time.Duration
+	// ExitDnsTimeout bounds each encrypted DNS server's answer: 5 seconds,
+	// the network quality check's DNS budget through a provider (dial_dns).
+	ExitDnsTimeout time.Duration
 }
 
 func defaultDoctorSettings() *doctorSettings {
 	return &doctorSettings{
 		ReleaseTimeout: 15 * time.Second,
+		ExitDnsTimeout: 5 * time.Second,
 	}
 }
 

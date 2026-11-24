@@ -213,7 +213,7 @@ func provideAllOperatorsCmd(opts docopt.Opts) {
 		os.Exit(1)
 	}
 	// the checks the children leave to the supervisor (miner_findings.go)
-	stopChecks := startOperatorSupervisorChecks(ctx, minerHostRoot, defaultMinerReleaseCheckSettings(), os.Stderr)
+	stopChecks := startOperatorSupervisorChecks(ctx, minerHostRoot, defaultMinerReleaseCheckSettings(), defaultMinerExitDnsCheckSettings(), os.Stderr)
 	supervisor.Run(ctx, refresher, signals)
 	stopChecks()
 	signal.Stop(signals)
