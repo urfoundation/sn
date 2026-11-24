@@ -33,6 +33,31 @@ func (self *validatorRuntimeIdentityTestClient) CallContext(ctx context.Context,
 	return self.callContext(ctx, result, method, args...)
 }
 
+// Answers state_queryStorageAt as a node does at one block: one change set
+// holding every key, valued as one state_getStorage read of it answers, null
+// when absent. single is the provider's own entry point, so each read meets
+// every scripted layer and fault.
+func validatorRuntimeIdentityTestQueryStorageAt(ctx context.Context, result any, args []any, single func(context.Context, any, string, ...any) error) error {
+	keys, keysOK := args[0].([]string)
+	at, atOK := args[1].(string)
+	if len(args) != 2 || !keysOK || !atOK {
+		return fmt.Errorf("unexpected state_queryStorageAt arguments %v", args)
+	}
+	changes := make([][]any, 0, len(keys))
+	for _, key := range keys {
+		raw := json.RawMessage("null")
+		if err := single(ctx, &raw, "state_getStorage", key, at); err != nil {
+			return err
+		}
+		changes = append(changes, []any{key, raw})
+	}
+	encoded, err := json.Marshal([]map[string]any{{"block": at, "changes": changes}})
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(encoded, result)
+}
+
 // Runtime authentication has no subscription surface.
 func (self *validatorRuntimeIdentityTestClient) Subscribe(context.Context, string, string, string, string, any, ...any) (*gsrpcgeth.ClientSubscription, error) {
 	return nil, errors.New("unexpected validator runtime subscription")

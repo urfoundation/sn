@@ -98,6 +98,9 @@ func newValidatorUploadProductionTestFixture(t *testing.T) *validatorUploadProdu
 	}
 	original := production.rpc.client.callContext
 	production.rpc.client.callContext = func(ctx context.Context, result any, method string, args ...any) error {
+		if method == "state_queryStorageAt" && len(args) == 2 {
+			return validatorRuntimeIdentityTestQueryStorageAt(ctx, result, args, production.rpc.client.CallContext)
+		}
 		if method == "state_getStorage" || method == "state_call" {
 			if len(args) == 0 {
 				return errors.New("production upload storage omits its block")
