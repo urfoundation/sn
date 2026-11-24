@@ -121,6 +121,31 @@ func (self AuthenticatedRuntimeArtifact) RuntimeSuccessorOf() (RuntimeArtifactId
 	return self.authenticationProof.successor.approved, true
 }
 
+// Refuses an observed runtime that is not an admitted successor of its
+// approved anchor: a changed spec name, transaction or state version, or a
+// consumed interface that the producer profile or the caller's checks refused.
+// The text is unchanged from the plain errors it replaces. A caller tells it
+// from a failed read with errors.As, as it does UnreviewedRuntimeError: only a
+// release that admits the runtime can change the answer.
+type RuntimeSuccessorRefusedError struct {
+	BlockHash types.Hash
+	Version   RuntimeVersionIdentity
+	Approved  RuntimeVersionIdentity
+	// The observed code hash; empty when the version alone refused.
+	CodeHash string
+	// What refused the candidate; nil when the version alone refused.
+	Cause error
+}
+
+func (self *RuntimeSuccessorRefusedError) Error() string {
+	if self.Cause == nil {
+		return fmt.Sprintf("runtime at %s has identity %s, which is not a successor of approved %s", self.BlockHash.Hex(), describeRuntimeVersion(self.Version), describeRuntimeVersion(self.Approved))
+	}
+	return fmt.Sprintf("runtime %s (code %s) at %s is not an admitted successor of approved %s: %v", describeRuntimeVersion(self.Version), self.CodeHash, self.BlockHash.Hex(), describeRuntimeVersion(self.Approved), self.Cause)
+}
+
+func (self *RuntimeSuccessorRefusedError) Unwrap() error { return self.Cause }
+
 func describeRuntimeVersion(version RuntimeVersionIdentity) string {
 	return fmt.Sprintf("%s/%d/%d/%d", version.SpecName, version.SpecVersion, version.TransactionVersion, version.StateVersion)
 }
@@ -153,7 +178,7 @@ func authenticateRuntimeSuccessorAtContext(ctx context.Context, chain *Chain, bl
 		approved.Version.TransactionVersion == 1 && reviewedRaisedTransactionVersion(version)
 	if version.SpecName != approved.Version.SpecName || !transactionVersion ||
 		version.StateVersion != approved.Version.StateVersion || version.SpecVersion <= approved.Version.SpecVersion {
-		return nil, nil, fmt.Errorf("runtime at %s has identity %s, which is not a successor of approved %s", blockHash.Hex(), describeRuntimeVersion(version), describeRuntimeVersion(approved.Version))
+		return nil, nil, &RuntimeSuccessorRefusedError{BlockHash: blockHash, Version: version, Approved: approved.Version}
 	}
 	code, err := RuntimeCodeHashAtContext(ctx, chain, blockHash)
 	if err != nil {
@@ -171,7 +196,7 @@ func authenticateRuntimeSuccessorAtContext(ctx context.Context, chain *Chain, bl
 		return admitted, nil, nil
 	}
 	refuse := func(err error) error {
-		return fmt.Errorf("runtime %s (code %s) at %s is not an admitted successor of approved %s: %w", describeRuntimeVersion(version), code, blockHash.Hex(), describeRuntimeVersion(approved.Version), err)
+		return &RuntimeSuccessorRefusedError{BlockHash: blockHash, Version: version, Approved: approved.Version, CodeHash: code, Cause: err}
 	}
 	metadata, metadataHash, err := RuntimeMetadataAtContext(ctx, chain, blockHash)
 	if err != nil {

@@ -339,6 +339,13 @@ func (self *releaseErrorObservation) capture(err error, depth int) error {
 		copy := *cause
 		copy.cause = self.optional(cause.cause, depth+1)
 		observed.value = &copy
+	case *crv4.RuntimeSuccessorRefusedError:
+		// The refusal's own type is what the steering hold recognizes; only
+		// its cause is captured like any other edge.
+		self.notDeadline()
+		copy := *cause
+		copy.Cause = self.optional(cause.Cause, depth+1)
+		observed.value = &copy
 	case *provisionalNativeWeightRejection:
 		self.notDeadline()
 		copy := *cause

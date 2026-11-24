@@ -201,7 +201,7 @@ func startHeadSummaryUploader(ctx context.Context, hotkey [32]byte, sign func([]
 	self := &headSummaryUploader{
 		ctx: ctx, cancel: cancel, hotkey: hotkey, sign: sign, policyID: policyID, maximum: maximum,
 		builds: newHeadSummaryQueue[headSummaryJob](headSummaryQueueCapacity), targets: targets, hooks: hooks,
-		client: &http.Client{Transport: releaseAPIHTTPTransport, CheckRedirect: func(*http.Request, []*http.Request) error {
+		client: &http.Client{Transport: validatorAPITransport(releaseAPIHTTPTransport), CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		}},
 	}

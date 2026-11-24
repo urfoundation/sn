@@ -69,7 +69,7 @@ func NewHTTPArtifactReader(apiURL, deploymentID string, netuid uint16) (*HTTPArt
 		baseURL: baseURL, deploymentID: deploymentID, netuid: netuid,
 		client: &http.Client{
 			Timeout:   releaseHttpGetAttemptTimeout,
-			Transport: withReleaseAPIHTTP2Health(&http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext, ForceAttemptHTTP2: true, MaxIdleConns: 4, MaxIdleConnsPerHost: 2, IdleConnTimeout: 90 * time.Second, TLSHandshakeTimeout: 10 * time.Second}),
+			Transport: validatorAPITransport(withReleaseAPIHTTP2Health(&http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: 30 * time.Second, KeepAlive: 30 * time.Second}).DialContext, ForceAttemptHTTP2: true, MaxIdleConns: 4, MaxIdleConnsPerHost: 2, IdleConnTimeout: 90 * time.Second, TLSHandshakeTimeout: 10 * time.Second})),
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				return http.ErrUseLastResponse
 			},

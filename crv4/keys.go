@@ -3,6 +3,7 @@ package crv4
 import (
 	"bytes"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -119,7 +120,60 @@ func parseSeedFile(raw []byte) ([32]byte, error) {
 		copy(seed[:], raw)
 		return seed, nil
 	}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) != 0 && trimmed[0] == '{' {
+		return parseBittensorKeyfile(trimmed)
+	}
+	for _, marker := range []string{"$NACL", "$BTWALLET", "$ANSIBLE_VAULT", "gAAAAA"} {
+		if bytes.HasPrefix(trimmed, []byte(marker)) {
+			return seed, errors.New("seed file is an encrypted Bittensor keyfile; decrypt it first, or use an unencrypted hotkey file, which btcli creates by default")
+		}
+	}
 	return parseSeedHex(string(raw))
+}
+
+// A Bittensor wallet keyfile, as btcli and bittensor-wallet write a hotkey:
+// JSON holding the sr25519 mini secret in secretSeed. Its public fields, when
+// present, must name the key the seed derives, so an edited or mismatched
+// file is refused rather than signing as an unexpected hotkey.
+type bittensorKeyfile struct {
+	SecretSeed  string `json:"secretSeed"`
+	PublicKey   string `json:"publicKey"`
+	AccountID   string `json:"accountId"`
+	SS58Address string `json:"ss58Address"`
+}
+
+func parseBittensorKeyfile(raw []byte) ([32]byte, error) {
+	var seed [32]byte
+	var keyfile bittensorKeyfile
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	if err := decoder.Decode(&keyfile); err != nil {
+		return seed, errors.New("seed file is not a readable Bittensor keyfile")
+	}
+	if decoder.More() {
+		return seed, errors.New("seed file holds more than one Bittensor keyfile")
+	}
+	if keyfile.SecretSeed == "" {
+		return seed, errors.New("Bittensor keyfile has no secretSeed, so it cannot sign; a public keyfile such as coldkeypub.txt holds no secret")
+	}
+	seed, err := parseSeedHex(keyfile.SecretSeed)
+	if err != nil {
+		return seed, fmt.Errorf("Bittensor keyfile secretSeed: %w", err)
+	}
+	keypair, err := KeypairFromSeed(seed)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	public := keypair.PublicKey()
+	for _, field := range []struct{ name, value string }{{"publicKey", keyfile.PublicKey}, {"accountId", keyfile.AccountID}} {
+		if field.value != "" && !strings.EqualFold(strings.TrimPrefix(field.value, "0x"), hex.EncodeToString(public[:])) {
+			return [32]byte{}, fmt.Errorf("Bittensor keyfile %s differs from the key its secretSeed derives", field.name)
+		}
+	}
+	if keyfile.SS58Address != "" && keyfile.SS58Address != keypair.Address() {
+		return [32]byte{}, errors.New("Bittensor keyfile ss58Address differs from the key its secretSeed derives")
+	}
+	return seed, nil
 }
 
 func parseSeedHex(s string) ([32]byte, error) {

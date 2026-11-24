@@ -514,7 +514,7 @@ func newSettlementV2Objects(apiURL string) (*settlementV2Objects, error) {
 	if err != nil {
 		return nil, fmt.Errorf("settlement v2 object endpoint: %w", err)
 	}
-	return &settlementV2Objects{endpoint: base.ResolveReference(&url.URL{Path: "/sn/ledger/object"}), client: &http.Client{Timeout: releaseHttpGetAttemptTimeout, CheckRedirect: func(*http.Request, []*http.Request) error {
+	return &settlementV2Objects{endpoint: base.ResolveReference(&url.URL{Path: "/sn/ledger/object"}), client: &http.Client{Timeout: releaseHttpGetAttemptTimeout, Transport: validatorAPITransport(nil), CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}}, nil
 }

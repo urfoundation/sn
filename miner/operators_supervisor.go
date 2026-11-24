@@ -63,6 +63,13 @@ const operatorAuthRecheckInterval = 5 * time.Minute
 // read it is unharmed.
 const operatorChildPreviousExitEnv = "URNETWORK_PREVIOUS_EXIT"
 
+// Marks a child of provide --all-operators, so the child leaves the release
+// check to its supervisor (release_check.go) and tells of a state directory
+// lost with its container only when it registered a new device, the
+// supervisor's log telling the rest. Set for every child; an inherited value
+// never passes through.
+const operatorChildMarkerEnv = "URNETWORK_OPERATOR_CHILD"
+
 // The previous_exit word of each signal that can end a child. These are the
 // signals every platform's syscall package names.
 var operatorChildExitSignals = map[syscall.Signal]string{
@@ -602,16 +609,17 @@ func (self *operatorSupervisor) childArgs(spec operatorChildSpec) []string {
 }
 
 // The supervisor's environment with the operator's state directory in place
-// of any inherited one, and how the child's last run ended, when one has: an
-// inherited value describes no run of this child, so it never passes through.
+// of any inherited one, the child's marker, and how the child's last run
+// ended, when one has: an inherited value describes no run of this child, so
+// it never passes through.
 func operatorChildEnv(environ []string, directory string, previousExit string) []string {
-	env := make([]string, 0, len(environ)+2)
+	env := make([]string, 0, len(environ)+3)
 	for _, entry := range environ {
-		if !strings.HasPrefix(entry, "URNETWORK_STATE_DIR=") && !strings.HasPrefix(entry, operatorChildPreviousExitEnv+"=") {
+		if !strings.HasPrefix(entry, "URNETWORK_STATE_DIR=") && !strings.HasPrefix(entry, operatorChildPreviousExitEnv+"=") && !strings.HasPrefix(entry, operatorChildMarkerEnv+"=") {
 			env = append(env, entry)
 		}
 	}
-	env = append(env, "URNETWORK_STATE_DIR="+directory)
+	env = append(env, "URNETWORK_STATE_DIR="+directory, operatorChildMarkerEnv+"=1")
 	if previousExit != "" {
 		env = append(env, operatorChildPreviousExitEnv+"="+previousExit)
 	}

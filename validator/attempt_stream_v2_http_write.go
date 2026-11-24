@@ -90,7 +90,7 @@ func newHttpAttemptStreamV2Writer(origin string, bounds AttemptCutV2Bounds, meta
 	// Keep expiry in the request context: Client.Timeout replaces the original
 	// deadline with a private HTTP matcher that bounded capture must refuse.
 	// Uploads use the HTTP/1.1 transport; the reader keeps HTTP/2.
-	client := &http.Client{Transport: releaseApiUploadHttpTransport, CheckRedirect: func(*http.Request, []*http.Request) error {
+	client := &http.Client{Transport: validatorAPITransport(releaseApiUploadHttpTransport), CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}
 	return &HTTPAttemptStreamV2Writer{endpoint: reader.endpoint, metadataBytes: reader.metadataBytes, recordBytes: reader.recordBytes, proofBytes: reader.proofBytes, byJwt: byJwt, client: client, settings: DefaultAttemptUploadSettings(), encoding: &attemptUploadEncoding{}}, nil

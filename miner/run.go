@@ -794,6 +794,20 @@ func provideWith(opts docopt.Opts, start bool) {
 		fmt.Fprintln(os.Stderr, misuse)
 	}
 	settings.closeReportDomainHash = domainHash
+	// the checks of how this miner runs here (miner_findings.go); an operator
+	// child leaves the release check to its supervisor
+	settings.hostRoot = minerHostRoot
+	settings.findingLog = os.Stderr
+	if ui != nil && cliTerminal != nil {
+		// provider start in a terminal sent stderr to its log: tell the person
+		// too
+		settings.findingLog = io.MultiWriter(os.Stderr, cliTerminal)
+	}
+	settings.operatorChild = os.Getenv(operatorChildMarkerEnv) != ""
+	if !settings.operatorChild {
+		settings.releaseCheck = defaultMinerReleaseCheckSettings()
+		settings.exitDnsCheck = defaultMinerExitDnsCheckSettings()
+	}
 	settings.workCapturePath, _ = opts.String("--whole-work-capture")
 	settings.workCaptureSha256, _ = opts.String("--whole-work-capture-sha256")
 	settings.requireWorkCapture, _ = opts.Bool("--require-whole-work-capture")
@@ -901,7 +915,22 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 	extenderBindFix := minerExtenderBindFix()
 	// what the extender slot's router port mapping comes to (S10)
 	portMapping := newMinerPortMappingHolder(minerPortMappingEnabled())
-	defer startMinerStatusFile(ctx, progress, extenderStandings, portMapping)()
+	findings := newMinerFindings()
+	defer startMinerStatusFile(ctx, progress, extenderStandings, portMapping, findings)()
+	facts := minerHostFacts{}
+	if self.hostRoot != "" {
+		facts = readMinerHostFacts(self.hostRoot, os.Getenv)
+	}
+	if self.releaseCheck != nil {
+		defer self.newReleaseCheck(output, findings, facts.container).start(ctx)()
+	}
+	if self.exitDnsCheck != nil && len(self.proxySettings) == 0 {
+		exitDns := &minerExitDnsCheck{settings: self.exitDnsCheck, dohUrls: connect.DefaultDnsResolverSettings().RemoteDohUrlsIpv4, findings: findings, report: func(finding minerFinding) {
+			output.observeGuided(providerExitDnsBlocked, 0, false, nil, 0, nil, "", finding.guidance())
+			writeMinerFindingBlock(self.findingLog, finding)
+		}}
+		defer exitDns.start(ctx)()
+	}
 	status, err := newProviderStatusServer(self.port, output, cancel, progress)
 	if err != nil {
 		output.observe(providerStatusFailed, 0, false, err, 0, nil)
@@ -921,6 +950,11 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 		return err
 	}
 	defer func() { returnErr = errors.Join(returnErr, keyOwner.Close()) }()
+	// a state directory lost with its container makes the next start a new
+	// device again (state_persistence.go)
+	if self.hostRoot != "" {
+		self.checkStatePersistence(facts, output, findings, keyOwner.Created())
+	}
 	networkJwtPath, err := providerStatePath("jwt")
 	if err != nil {
 		output.observe(providerStartupRecoveryRequired, 0, false, err, 0, nil)

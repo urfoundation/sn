@@ -32,7 +32,7 @@ func TestValidatorMakeBuildStopsAtFirstFailure(t *testing.T) {
 // Real tar packaging must carry the binary, guide and inspectable defaults.
 func TestValidatorMakePackageContainsRunnerInputs(t *testing.T) {
 	root, env := validatorMakeFixture(t)
-	for _, name := range []string{"README.md", "release.yml", "mainnet-profile.json"} {
+	for _, name := range []string{"README.md", "RELEASING.md", "mainnet-profile.json"} {
 		if err := os.WriteFile(filepath.Join(root, name), []byte("synthetic "+name+"\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -78,7 +78,7 @@ func TestValidatorMakePackageContainsRunnerInputs(t *testing.T) {
 		compressed.Close()
 		file.Close()
 		if len(contentsKVs) != 4 || contentsKVs["validator"] != "synthetic linux/"+arch+"\n" ||
-			contentsKVs["README.md"] != "synthetic README.md\n" || contentsKVs["release.yml"] != "synthetic release.yml\n" ||
+			contentsKVs["README.md"] != "synthetic README.md\n" || contentsKVs["RELEASING.md"] != "synthetic RELEASING.md\n" ||
 			contentsKVs["mainnet-profile.json"] != "synthetic mainnet-profile.json\n" {
 			t.Fatalf("archive lost runner inputs: %v", contentsKVs)
 		}

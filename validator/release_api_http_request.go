@@ -20,6 +20,12 @@ import (
 // their own error policy and are never granted this health-event authority.
 func doReleaseApiHttpRequest(client *http.Client, request *http.Request) (resultResponse *http.Response, resultErr error) {
 	transport, concrete := client.Transport.(*http.Transport)
+	// The validator's api identity wrapper adds headers only; its transport
+	// keeps this health-event ownership, wrapped again below.
+	wrapper, wrapped := client.Transport.(*validatorAPITransportWrapper)
+	if wrapped {
+		transport, concrete = wrapper.base.(*http.Transport)
+	}
 	var diagnostic *releasePreparationDiagnostic
 	if request != nil {
 		diagnostic = newReleasePreparationHttpDiagnostic(request.Context(), releasePreparationHttpOpen)
@@ -40,6 +46,9 @@ func doReleaseApiHttpRequest(client *http.Client, request *http.Request) (result
 	ownedTransport.HTTP2 = &config
 	ownedClient := *client
 	ownedClient.Transport = ownedTransport
+	if wrapped {
+		ownedClient.Transport = &validatorAPITransportWrapper{base: ownedTransport}
+	}
 	parent := request.Context()
 	operation, cancel := context.WithCancelCause(parent)
 	// The unique concrete cause belongs only to this health callback, never

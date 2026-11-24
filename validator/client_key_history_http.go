@@ -42,7 +42,7 @@ func NewHTTPClientKeyHistoryReader(apiURL string, byJwt func() string) (*HTTPCli
 	if err != nil {
 		return nil, err
 	}
-	return &HTTPClientKeyHistoryReader{endpoint: base.ResolveReference(&url.URL{Path: "/sn/client-key/observation"}).String(), batchEndpoint: base.ResolveReference(&url.URL{Path: "/sn/client-key/observations"}).String(), byJwt: byJwt, client: &http.Client{Timeout: clientKeyHistoryHTTPTimeout, Transport: releaseAPIHTTPTransport, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}, nil
+	return &HTTPClientKeyHistoryReader{endpoint: base.ResolveReference(&url.URL{Path: "/sn/client-key/observation"}).String(), batchEndpoint: base.ResolveReference(&url.URL{Path: "/sn/client-key/observations"}).String(), byJwt: byJwt, client: &http.Client{Timeout: clientKeyHistoryHTTPTimeout, Transport: validatorAPITransport(releaseAPIHTTPTransport), CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
 
 // A fresh nonce comes from the validator caller before this method. It is

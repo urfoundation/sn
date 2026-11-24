@@ -46,6 +46,9 @@ type minerLocalStatus struct {
 	// the extender's router port mapping (connect/EXTENDER.md S10), absent
 	// from a miner that predates it
 	PortMapping *minerPortMappingStatus `json:"port_mapping,omitempty"`
+	// what the running miner found wrong with how it runs here, each with its
+	// fix (miner_findings.go), absent while nothing is
+	Findings []minerFinding `json:"findings,omitempty"`
 }
 
 type minerMemberStatus struct {
@@ -122,11 +125,11 @@ func writeMinerLocalStatus(status *minerLocalStatus) error {
 }
 
 // startMinerStatusFile keeps the status file current from the run's
-// progress, the extender's standing from `extender` and its router port
-// mapping from `portMapping` when not nil, until the returned stop is called,
-// which records the stop time. A status file that can't be written never
-// stops the miner.
-func startMinerStatusFile(ctx context.Context, progress *providerProgressOwner, extender *minerExtenderStandings, portMapping *minerPortMappingHolder) (stop func()) {
+// progress, the extender's standing from `extender`, its router port mapping
+// from `portMapping` and the run's findings from `findings` when not nil,
+// until the returned stop is called, which records the stop time. A status
+// file that can't be written never stops the miner.
+func startMinerStatusFile(ctx context.Context, progress *providerProgressOwner, extender *minerExtenderStandings, portMapping *minerPortMappingHolder, findings *minerFindings) (stop func()) {
 	if progress == nil {
 		return func() {}
 	}
@@ -146,6 +149,7 @@ func startMinerStatusFile(ctx context.Context, progress *providerProgressOwner, 
 		status.Extender = extender.current()
 		status.UpdatedAt = time.Now().UTC()
 		status.PortMapping = portMapping.snapshot()
+		status.Findings = findings.current()
 		if status.connected() {
 			if status.ConnectedSince == nil {
 				since := status.UpdatedAt
@@ -181,6 +185,8 @@ func startMinerStatusFile(ctx context.Context, progress *providerProgressOwner, 
 		status.StoppedAt = &stopped
 		status.UpdatedAt = stopped
 		status.ConnectedSince = nil
+		// what the run found still holds of how it ran here
+		status.Findings = findings.current()
 		// a stopped miner runs no extender, and its role removed what the router
 		// forwarded to it
 		status.Extender = nil

@@ -4,9 +4,11 @@ import (
 	"archive/tar"
 	"bytes"
 	"compress/gzip"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -194,6 +196,12 @@ func TestTheUpdaterTakesAStampedBuildForARelease(t *testing.T) {
 	previous := doctorNetwork
 	doctorNetwork = func(string) []doctorCheck { return []doctorCheck{{true, "Network", "skipped in tests"}} }
 	defer func() { doctorNetwork = previous }()
+	previousRelease := doctorRelease
+	doctorRelease = func(context.Context) (*minerRelease, error) { return nil, errors.New("off the network in tests") }
+	defer func() { doctorRelease = previousRelease }()
+	previousExitDns := minerExitDnsQuery
+	minerExitDnsQuery = func(context.Context, string, string) bool { return true }
+	defer func() { minerExitDnsQuery = previousExitDns }()
 	out.Reset()
 	doctorCmd(docopt.Opts{}, &out)
 	if got := out.String(); !strings.Contains(got, "Updates") || !strings.Contains(got, "is writable") {

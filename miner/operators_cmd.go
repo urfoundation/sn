@@ -212,7 +212,10 @@ func provideAllOperatorsCmd(opts docopt.Opts) {
 		fmt.Fprintf(os.Stderr, "provide --all-operators: %v\n", err)
 		os.Exit(1)
 	}
+	// the checks the children leave to the supervisor (miner_findings.go)
+	stopChecks := startOperatorSupervisorChecks(ctx, minerHostRoot, defaultMinerReleaseCheckSettings(), defaultMinerExitDnsCheckSettings(), os.Stderr)
 	supervisor.Run(ctx, refresher, signals)
+	stopChecks()
 	signal.Stop(signals)
 	refresher.Close()
 	if status != nil {

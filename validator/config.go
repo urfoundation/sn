@@ -163,11 +163,11 @@ func loadReleaseConfig(path string, mode releaseConfigLoadMode) (*ReleaseConfig,
 	return decodeReleaseConfigBytesMode(abs, b, mode)
 }
 
-// Returns the embedded document for an omitted path; otherwise reads the bounded
-// regular file once. Callers decode exactly these bytes without merging defaults.
+// Reads the bounded regular file once; there is no implicit document. Callers
+// decode exactly these bytes without merging defaults.
 func readReleaseConfigFile(path string) (string, []byte, error) {
 	if path == "" {
-		return readBundledReleaseConfig()
+		return "", nil, errors.New("validator config path is empty; run uses the home that validator setup made, or an explicit --config")
 	}
 	if strings.TrimSpace(path) == "" {
 		return "", nil, errors.New("validator config path is empty")

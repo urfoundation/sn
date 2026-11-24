@@ -1,6 +1,6 @@
 {
   "schema": "urnetwork-validator-mainnet-profile-v1",
-  "review_scope": "Public mainnet terms checked 2026-10-31: deployment, exact runtime486 pins and reviewed producer source, policy and economic destinations. The approval runtime_review_hash identifies these shipped profile bytes; it is not a source-to-Wasm proof.",
+  "review_scope": "Public mainnet terms checked 2026-10-31: deployment, exact runtime486 pins and reviewed producer source, policy and economic destinations. From 2026-11-24 a generated config opts into successor admission: a later runtime is admitted only while every interface the validator consumes is unchanged, and a release admits each reviewed runtime tuple. The approval runtime_review_hash identifies these shipped profile bytes; it is not a source-to-Wasm proof.",
   "config": {
     "release": "1.0",
     "deployment_id": "sn25-mainnet-20261007-01",
@@ -124,6 +124,7 @@
     "runtime_spec": 486,
     "runtime_code_hash": "0x49781ac4cfda0ac6cf6e53cfceea7c728394d9c28da7881f47e3fbfbc239800f",
     "runtime_metadata_hash": "0x0c83083856fbfe771d449c5534001d91e1ce2c3032cc9ccb93c1ea356bc116af",
+    "runtime_successor_profile": "urnetwork-validator-producer-interface-v1",
     "rpc": [
       "https://archive.chain.opentensor.ai"
     ],

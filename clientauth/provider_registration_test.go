@@ -202,6 +202,48 @@ func TestProviderClientKeyCreationAndLifetimeAreExplicit(t *testing.T) {
 	}
 }
 
+// The owner says when its open generated the key, which is when the miner
+// warns that a state directory lost with its container makes the next start a
+// new device again. A retained key, including one a crashed first start
+// published, is never reported as created.
+func TestProviderClientKeyReportsCreation(t *testing.T) {
+	path := filepath.Join(providerRegistrationPrivateDir(t), ".provider.key")
+	owner, err := OpenProviderClientKey(t.Context(), path, ProviderClientKeyOptions{AllowCreate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !owner.Created() {
+		t.Fatal("a generated provider key was not reported as created")
+	}
+	if err := owner.Close(); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := OpenProviderClientKey(t.Context(), path, ProviderClientKeyOptions{AllowCreate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reopened.Created() {
+		t.Fatal("a retained provider key was reported as created")
+	}
+	if err := reopened.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	crashed := filepath.Join(providerRegistrationPrivateDir(t), ".provider.key")
+	stop := errors.New("synthetic crash after provider seed fsync")
+	if owner, err := openProviderClientKey(t.Context(), crashed, ProviderClientKeyOptions{AllowCreate: true}, providerClientKeyHooks{afterSeed: func() error { return stop }}); !errors.Is(err, stop) || owner != nil {
+		t.Fatal("provider seed crash did not stop after durable publication", err)
+	}
+	recovered, err := OpenProviderClientKey(t.Context(), crashed, ProviderClientKeyOptions{AllowCreate: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer recovered.Close()
+	if recovered.Created() {
+		t.Fatal("a seed published before a crash was reported as created again")
+	}
+}
+
 // A crash after key publication but before marker publication retains that key;
 // marker-only or other retained history must never imply a fresh installation.
 func TestProviderClientKeyRecoversPublishedSeedAndRejectsMissingHistory(t *testing.T) {

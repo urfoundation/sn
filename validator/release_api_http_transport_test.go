@@ -182,18 +182,18 @@ func TestReleaseAPIHTTPClientsUseHealthCheckedTransport(t *testing.T) {
 	}
 	shared := map[string]*http.Client{"attempt reader": reader.client, "client-key history": history.client, "wallet mapping": wallet.client, "server keys": newReleaseServerKeysV2Client()}
 	for name, client := range shared {
-		if client.Transport != releaseAPIHTTPTransport || client.CheckRedirect == nil {
+		if validatorAPITransportBase(client.Transport) != releaseAPIHTTPTransport || client.CheckRedirect == nil {
 			t.Errorf("%s client does not use the shared API transport with redirects refused", name)
 		}
 	}
-	if writer.client.Transport != releaseApiUploadHttpTransport || writer.client.CheckRedirect == nil {
+	if validatorAPITransportBase(writer.client.Transport) != releaseApiUploadHttpTransport || writer.client.CheckRedirect == nil {
 		t.Error("attempt writer client does not use the upload transport with redirects refused")
 	}
 	artifact, err := NewHTTPArtifactReader("https://api.example", "sn25-mainnet-20261007-01", 25)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, transport := range map[string]*http.Transport{"artifact": artifact.client.Transport.(*http.Transport), "provider attempt": newProviderAttemptHttpTransport()} {
+	for name, transport := range map[string]*http.Transport{"artifact": validatorAPITransportBase(artifact.client.Transport).(*http.Transport), "provider attempt": newProviderAttemptHttpTransport()} {
 		if transport.HTTP2 == nil || transport.HTTP2.SendPingTimeout != releaseAPIHTTP2SendPingTimeout || transport.HTTP2.PingTimeout != releaseAPIHTTP2PingTimeout {
 			t.Errorf("%s transport lacks the HTTP/2 health check", name)
 		}

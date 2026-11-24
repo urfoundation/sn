@@ -1128,7 +1128,8 @@ func TestOperatorChildPreviousExitReadsTheExitStatus(t *testing.T) {
 
 // The variable a host sets replaces an inherited one, so a value that describes
 // no run of this child never reaches its activations, and the name is the
-// contract with connect (connect.ExtenderPreviousExitEnv).
+// contract with connect (connect.ExtenderPreviousExitEnv). Every child is
+// marked as one, whatever the supervisor inherited.
 func TestOperatorChildEnvCarriesOnlyThisChildsPreviousExit(t *testing.T) {
 	if operatorChildPreviousExitEnv != "URNETWORK_PREVIOUS_EXIT" {
 		t.Fatalf("the variable is %q, which connect does not read", operatorChildPreviousExitEnv)
@@ -1137,13 +1138,14 @@ func TestOperatorChildEnvCarriesOnlyThisChildsPreviousExit(t *testing.T) {
 		"PATH=/bin",
 		"URNETWORK_STATE_DIR=/inherited",
 		"URNETWORK_PREVIOUS_EXIT=inherited",
+		"URNETWORK_OPERATOR_CHILD=inherited",
 	}
 	for _, c := range []struct {
 		previousExit string
 		expected     []string
 	}{
-		{previousExit: "", expected: []string{"PATH=/bin", "URNETWORK_STATE_DIR=/state"}},
-		{previousExit: "sigkill", expected: []string{"PATH=/bin", "URNETWORK_STATE_DIR=/state", "URNETWORK_PREVIOUS_EXIT=sigkill"}},
+		{previousExit: "", expected: []string{"PATH=/bin", "URNETWORK_STATE_DIR=/state", "URNETWORK_OPERATOR_CHILD=1"}},
+		{previousExit: "sigkill", expected: []string{"PATH=/bin", "URNETWORK_STATE_DIR=/state", "URNETWORK_OPERATOR_CHILD=1", "URNETWORK_PREVIOUS_EXIT=sigkill"}},
 	} {
 		if env := operatorChildEnv(environ, "/state", c.previousExit); !slices.Equal(env, c.expected) {
 			t.Errorf("env for %q = %v, want %v", c.previousExit, env, c.expected)
