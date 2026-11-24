@@ -153,9 +153,10 @@ func sealReleaseRuntimeAttemptCutV2(ctx context.Context, cfg *ReleaseConfig, sou
 		AttemptCutV2ReplicaOptions{ReplayBounds: cfg.EvidenceV2.Bounds.Replay, ScratchDirectory: scratchDirectory, ServerKeys: serverKeys, Replicas: replicas})
 }
 
-// Installs this operator api's validator identity: the live session's bearer
-// on every api request, and the SN25 rate class token when the validator has
-// an activation to consent with. The returned func removes it.
+// Installs this operator api's validator identity: with an activation to
+// consent with, the SN25 rate class token and the live session's bearer on
+// every api request while a token is held; without one, nothing. The returned
+// func removes it.
 func installReleaseValidatorAPIIdentity(ctx context.Context, op OperatorConfig, credential func() string, source *releaseAttemptUploadSourceV2) (func(), error) {
 	identity := &validatorAPIIdentity{credential: credential}
 	if source != nil {

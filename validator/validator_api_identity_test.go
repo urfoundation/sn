@@ -6,6 +6,7 @@
 package validator
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/json"
 	"net/http"
@@ -82,6 +83,15 @@ func validatorAPIIdentityTestSigner(t *testing.T, replicaNoID uint64) *validator
 		t.Fatal(err)
 	}
 	return signer
+}
+
+// Class tokens that already hold token, live for an hour, so no mint runs.
+func validatorClassTestTokens(t *testing.T, token string) *validatorClassTokens {
+	t.Helper()
+	ctx, cancel := context.WithCancel(t.Context())
+	t.Cleanup(cancel)
+	return &validatorClassTokens{ctx: ctx, cancel: cancel, credential: func() string { return "" }, now: time.Now, mintWait: validatorClassMintWait,
+		token: token, expires: time.Now().Add(time.Hour)}
 }
 
 func validatorAPIIdentityTestGet(t *testing.T, url string, authorization string) {
@@ -170,28 +180,56 @@ func (self *validatorClassTokens) testingSettle() {
 	}
 }
 
+// Without a class token a request is sent as it is: no bearer is added, so
+// its limits stay those of a request without one (owner decision
+// 2026-11-24). Before, the bearer was added alone, moving the validator's
+// anonymous reads from the per-address limit to the lower identity limit.
+func TestValidatorAPITransportAddsNothingWithoutAClassToken(t *testing.T) {
+	t.Parallel()
+	api := newValidatorAPIIdentityTestAPI(t, 9, time.Now)
+	api.failMints.Store(true)
+	refused, err := newValidatorClassTokens(t.Context(), 9, api.server.URL, func() string { return "client-jwt" }, validatorAPIIdentityTestSigner(t, 9))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, class := range map[string]*validatorClassTokens{"no activation": nil, "a refused mint": refused} {
+		uninstall, err := installValidatorAPIIdentity(api.server.URL, &validatorAPIIdentity{credential: func() string { return "client-jwt" }, class: class})
+		if err != nil {
+			t.Fatal(err)
+		}
+		validatorAPIIdentityTestGet(t, api.server.URL+"/sn/artifact", "")
+		uninstall()
+		if seen := api.lastHeaders(); seen.Get("Authorization") != "" || seen.Get(protocol.ValidatorClassHeader) != "" {
+			t.Fatalf("%s: a request without a class token carried %q and %q", name, seen.Get("Authorization"), seen.Get(protocol.ValidatorClassHeader))
+		}
+	}
+	if api.mints.Load() != 1 {
+		t.Fatalf("%d mints were tried, not the one refused", api.mints.Load())
+	}
+}
+
 // Two runtimes naming the same api origin can't be told apart by host: its
 // requests carry neither's identity until one is removed.
 func TestValidatorAPITransportAddsNoIdentityForASharedHost(t *testing.T) {
 	t.Parallel()
 	api := newValidatorAPIIdentityTestAPI(t, 9, time.Now)
-	uninstallA, err := installValidatorAPIIdentity(api.server.URL, &validatorAPIIdentity{credential: func() string { return "client-a" }})
+	uninstallA, err := installValidatorAPIIdentity(api.server.URL, &validatorAPIIdentity{credential: func() string { return "client-a" }, class: validatorClassTestTokens(t, "class-a")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer uninstallA()
-	uninstallB, err := installValidatorAPIIdentity(api.server.URL, &validatorAPIIdentity{credential: func() string { return "client-b" }})
+	uninstallB, err := installValidatorAPIIdentity(api.server.URL, &validatorAPIIdentity{credential: func() string { return "client-b" }, class: validatorClassTestTokens(t, "class-b")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	validatorAPIIdentityTestGet(t, api.server.URL+"/sn/artifact", "")
-	if seen := api.lastHeaders(); seen.Get("Authorization") != "" {
+	if seen := api.lastHeaders(); seen.Get("Authorization") != "" || seen.Get(protocol.ValidatorClassHeader) != "" {
 		t.Fatalf("a shared host's request carried %q", seen.Get("Authorization"))
 	}
 	uninstallB()
 	validatorAPIIdentityTestGet(t, api.server.URL+"/sn/artifact", "")
-	if seen := api.lastHeaders(); seen.Get("Authorization") != "Bearer client-a" {
-		t.Fatalf("the remaining runtime's request carried %q", seen.Get("Authorization"))
+	if seen := api.lastHeaders(); seen.Get("Authorization") != "Bearer client-a" || seen.Get(protocol.ValidatorClassHeader) != "class-a" {
+		t.Fatalf("the remaining runtime's request carried %q and %q", seen.Get("Authorization"), seen.Get(protocol.ValidatorClassHeader))
 	}
 }
 
@@ -347,13 +385,13 @@ func TestValidatorAPIClientsCarryTheIdentity(t *testing.T) {
 	}
 	// the provider attempt source builds its client per call
 	api := newValidatorAPIIdentityTestAPI(t, 9, time.Now)
-	uninstall, err := installValidatorAPIIdentity(api.server.URL, &validatorAPIIdentity{credential: func() string { return "client-jwt" }})
+	uninstall, err := installValidatorAPIIdentity(api.server.URL, &validatorAPIIdentity{credential: func() string { return "client-jwt" }, class: validatorClassTestTokens(t, "class-token")})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer uninstall()
 	_, _ = providerAttemptHttp(t.Context(), api.server.URL+"/sn/attempt", http.MethodGet, nil, 1024)
-	if seen := api.lastHeaders(); seen == nil || seen.Get("Authorization") != "Bearer client-jwt" {
-		t.Fatal("the provider attempt source's request carried no bearer")
+	if seen := api.lastHeaders(); seen == nil || seen.Get("Authorization") != "Bearer client-jwt" || seen.Get(protocol.ValidatorClassHeader) != "class-token" {
+		t.Fatal("the provider attempt source's request carried no class token and bearer")
 	}
 }

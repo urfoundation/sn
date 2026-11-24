@@ -93,7 +93,7 @@ func testReleaseApiHttpGetLostPing(t *testing.T, headers bool, identified bool) 
 	reader.client.Transport = transport
 	if identified {
 		reader.client.Transport = validatorAPITransport(transport)
-		uninstall, err := installValidatorAPIIdentity(endpoint.URL, &validatorAPIIdentity{credential: func() string { return "client-jwt" }})
+		uninstall, err := installValidatorAPIIdentity(endpoint.URL, &validatorAPIIdentity{credential: func() string { return "client-jwt" }, class: validatorClassTestTokens(t, "class-token")})
 		if err != nil {
 			t.Fatal(err)
 		}

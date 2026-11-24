@@ -1,10 +1,10 @@
 package validator
 
-// Every request this validator makes to an operator's api carries its client
-// bearer and, when it holds one, its SN25 validator rate class token (owner
-// decision 2026-11-24), so the operator's lb attributes the request to the
-// validator and charges an admitted validator's requests to the validator
-// rate class. The api mints the class token (POST /sn/validator-class) on a
+// Every request this validator makes to an operator's api carries its SN25
+// validator rate class token beside its client bearer while it holds one
+// (owner decision 2026-11-24), so the operator's lb charges an admitted
+// validator's requests to the validator rate class. Without a class token a
+// request is sent as before, with no bearer added, so its limits are today's. The api mints the class token (POST /sn/validator-class) on a
 // VPK class consent while the reserved upload admission admits the
 // activation; it lives at most five minutes and is refreshed before it ends.
 //
@@ -45,7 +45,7 @@ const (
 )
 
 // One api origin's identity: the client bearer, and the rate class tokens when
-// this validator has an activation.
+// this validator has an activation. Without them nothing is added.
 type validatorAPIIdentity struct {
 	// the live api session's credential, or "" when it has none now
 	credential func() string
@@ -118,8 +118,9 @@ func validatorAPIIdentityOf(r *http.Request) *validatorAPIIdentity {
 	return nil
 }
 
-// Adds an installed api origin's bearer and class token to each request for
-// it, leaving any Authorization or class header the request already has.
+// Adds an installed api origin's class token, with its bearer, to each
+// request for it, leaving any Authorization or class header the request
+// already has.
 type validatorAPITransportWrapper struct {
 	base http.RoundTripper
 }
@@ -162,23 +163,34 @@ func (self *validatorAPITransportWrapper) CloseIdleConnections() {
 	}
 }
 
-// See http.RoundTripper. The request is cloned before its headers change.
+// See http.RoundTripper. A request for an installed api gets the validator's
+// bearer and class token together, or neither: without a class token it is
+// sent as it is, so its limits stay those of a request without either
+// (owner decision 2026-11-24). A request that carries its own bearer keeps it,
+// and the class token names that bearer's client. The request is cloned
+// before its headers change.
 func (self *validatorAPITransportWrapper) RoundTrip(r *http.Request) (*http.Response, error) {
 	identity := validatorAPIIdentityOf(r)
-	if identity == nil {
+	if identity == nil || identity.class == nil || r.URL.Path == validatorClassMintPath || r.Header.Get(protocol.ValidatorClassHeader) != "" {
 		return self.base.RoundTrip(r)
 	}
+	token := identity.class.current(r.Context())
+	if token == "" {
+		return self.base.RoundTrip(r)
+	}
+	bearer := ""
+	if r.Header.Get("Authorization") == "" {
+		credential := identity.credential()
+		if credential == "" {
+			return self.base.RoundTrip(r)
+		}
+		bearer = "Bearer " + credential
+	}
 	clone := r.Clone(r.Context())
-	if clone.Header.Get("Authorization") == "" {
-		if credential := identity.credential(); credential != "" {
-			clone.Header.Set("Authorization", "Bearer "+credential)
-		}
+	if bearer != "" {
+		clone.Header.Set("Authorization", bearer)
 	}
-	if identity.class != nil && clone.Header.Get(protocol.ValidatorClassHeader) == "" && clone.URL.Path != validatorClassMintPath {
-		if token := identity.class.current(r.Context()); token != "" {
-			clone.Header.Set(protocol.ValidatorClassHeader, token)
-		}
-	}
+	clone.Header.Set(protocol.ValidatorClassHeader, token)
 	return self.base.RoundTrip(clone)
 }
 
@@ -186,8 +198,8 @@ func (self *validatorAPITransportWrapper) RoundTrip(r *http.Request) (*http.Resp
 // then minted again in the background while requests keep using it; only a
 // request with no live token waits for a mint, and at most
 // validatorClassMintWait. A failed mint is retried after 30 s, doubling to
-// 4 min while it keeps failing. Until a mint succeeds, requests carry the
-// bearer alone, under the identity limit.
+// 4 min while it keeps failing. Until a mint succeeds, requests are sent as
+// they are.
 type validatorClassTokens struct {
 	// the operator runtime's: its end ends a running mint
 	ctx    context.Context
