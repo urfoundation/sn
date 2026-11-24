@@ -287,8 +287,14 @@ activation with:
 - your host's egress IP addresses.
 
 The network operator provisions each validator's capacity for uploading its
-evidence. It also applies request limits that are keyed to addresses today.
-Ask us to confirm the plan for your validator's network as well. Measurement
+evidence. Its api limits requests per address. Once your activation is
+admitted, the validator also sends a short-lived validator class token with
+its client sign-in on each api request. The operator charges those requests
+to a validator rate class sized for a restart's replay. A
+`validator diagnostic:` line with `code=validator_class_ready` reports that
+the class was gained, and `code=validator_class_unavailable` that it was not;
+`cause=hard_error` there means the operator refused it. Without the class,
+requests are limited as they were before the class existed. Measurement
 traffic through providers is carried like any network's.
 
 We announce releases, runtime reviews and protocol changes to registered
