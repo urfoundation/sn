@@ -1392,27 +1392,26 @@ an auth code or password. Without `--operator`, `validator auth` writes `~/.urne
 **Production mode: weights only from the signed config.**
 
 ```
-validator run [--config=<path>] ... [--operators-refresh=<duration> [--operators-url=<url>] [--observe-unpinned-operators]]
+validator run [--config=<path> | --home=<path>] ... [--operators-refresh=<duration> [--operators-url=<url>] [--observe-unpinned-operators]]
 ```
 
-- Without `--config`, `run` reads the document embedded from
-  `validator/release.yml` at build time. It does not read a `release.yml` from
-  the working directory or home directory. Relative paths in that document
-  resolve under `~/.urnetwork/validator`.
-- An explicit `--config` names the complete replacement document. A missing,
-  empty or invalid explicit file never falls back or merges with the embedded
-  one. Measurement flags cannot be combined with a release configuration.
-- Embedding the public defaults grants no production authority. The checked-in
-  document is intentionally incomplete and the normal validator refuses it
-  before starting production. A usable release profile still needs the reviewed
-  deployment, native runtime and policy pins, RPC routes, operator signers,
-  validator identity, credentials, activation evidence and independently signed
-  approval/history references. Those operator-specific inputs and required
-  durable-volume declarations are not supplied by the embedded document.
-  Use the approved complete config until those real inputs are available;
-  settlement-v2 adoption still follows `VERSION2-LAUNCH.md` step 10 and passes
-  the adopted, re-signed config explicitly. `init`, `register`, `activate` and
-  other commands retain their existing config requirements.
+- Without `--config`, `run` uses the home that `validator setup` made, by default
+  `~/.urnetwork/sn25-validator` (`validator/README.md`). The home supplies the
+  rendered configuration, the storage declaration and the progress file. It
+  keeps verified startup progress and a 60-minute steering budget. Each yields
+  to its flag. A home without a rendered configuration is a clear error naming
+  the missing setup step. There is no embedded configuration document.
+- An explicit `--config` names the complete document. A missing, empty or
+  invalid explicit file never falls back to a home. `--config` and `--home`
+  exclude each other, and measurement flags cannot be combined with either.
+- The bundled `mainnet-profile.json` holds only public terms: the deployment,
+  policy, runtime anchor and operator endpoints. `validator setup` and
+  `validator configure` combine it with the validator's own hotkey, keys, paths
+  and signed approval. Production still needs the activation evidence and
+  durable-volume declaration that setup's later steps produce. Settlement-v2
+  adoption still follows `VERSION2-LAUNCH.md` step 10 and passes the adopted,
+  re-signed config explicitly. `init`, `register`, `activate` and the other
+  commands keep their explicit config requirements.
 - The list is used only with `--operators-refresh`. It is cached at
   `<config.state_dir>/operators.yml`. It never changes the signed config's operators,
   weights, evidence or protocol state; the release runs exactly as without it.

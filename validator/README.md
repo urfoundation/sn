@@ -1,359 +1,327 @@
 # Run an independent SN25 validator
 
-This guide is for a third party running its own validator, including Yuma. Use
-your own hotkey, credentials and persistent state. A new validator starts a new
-evidence history; it does not need the URnetwork validator's state, historical
-recovery files, coldkey or approval key.
+This guide is for anyone who runs their own validator on Bittensor subnet 25.
+You use your own Bittensor hotkey, your own host and your own state. You need
+nothing from an existing URnetwork validator, and nothing secret from us.
 
-The validator measures providers, publishes its signed evidence, and submits
-native commit-reveal weights. Measurement-only mode does not submit weights.
+The validator measures URnetwork providers through the network operator. It
+publishes its signed evidence and commits its weights to the chain once per
+tempo with commit-reveal. The mainnet defaults are bundled in the binary
+(`mainnet-profile.json`), so setup needs only your hotkey.
 
-The production setup below requires your own subnet 25 hotkey with sufficient
-native stake and a validator permit. Supply it through
-`configure --hotkey-seed-file`; no identity or key from an existing URnetwork
-validator is required. If the hotkey is new, complete native enrollment with
-your wallet tools before proceeding to activation.
+## What you need
+
+- **A permitted hotkey on subnet 25.** It needs a validator permit and stake
+  at or above the subnet's threshold. Registration alone is not enough.
+- **A little free TAO on the hotkey.** Each tempo, the hotkey signs one batch:
+  a commitment and a timelocked weight commit. The batch pays an ordinary
+  transaction fee.
+- **The hotkey file.** Use a btcli wallet hotkey (btcli writes these
+  unencrypted by default), or a file holding the raw 32-byte or hex sr25519
+  seed. The file stays on your host with mode 0600. An encrypted keyfile is
+  refused; decrypt it first.
+- **A funded EVM key** (secp256k1, hex in a file) on the subtensor EVM. It
+  pays the gas to publish your activation, once per activation, and receives
+  no authority.
+- **A Linux host** with an x86-64 or arm64 CPU and a persistent ext4, xfs or
+  btrfs filesystem. See [Ports and resources](#ports-and-resources).
+- **Chain endpoints.** You need a subtensor WebSocket endpoint and an EVM
+  JSON-RPC endpoint.
+  - Both must serve historical state. The EVM one must also serve `eth_getLogs`
+    over 1000-block ranges.
+  - The bundled defaults are `wss://archive.chain.opentensor.ai` and
+    `https://archive.chain.opentensor.ai`. For reliability, run your own
+    archive subtensor node with the EVM enabled.
+  - Setup checks both endpoints and refuses one that would fail later.
 
 ## Install
 
-Use the release archive for your machine: `linux-amd64` for an x86-64 server or
-`linux-arm64` for an Arm server. Extract it and check the installed version:
+Release archives contain the binary, this guide, `RELEASING.md` and the
+bundled `mainnet-profile.json`. When a release is published, download the
+archive for your platform, check it against the release's `SHA256SUMS`, and
+put the binary on your path:
 
 ```sh
-tar -xzf validator-RELEASE-linux-amd64.tar.gz
-./validator --version
-./validator --help
+sha256sum -c SHA256SUMS --ignore-missing
+tar -xzf validator-VERSION-linux-amd64.tar.gz
+sudo install -m 0755 validator /usr/local/bin/validator
+validator --version
 ```
 
-The archive contains the executable, this guide and the inspectable bundled
-public mainnet profile. Use the archive accompanying this handoff; an older
-binary that lacks `configure --help` does not provide this setup flow.
-Running a release binary does not require Go or sibling source checkouts.
-Maintainers can build archives
-from the normal source workspace with:
+To build from source, you need Go (the version in `go.mod`). Clone these
+public repositories side by side; `go.mod` replaces them by relative path:
 
 ```sh
-make -C validator package VALIDATOR_VERSION=RELEASE GOOS_ARCH='linux/amd64 linux/arm64'
+mkdir urnetwork && cd urnetwork
+git clone https://github.com/urfoundation/sn
+for repo in connect sdk server proxy userwireguard glog quic-go goidenticons gvisor; do
+  git clone https://github.com/urnetwork/$repo
+done
+git clone https://github.com/bringyour/warp
+make -C sn/validator build GOOS_ARCH=linux/amd64 VALIDATOR_VERSION="$(git -C sn describe --always)"
+sudo install -m 0755 sn/validator/build/linux/amd64/validator /usr/local/bin/validator
 ```
 
-Keep the configuration, key directory and mutable state on persistent storage.
-Production storage must support the durable-volume preparation described below;
-an empty directory or a container's temporary writable layer is insufficient.
+Build a tagged commit of `sn` for production. Build the other repositories at
+their own main branches, or at the commits a release lists.
 
-## Inputs the runner supplies
+## Set up
 
-Every command below accepts file paths rather than secret key contents. Do not
-send seed files to URnetwork or put private seeds in command arguments.
+Run every step as the account that will run the validator. Each step derives
+its paths from one home directory, by default `~/.urnetwork/sn25-validator`.
+Pass `--home=<dir>` to every step and to `validator run` to use another, such
+as `/var/lib/sn25-validator` for a service account.
 
-| Input | CLI option | Meaning |
-| --- | --- | --- |
-| Validator identity | `configure --validator-id=<positive integer>` | Choose a positive ID for this independent validator and retain it. It is separate from the native UID resolved by hotkey. |
-| Signing hotkey | `configure --hotkey-seed-file=<absolute path>` | Your sr25519 hotkey seed. Use the hotkey registered on subnet 25. |
-| Persistent state | `configure --state-dir=<absolute path>` | A new, private state directory for this validator. Preserve it across restarts and upgrades. |
-| Evidence and scratch | `configure --evidence-dir=<absolute path>` | Separate persistent evidence and scratch tree. It must be outside state and operator state. Omitted: `<state-dir>.evidence`. |
-| Measurement key | `configure --client-key-seed-file=<absolute path>` | Your operator 1 Ed25519 measurement seed. The setup below keeps it outside the fresh runtime tree. |
-| Configuration approval key | `configure --approval-key-file=<absolute path>` | Your private Ed25519 approval seed; used during setup to sign your configuration. It is separate from the native hotkey. |
-| Configuration output | `configure --out=<new absolute path>` | Where to write the complete initial configuration and its adjacent signed approval. |
-| EVM RPC | `configure --rpc=<https URL>` | Optional override for the bundled public EVM RPC route. |
-| Native RPC | `configure --substrate=<wss URL>` | Optional override for the bundled public Subtensor route. It must support subscriptions and historical metadata, runtime code and state reads at the configuration and activation anchors. |
-| Approval lifetime | `configure --approval-valid-for=<duration>` | Optional finite configuration approval window; default `720h` (30 days at the nominal native block rate). |
-| Prepared storage | `--durable-volumes=<absolute path>` and `--durable-volumes-sha256=<sha256:digest>` | The external declaration returned by storage preparation. Activation and the daemon require a daemon declaration. |
-| Native UID | `storage-prepare request --validator-uid=<integer>` | The registered hotkey's native UID, including zero. `status --config` reports it; activation independently verifies it. |
-| Persistent filesystem | `storage-prepare request --mount-path=<path> --filesystem-uuid=<UUID> --filesystem-type=<type>` | Actual mount facts from the runner's host. Linux: `findmnt -no TARGET,UUID,FSTYPE --target <runtime-root>`. |
-| Activation gas payer | `activate --relayer_key_file=<absolute path>` | Your funded secp256k1 EVM key. It pays publication gas and grants no validator authority. |
-
-The hotkey must have the native stake and validator permit required by the live
-chain. Registration alone does not establish eligibility. Native registration
-and staking are optional setup operations if your hotkey already qualifies.
-
-`configure` uses hyphenated option names. Existing commands such as `init` use
-the underscore spellings shown in their examples; `--help` lists the accepted
-spelling for each command.
-
-## Create or select your keys
-
-Set paths for your machine. Keep approval and private key files outside mutable
-protocol state, and run subsequent commands as the account that will own that
-state:
+**1. Keys and configuration.**
 
 ```sh
-VALIDATOR_ID=1
-RUNTIME_DIR=/srv/urnetwork-validator/runtime
-STATE_DIR="$RUNTIME_DIR/state"
-EVIDENCE_DIR="$RUNTIME_DIR/evidence"
-KEY_DIR=/srv/urnetwork-validator/keys
-CONFIG_DIR=/srv/urnetwork-validator/config
-HOTKEY_FILE="$KEY_DIR/hotkey.seed"
-APPROVAL_KEY_FILE="$KEY_DIR/approval.seed"
-INITIAL_CONFIG="$CONFIG_DIR/initial.yml"
-ACTIVATION_DIR="$RUNTIME_DIR/activation"
-RUN_CONFIG="$ACTIVATION_DIR/validator.yml"
-PROGRESS_FILE="$CONFIG_DIR/progress.json"
-install -d -m 700 "$RUNTIME_DIR" "$KEY_DIR" "$CONFIG_DIR" "$CONFIG_DIR/storage"
+validator setup --wallet.name=<wallet> --wallet.hotkey=<hotkey>
 ```
 
-Select your own positive `VALIDATOR_ID`; it is a local configuration identity,
-not your subnet UID. If you already have a registered hotkey, place its private
-seed at `HOTKEY_FILE` with mode 0600. Run `init` in either case: it reuses an
-existing hotkey, or creates one when missing, and creates the measurement and
-approval keys needed by the next steps:
+`--wallet.path` defaults to `~/.bittensor/wallets`; `--hotkey-file=<path>`
+replaces the wallet flags. This step:
+- checks the chain endpoints;
+- creates the configuration approval key and the measurement key;
+- writes the initial configuration, signed with the approval key;
+- prints the hotkey's registration.
+
+Look for `permit=true, eligible=true` and the hotkey's UID. If the hotkey is
+not yet permitted, finish registration and staking with your wallet tools,
+then run the same command again: it reuses what it made.
+
+**2. Durable storage.** The runtime directory holds the validator's state and
+evidence. Storage preparation declares that directory on its filesystem,
+which must start empty:
 
 ```sh
-./validator init --state_dir="$KEY_DIR" \
-  --hotkey_seed_file="$HOTKEY_FILE" --no_id=1 \
-  --approval-key-file="$APPROVAL_KEY_FILE"
+validator setup storage --validator-uid=<UID> --fresh
+validator setup storage --apply
 ```
 
-`init` reports only public keys and paths. It creates missing private seeds with
-mode 0600 and reuses existing seeds. It also creates or reuses the independent
-approval seed. A newly created hotkey still needs native
-registration, stake and a permit before production startup.
+The first command finds the filesystem's mount point, UUID and type (on Linux;
+elsewhere pass `--mount-path`, `--filesystem-uuid` and `--filesystem-type`).
+It then prints the preparation plan. Review the plan, then apply it. The
+default reserve floors are 100 GiB and 100,000 inodes; change them with
+`--min-available-bytes` and `--min-available-inodes`.
 
-The native hotkey reader accepts a raw 32-byte seed or a 64-character hex seed
-with an optional `0x` prefix. Supply a seed file, rather than an encrypted wallet
-JSON file. The measurement seed written by `init` is a raw 32-byte Ed25519 seed.
-
-The approval key reader accepts a raw 32-byte seed or its 64-character hex
-encoding. Keep it available for the activation setup, then keep it offline;
-`validator run` does not need it.
-
-Native enrollment is a separate prerequisite; this archive does not prepare a
-coldkey wallet. The `register` and `stake add` commands shown by `--help` require
-their own owner-local journal declaration. The daemon declaration below cannot
-be used for those transactions.
-
-## Generate the current mainnet configuration
-
-Supply your own positive validator ID:
+**3. Sign in.**
 
 ```sh
-./validator configure \
-  --validator-id="$VALIDATOR_ID" \
-  --state-dir="$STATE_DIR" \
-  --evidence-dir="$EVIDENCE_DIR" \
-  --hotkey-seed-file="$HOTKEY_FILE" \
-  --client-key-seed-file="$KEY_DIR/no-1/client.key" \
-  --approval-key-file="$APPROVAL_KEY_FILE" \
-  --out="$INITIAL_CONFIG"
+validator setup auth
 ```
 
-To use your own RPC services, add `--rpc="$EVM_RPC"` and
-`--substrate="$NATIVE_RPC"`. The public defaults are
-`https://archive.chain.opentensor.ai` and
-`wss://archive.chain.opentensor.ai`. Both routes need historical state;
-a route that serves only the current head is insufficient.
-The generated configuration selects the bundled
-mainnet deployment, policy, current runtime and V2 contracts. It records your
-own identity and paths and signs their complete configuration. Generation reads
-chain state; it does not register a hotkey, publish activation or submit weights.
+The hotkey signs in to the network operator, which creates your validator's
+network there on the first sign-in. Signing in accepts the operator's Terms of
+Service.
 
-The bundled public profile is `mainnet-profile.json`. Identity, keys, approval
-and local paths are supplied through the CLI, rather than copied from an
-existing validator. Always run with your generated `--config`: omitting it
-selects the intentionally incomplete `release.yml` template.
-
-The initial configuration has activation-pending evidence inputs. It is used for
-setup. After activation, start the separately rendered `RUN_CONFIG`.
-
-## Prepare fresh durable storage
-
-This step is for a new, empty `RUNTIME_DIR` only. Keep keys, initial configuration,
-preparation files and any old validator state outside it. Leave `ACTIVATION_DIR`
-absent until activation writes it after preparation. This step prepares the
-parent directories, an identity-bound empty operator ledger, and evidence and
-scratch directories together. It does not reset or migrate retained state.
-
-First read your registered hotkey's UID:
+**4. Activation.**
 
 ```sh
-./validator status --config="$INITIAL_CONFIG"
+validator setup activate --relayer-key-file=<evm.key> --dry-run
+validator setup activate --relayer-key-file=<evm.key> --apply
 ```
 
-Set `VALIDATOR_UID` from that registration result. Obtain the persistent
-filesystem facts from `findmnt`, and supply them explicitly as `MOUNT_PATH`,
-`FILESYSTEM_UUID` and `FILESYSTEM_TYPE`. An overlay filesystem, temporary
-container layer, missing UUID or unsupported filesystem will be refused by the
-normal physical storage checks.
+Activation publishes your validator's signed activation through the evidence
+journal and renders the run configuration. It takes effect at the next
+coordinator epoch, which on mainnet is weekly. Repeat the `--apply` command
+when it reports `waiting`, until it reports completion. Then start the
+validator promptly: its first weight decision must fall in the native epoch
+that activation names.
 
-Require an actual registration line showing `permit=true, eligible=true`
-before activation. `status` also reports read failures without a failing exit
-code, so exit status alone is insufficient. If your hotkey is not registered or
-eligible, finish native registration and staking with your normal wallet tools,
-then repeat `status`. Creating a hotkey does not grant a validator permit.
+**5. Run.**
 
 ```sh
-REQUEST="$CONFIG_DIR/storage/request.json"
-PLAN="$CONFIG_DIR/storage/plan.json"
-RESULT="$CONFIG_DIR/storage/result.json"
-
-./validator storage-prepare request --config="$INITIAL_CONFIG" \
-  --root-dir="$RUNTIME_DIR" --validator-uid="$VALIDATOR_UID" \
-  --mount-path="$MOUNT_PATH" --filesystem-uuid="$FILESYSTEM_UUID" \
-  --filesystem-type="$FILESYSTEM_TYPE" --fresh --out="$REQUEST"
-
-REQUEST_SHA256="sha256:$(sha256sum "$REQUEST" | awk '{print $1}')"
-./validator storage-prepare plan \
-  --request="$REQUEST" --request-sha256="$REQUEST_SHA256" > "$PLAN"
-
-PLAN_SHA256="sha256:$(sha256sum "$PLAN" | awk '{print $1}')"
-./validator storage-prepare apply \
-  --plan="$PLAN" --plan-sha256="$PLAN_SHA256" > "$RESULT"
+validator run
 ```
 
-Inspect the plan before applying it. `--fresh` asserts that this particular new
-root has no previous writer or retained state; an empty-looking directory is
-not permission to discard an old validator's state. Keep the original request,
-plan, staging directory and result. If apply output is lost, repeat the same
-apply command with the original plan and hash.
+`validator run` with no `--config` runs the home.
 
-The result contains `declaration.path` and `declaration.sha256`. Set
-`DURABLE_VOLUMES` and `DURABLE_VOLUMES_SHA256` to those exact values for activation
-and the daemon. The default free-space floors are 100 GiB and 100,000 inodes;
-override with `request --min-available-bytes=<n>` and
-`--min-available-inodes=<n>` for your capacity plan. These are reserve floors,
-not storage quotas. On macOS, use `shasum -a 256` in place of `sha256sum` and the
-actual local APFS volume identity.
+## Run with systemd
 
-The declaration is for the daemon. Optional coldkey registration/staking
-commands require a separate owner-local declaration and journal; do not use
-the daemon declaration for them. An existing eligible hotkey can skip those
-operations completely.
+This unit runs the validator as the `sn25-validator` account with its home in
+`/var/lib/sn25-validator`. Do the setup steps as that account with
+`--home=/var/lib/sn25-validator`.
 
-## Authenticate the configured operator
+```ini
+[Unit]
+Description=SN25 validator
+Wants=network-online.target
+After=network-online.target
+StartLimitIntervalSec=0
 
-After storage preparation, authenticate with the initial signed configuration.
-This writes the credential to the exact production path, leaving authentication
-out of the final activation epoch's startup work:
+[Service]
+Type=exec
+User=sn25-validator
+Group=sn25-validator
+ExecStart=/usr/local/bin/validator run --home=/var/lib/sn25-validator
+Restart=always
+RestartSec=30
+TimeoutStopSec=90
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
 
-```sh
-./validator auth --config="$INITIAL_CONFIG" --no_id=1
+[Install]
+WantedBy=multi-user.target
 ```
 
-The current mainnet profile includes operator 1. Its measurement state is
-isolated under `STATE_DIR/no-1`; the selected measurement seed stays at
-`KEY_DIR/no-1/client.key`. Fresh activation permits the configured JWT files,
-and the rendered successor uses the same credential paths. The global
-`~/.urnetwork/jwt` used by measurement-only commands is separate.
+Keep the hotkey file readable by that account only. Do not use
+`ProtectSystem=strict`: storage preparation checks the declared filesystem's
+real mounts, which strict mode hides behind bind mounts.
 
-## Activate and start
+## Defaults and overrides
 
-After preparing the daemon's durable storage, set `DURABLE_VOLUMES` and
-`DURABLE_VOLUMES_SHA256` from the returned declaration. Set `RELAYER_KEY_FILE` to
-your funded EVM gas payer. Preview activation first:
+The order of precedence is:
+1. command-line flags;
+2. the files in the home;
+3. the bundled mainnet profile.
 
-```sh
-./validator activate --config="$INITIAL_CONFIG" \
-  --relayer_key_file="$RELAYER_KEY_FILE" \
-  --rendered-config="$RUN_CONFIG" \
-  --successor-approval="$ACTIVATION_DIR/activation-approval.json" \
-  --original-authority="$ACTIVATION_DIR/initial-authority.json" \
-  --approval-key-file="$APPROVAL_KEY_FILE" \
-  --durable-volumes="$DURABLE_VOLUMES" \
-  --durable-volumes-sha256="$DURABLE_VOLUMES_SHA256" \
-  --dry-run
-```
+`validator setup` takes:
 
-Run the same command with `--apply` in place of `--dry-run` to publish the
-activation and render the production configuration. Activation may wait for the
-next coordinator epoch; mainnet currently uses a weekly settlement cadence.
-Each invocation makes one bounded pass. If it reports `waiting`, rerun the
-same `--apply` command after the stated boundary until it reports completion
-and writes `RUN_CONFIG`. Preserve all original paths and setup files between
-passes. Follow its reported stage rather than deleting state or restarting
-setup with a new state directory.
+| Flag | Default |
+| --- | --- |
+| `--home` | `~/.urnetwork/sn25-validator` |
+| `--wallet.path` | `~/.bittensor/wallets` |
+| `--validator-id` | derived from the hotkey; a local ID, not the UID |
+| `--rpc`, `--substrate` | the profile's public archive endpoints |
+| `--approval-valid-for` | `8760h` |
 
-Rendered configuration and approval files stay under the declared runtime root
-at `ACTIVATION_DIR`, alongside state and evidence. The original signed setup
-configuration and all private keys remain outside that fresh root.
+Setup records its choices in the signed configuration. To change one, set up
+a new home; see [Rotation](#rotation).
 
-After activation renders `RUN_CONFIG`, start promptly. The first steering
-decision must use the native epoch printed by final activation; starting the
-process in that epoch is insufficient if preparation crosses its boundary.
+`validator run` takes from the home:
 
-Start with the rendered configuration:
+| Flag | Default from the home |
+| --- | --- |
+| `--config` | `runtime/activation/validator.yml` |
+| `--durable-volumes`, `--durable-volumes-sha256` | the declaration in `config/storage/result.json` |
+| `--progress-file` | `config/progress.json` |
+| `--steering-operation-timeout` | `60m` |
+| `--startup-verified-progress` | always on |
 
-```sh
-./validator run --config="$RUN_CONFIG" \
-  --durable-volumes="$DURABLE_VOLUMES" \
-  --durable-volumes-sha256="$DURABLE_VOLUMES_SHA256" \
-  --progress-file="$PROGRESS_FILE" \
-  --startup-verified-progress
-```
+`--config=<path>` runs a configuration made by hand instead; it excludes
+`--home`. A home that is missing, or not yet activated, is an error that names
+the missing step.
 
-The progress path above is outside protocol state and has an existing private
-parent. Keep the same command, configuration and persistent volumes across
-normal restarts.
-The whole steering operation has a 30-minute default budget. Override it with
-`--steering-operation-timeout=30m` or a longer appropriate duration; the minimum
-is five minutes. This does not change native deadlines or HTTP timeouts.
+The home holds:
+- `keys/`: the approval and measurement keys.
+- `config/`: the signed initial configuration, the storage request, plan and
+  result, and `progress.json`.
+- `runtime/`: the declared state, evidence and activation files.
 
-If that first native epoch is missed **before the first daemon run**, keep the
-same original configuration, keys, evidence, preparation and volume declaration.
-While the original approval remains valid, repeat activation with unused
-successor configuration and approval filenames:
+Back up the home and the hotkey. Never copy a home to a second host: two
+validators signing with one hotkey race their nonces and stall.
 
-```sh
-RUN_CONFIG="$ACTIVATION_DIR/validator-retry.yml"
-./validator activate --config="$INITIAL_CONFIG" \
-  --rendered-config="$RUN_CONFIG" \
-  --successor-approval="$ACTIVATION_DIR/activation-approval-retry.json" \
-  --original-authority="$ACTIVATION_DIR/initial-authority.json" \
-  --approval-key-file="$APPROVAL_KEY_FILE" \
-  --durable-volumes="$DURABLE_VOLUMES" \
-  --durable-volumes-sha256="$DURABLE_VOLUMES_SHA256" --apply
-```
+## Ports and resources
 
-The already published activations need no new relayer transaction. Reuse the
-unchanged original authority file, and choose unused successor filenames again
-if another boundary is selected. Start the daemon with the new `RUN_CONFIG`
-immediately. Once a daemon has retained an intent, preserve its state and use
-restart/reconciliation; this before-first-run procedure does not apply.
+- **Inbound:** none. The validator listens on no port.
+- **Outbound:** TCP 443 to the network operator (`api.bringyour.com`,
+  `connect.bringyour.com`), `ur.xyz` and `api.drand.sh`. UDP 443 may also be
+  used. Your chain endpoints need their own ports.
+- **CPU and memory:** 4 or more cores, and 8 GiB or more of memory. A restart
+  replays the retained history before steering resumes, which can take half an
+  hour on a busy validator.
+- **Disk:** the declared filesystem keeps at least 100 GiB and 100,000 inodes
+  free. Bounded evidence and state use tens of GiB.
 
-## Check that the validator is working
+## Monitoring and logs
 
-Check the process, the progress file and the actual native row together:
+The validator logs to standard error, so under systemd use
+`journalctl -u sn25-validator`. `config/progress.json` is a bounded status
+file that the validator rewrites as it works. Check these together:
 
-- `heartbeat_at` should advance and `publisher.outcome` should report published.
-- Compare observation timestamps with wall time; `current: true` alone does not
-  prove a sample is recent.
-- Settlement should reach its current target without an increasing publication
-  backlog.
-- Native steering can legitimately report `reveal_wait` after a finalized
-  commit. Confirm the intent becomes applied after its stated reveal block.
-- Confirm the native weights belong to your hotkey's resolved UID. A running
-  process or finalized commit alone does not prove weight application.
-- Inspect diagnostic drop counters. An increasing counter means some log
-  records were lost, so a quiet error log is insufficient evidence of health.
+- `heartbeat_at` advances, and `publisher.outcome` reports the last write.
+- Each tempo's intent reaches `finalized`, then `applied` after its reveal
+  block. A finalized commit waits in `reveal_wait` until then.
+- `steering.outcome` is not `hard_error` for long, and settlement reaches its
+  target.
+- On chain, your hotkey's UID has fresh weights each tempo.
+- Diagnostic drop counters do not grow. A quiet error log alone proves
+  nothing.
 
-The configured validator masks its own live UID. Fleet/head destinations and
-pool destinations are resolved from current authenticated state; do not copy a
-historical fixed UID split into a monitoring rule.
+A line beginning `validator steering hold:` means the chain runs a runtime
+this build does not admit. Steering signs nothing until you upgrade, and the
+line names the runtime. Trails, settlement and the audit keep running, and the
+process does not restart itself.
 
-## Optional modes
+## Upgrades
 
-`validator run --all-operators` and `validator run --measurement-only` collect
-measurements without steering production weights. `--operators-refresh=1h` on
-a production run reports operator-list changes; it does not silently enroll
-new production operators or replace the signed configuration.
+- **Validator releases.** Replace the binary and restart the service. Keep the
+  home: a new home is a new validator, with a new activation and a week's wait.
+  Expect the startup replay after each restart.
+- **Subtensor runtime upgrades.** A new runtime is admitted automatically when
+  every interface the validator consumes is unchanged. A runtime whose
+  interfaces still need review holds steering, as above, until a release
+  admits it. Upgrade promptly when one is announced: a validator that stops
+  setting weights loses its dividends. `RELEASING.md` describes how releases
+  are made.
+- **Protocol changes.** These arrive as releases too. A settlement amendment
+  that takes effect before its signed entry may need
+  `--amendments-fallback=<file>` on `validator run`. Use it only with the
+  exact lines the subnet owner publishes, and remove it once the signed entry
+  is published (VALIDATOR.md §11.6).
 
-The generated approval has explicit native block and epoch ceilings. The
-default `--approval-valid-for=720h` is finite and does not automatically renew;
-choose the intended approval window at configuration time and monitor those
-ceilings. A runtime upgrade or approval expiry requires an approved successor;
-do not regenerate a fresh identity or erase state to resume an existing one.
+### Rotation
 
-An independent validator does not need `--ledger_auditor_key_file`, a subnet
-owner key, a treasury signing key or a native gap bridge. Those are separate
-roles or recovery operations.
+The signed configuration's approval expires after `--approval-valid-for`
+(8760h by default), and steering stops at the window's end. To move to a new
+configuration, other endpoints or a new approval, set up a second home with
+the same hotkey:
+1. Set up the new home, then prepare its storage, sign in and activate it,
+   while the old home keeps running.
+2. When the new activation completes, stop the old service and start the new
+   one.
 
-`--amendments-fallback=<path>` names a file of configured settlement amendment
-lines, one per line (`#` comments and blank lines are passed over). It is the
-fallback for an amendment entry, such as the extender pool's from epoch 8,
-whose signing cannot happen before its first epoch starts, and it stands in
-only where no signed entry of its kind is in force, never for an amendments
-file that cannot be read. Configure it only when the subnet owner publishes
-such a line, with exactly the lines every other reader uses, and remove it once
-the signed entry is published. It is a run flag, outside the signed
-configuration, so it needs no successor. VALIDATOR.md §11.6 gives the rules;
-the validator keeps its verified copy of `https://ur.xyz/amendments.yml` in
-`<state_dir>/settlement-v2-amendments/`.
+Only one home may run at a time. A command that renews a configuration in
+place is planned.
+
+## What to ask us for
+
+Nothing secret. Contact us (support@ur.io, or your URnetwork contact) before
+activation with:
+- your hotkey's ss58 address;
+- your host's egress IP addresses.
+
+The network operator provisions each validator's capacity for uploading its
+evidence. It also applies request limits that are keyed to addresses today.
+Ask us to confirm the plan for your validator's network as well. Measurement
+traffic through providers is carried like any network's.
+
+We announce releases, runtime reviews and protocol changes to registered
+validators.
+
+## SN25 rules for validators
+
+- Run an unmodified release, and only one signer per hotkey. Do not run
+  another weight setter beside the validator.
+- Weights are set once per tempo, by commit-reveal with timelocked commits,
+  under the subnet's weights version key. The validator does this itself.
+  Never copy another validator's weights.
+- Keep the validator permit, stake at or above the threshold, and enough free
+  TAO for each tempo's fee.
+- Keep the configuration's approval window current, and upgrade promptly when
+  a release is announced.
+
+## Other modes and manual setup
+
+`validator run --measurement-only` and `validator run --all-operators` measure
+without setting weights. They are useful to check connectivity while
+activation waits. VALIDATOR.md §12 describes them.
+
+The setup steps wrap commands you can also run by hand. See `--help` for
+each:
+- `validator init`
+- `validator configure`
+- `validator status --config`
+- `validator storage-prepare`
+- `validator auth --config`
+- `validator activate`
+- `validator run --config`
+
+`validator register` and `validator stake add` sign with a coldkey seed file
+and need their own journal declaration. Most operators use their wallet tools
+for these instead.
