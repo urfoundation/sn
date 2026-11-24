@@ -72,6 +72,21 @@ func (self *validatorAttemptUploadSigner) headerAt(credential, kind string, cont
 	return intent.Sign(ed25519.PrivateKey(self.privateKey[:]))
 }
 
+// A class consent for the same activation, replica and session: the api mints
+// the validator's rate class token for it while the activation is admitted.
+func (self *validatorAttemptUploadSigner) classHeaderAt(credential string, now time.Time) (string, error) {
+	if self == nil || now.Unix() <= 0 || uint64(now.Unix()) > 9007199254740991-self.maximumIntentSeconds {
+		return "", errors.New("validator class signer clock is invalid")
+	}
+	sessionHash, err := protocol.ValidatorAttemptUploadSessionHash(credential)
+	if err != nil {
+		return "", err
+	}
+	intent := protocol.ValidatorClassIntent{ActivationHash: self.digest, VPK: self.activation.VPK, ReplicaNoID: self.replicaNoID, SessionHash: sessionHash,
+		NotAfter: uint64(now.Unix()) + self.maximumIntentSeconds}
+	return intent.Sign(ed25519.PrivateKey(self.privateKey[:]))
+}
+
 // Safe for concurrent writes; the base owns the live destination API getter
 // and the signer owns the source activation's VPK, never an operator key.
 type ValidatorReservedAttemptStreamV2Writer struct {

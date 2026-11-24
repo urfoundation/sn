@@ -181,7 +181,7 @@ func (self *providerAttemptObjectStore) read(ctx context.Context, reader *HTTPAt
 func providerAttemptHttp(ctx context.Context, endpoint, method string, request []byte, limit uint64) ([]byte, error) {
 	transport := newProviderAttemptHttpTransport()
 	defer transport.CloseIdleConnections()
-	client := &http.Client{Transport: transport, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	client := &http.Client{Transport: validatorAPITransport(transport), CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	return providerAttemptHttpWithClient(ctx, endpoint, method, request, limit, client)
 }
 

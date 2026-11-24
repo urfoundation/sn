@@ -45,7 +45,7 @@ func newReleaseSlowUploadServer(t *testing.T, read func(*http.Request) error) *h
 func releaseSlowUploadWriter(t *testing.T, origin string, settings AttemptUploadSettings) *HTTPAttemptStreamV2Writer {
 	t.Helper()
 	writer := releaseLossyPathWriter(t, origin)
-	transport := writer.client.Transport.(*http.Transport).Clone()
+	transport := validatorAPITransportBase(writer.client.Transport).(*http.Transport).Clone()
 	transport.DialContext = (&net.Dialer{Timeout: 5 * time.Second, Control: releaseLossyPathSocketControl(syscall.SO_SNDBUF)}).DialContext
 	t.Cleanup(transport.CloseIdleConnections)
 	writer.client.Transport = transport
@@ -208,7 +208,7 @@ func TestAttemptUploadTransportIsHttp1(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if writer.client.Transport != releaseApiUploadHttpTransport || reader.client.Transport != releaseAPIHTTPTransport || writer.client.CheckRedirect == nil || writer.client.Timeout != 0 {
+	if validatorAPITransportBase(writer.client.Transport) != releaseApiUploadHttpTransport || validatorAPITransportBase(reader.client.Transport) != releaseAPIHTTPTransport || writer.client.CheckRedirect == nil || writer.client.Timeout != 0 {
 		t.Fatal("uploads and reads do not use their own transports")
 	}
 }

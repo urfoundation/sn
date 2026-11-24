@@ -45,7 +45,7 @@ func NewHttpWalletMappingReader(apiUrl string) (*HttpWalletMappingReader, error)
 		networkEndpoint:          base.ResolveReference(&url.URL{Path: "/sn/wallet/network-consent/history"}).String(),
 		hotkeyDelegationEndpoint: base.ResolveReference(&url.URL{Path: "/sn/wallet/hotkey-delegation/history"}).String(),
 		hotkeyConsentEndpoint:    base.ResolveReference(&url.URL{Path: "/sn/wallet/hotkey-consent/history"}).String(),
-		client:                   &http.Client{Timeout: 60 * time.Second, Transport: releaseAPIHTTPTransport, CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }},
+		client:                   &http.Client{Timeout: 60 * time.Second, Transport: validatorAPITransport(releaseAPIHTTPTransport), CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }},
 		wait:                     waitReleaseSnapshotRetry,
 	}, nil
 }

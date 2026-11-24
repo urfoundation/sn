@@ -1202,6 +1202,92 @@ func (self *ValidatorUploadAdmission) Begin(ctx context.Context, header string, 
 	return self.beginAt(ctx, header, sessionHash, kind, contentHash, size, time.Now())
 }
 
+// The admitted entry of an activation under this VPK at now, with the expiry
+// its admission holds to, or the refusal: an upload begins only on it, and a
+// validator's rate class is minted only for it. Called with stateLock held.
+func (self *ValidatorUploadAdmission) admittedEntryLocked(activationHash [32]byte, vpk [32]byte, now time.Time) (*validatorUploadAdmissionEntry, time.Time, error) {
+	entry := self.entries[activationHash]
+	if self.lastError != nil {
+		return nil, time.Time{}, fmt.Errorf("validator staging activation is absent, stale or superseded: %w", self.lastError)
+	}
+	// A retained entry keeps the expiry of its own last complete verification.
+	validUntil := self.validUntil
+	if entry != nil && entry.validUntil.Before(validUntil) {
+		validUntil = entry.validUntil
+	}
+	expired := !self.config.ProvisionalRetainedContextAuthority && !now.Before(validUntil)
+	// Two refusals say nothing about the validator: an admitted activation
+	// whose verification expired with no fresh one, and an activation this
+	// instance did not look for, because its permit census was unavailable and
+	// discovery followed only the admitted hotkeys. A sibling instance, or this
+	// one after its next refresh, may admit either.
+	notCurrent := func(err error) error { return fmt.Errorf("%w; %w", err, ErrValidatorUploadAuthorityNotCurrent) }
+	if entry == nil || expired {
+		if err := self.activationFailures[activationHash]; err != nil {
+			err = fmt.Errorf("validator staging activation %x is unavailable: %w", activationHash[:8], err)
+			if entry != nil {
+				err = notCurrent(err)
+			}
+			return nil, time.Time{}, err
+		}
+	}
+	switch {
+	case self.closed:
+		return nil, time.Time{}, errors.New("validator staging activation is absent, stale or superseded: admission is closed")
+	case entry == nil:
+		err := fmt.Errorf("validator staging activation is absent, stale or superseded: activation %x is not admitted", activationHash[:8])
+		if self.censusUnavailable != nil {
+			err = notCurrent(err)
+		}
+		return nil, time.Time{}, err
+	case expired:
+		return nil, time.Time{}, notCurrent(fmt.Errorf("validator staging activation is absent, stale or superseded: admission expired at %s", validUntil.UTC().Format(time.RFC3339)))
+	case entry.record.VPK != vpk || entry.ctx.Err() != nil:
+		return nil, time.Time{}, fmt.Errorf("validator staging activation is absent, stale or superseded: activation %x names another key or was superseded", activationHash[:8])
+	}
+	return entry, validUntil, nil
+}
+
+// The rate class of an admitted validator: its owner and activation, and the
+// expiry of its admission, past which a class token minted now must not live.
+type ValidatorUploadClass struct {
+	Owner      ValidatorUploadOwner
+	Activation [32]byte
+	ValidUntil time.Time
+}
+
+// The class a validator's class consent names, if its activation is admitted
+// now: the checks an upload consent passes, with nothing reserved. Refusals
+// that say nothing about the validator carry
+// ErrValidatorUploadAuthorityNotCurrent, as Begin's do.
+func (self *ValidatorUploadAdmission) Class(ctx context.Context, header string, sessionHash [32]byte) (ValidatorUploadClass, error) {
+	return self.classAt(ctx, header, sessionHash, time.Now())
+}
+
+func (self *ValidatorUploadAdmission) classAt(ctx context.Context, header string, sessionHash [32]byte, now time.Time) (ValidatorUploadClass, error) {
+	if self == nil || ctx == nil {
+		return ValidatorUploadClass{}, errors.New("validator staging request owner is unavailable")
+	}
+	if err := errors.Join(ctx.Err(), self.ctx.Err()); err != nil {
+		return ValidatorUploadClass{}, err
+	}
+	intent, err := protocol.VerifyValidatorClassHeader(header)
+	if err != nil {
+		return ValidatorUploadClass{}, err
+	}
+	if now.Unix() <= 0 || intent.SessionHash != sessionHash || intent.ReplicaNoID != self.config.ReplicaNoID ||
+		intent.NotAfter <= uint64(now.Unix()) || intent.NotAfter-uint64(now.Unix()) > self.config.MaximumIntentSeconds {
+		return ValidatorUploadClass{}, errors.New("validator class consent differs from current request, replica or time")
+	}
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	entry, validUntil, err := self.admittedEntryLocked(intent.ActivationHash, intent.VPK, now)
+	if err != nil {
+		return ValidatorUploadClass{}, err
+	}
+	return ValidatorUploadClass{Owner: ValidatorUploadOwner{Hotkey: entry.record.Hotkey, OperatorNoID: entry.record.NoID}, Activation: intent.ActivationHash, ValidUntil: validUntil}, nil
+}
+
 // The explicit private clock makes expired/refresh transitions deterministic;
 // no production caller can supply an older clock to extend eligibility.
 func (self *ValidatorUploadAdmission) beginAt(ctx context.Context, header string, sessionHash [32]byte, kind byte, contentHash [32]byte, size uint64, now time.Time) (*ValidatorUploadLease, error) {
@@ -1221,44 +1307,9 @@ func (self *ValidatorUploadAdmission) beginAt(ctx context.Context, header string
 	}
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
-	entry := self.entries[intent.ActivationHash]
-	if self.lastError != nil {
-		return nil, fmt.Errorf("validator staging activation is absent, stale or superseded: %w", self.lastError)
-	}
-	// A retained entry keeps the expiry of its own last complete verification.
-	validUntil := self.validUntil
-	if entry != nil && entry.validUntil.Before(validUntil) {
-		validUntil = entry.validUntil
-	}
-	expired := !self.config.ProvisionalRetainedContextAuthority && !now.Before(validUntil)
-	// Two refusals say nothing about the validator: an admitted activation
-	// whose verification expired with no fresh one, and an activation this
-	// instance did not look for, because its permit census was unavailable and
-	// discovery followed only the admitted hotkeys. A sibling instance, or this
-	// one after its next refresh, may admit either.
-	notCurrent := func(err error) error { return fmt.Errorf("%w; %w", err, ErrValidatorUploadAuthorityNotCurrent) }
-	if entry == nil || expired {
-		if err := self.activationFailures[intent.ActivationHash]; err != nil {
-			err = fmt.Errorf("validator staging activation %x is unavailable: %w", intent.ActivationHash[:8], err)
-			if entry != nil {
-				err = notCurrent(err)
-			}
-			return nil, err
-		}
-	}
-	switch {
-	case self.closed:
-		return nil, errors.New("validator staging activation is absent, stale or superseded: admission is closed")
-	case entry == nil:
-		err := fmt.Errorf("validator staging activation is absent, stale or superseded: activation %x is not admitted", intent.ActivationHash[:8])
-		if self.censusUnavailable != nil {
-			err = notCurrent(err)
-		}
+	entry, validUntil, err := self.admittedEntryLocked(intent.ActivationHash, intent.VPK, now)
+	if err != nil {
 		return nil, err
-	case expired:
-		return nil, notCurrent(fmt.Errorf("validator staging activation is absent, stale or superseded: admission expired at %s", validUntil.UTC().Format(time.RFC3339)))
-	case entry.record.VPK != intent.VPK || entry.ctx.Err() != nil:
-		return nil, fmt.Errorf("validator staging activation is absent, stale or superseded: activation %x names another key or was superseded", intent.ActivationHash[:8])
 	}
 	deadline := time.Unix(int64(intent.NotAfter), 0)
 	if !self.config.ProvisionalRetainedContextAuthority && validUntil.Before(deadline) {

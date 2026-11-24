@@ -152,3 +152,21 @@ func sealReleaseRuntimeAttemptCutV2(ctx context.Context, cfg *ReleaseConfig, sou
 	return SealReplicatedAttemptCutV2(ctx, source.attemptLedger, expected, cfg.Policy, ed25519.PrivateKey(source.attemptSource.privateKey[:]), cfg.EvidenceV2.Bounds.Cut,
 		AttemptCutV2ReplicaOptions{ReplayBounds: cfg.EvidenceV2.Bounds.Replay, ScratchDirectory: scratchDirectory, ServerKeys: serverKeys, Replicas: replicas})
 }
+
+// Installs this operator api's validator identity: with an activation to
+// consent with, the SN25 rate class token and the live session's bearer on
+// every api request while a token is held; without one, nothing. The returned
+// func removes it.
+func installReleaseValidatorAPIIdentity(ctx context.Context, op OperatorConfig, credential func() string, source *releaseAttemptUploadSourceV2) (func(), error) {
+	identity := &validatorAPIIdentity{credential: credential}
+	if source != nil {
+		signer, err := newValidatorAttemptUploadSigner(source.activation, op.NoID, source.maximumIntentSeconds, ed25519.PrivateKey(source.privateKey[:]))
+		if err != nil {
+			return nil, err
+		}
+		if identity.class, err = newValidatorClassTokens(ctx, op.NoID, op.APIURL, credential, signer); err != nil {
+			return nil, err
+		}
+	}
+	return installValidatorAPIIdentity(op.APIURL, identity)
+}

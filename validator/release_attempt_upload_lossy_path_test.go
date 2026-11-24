@@ -129,11 +129,12 @@ func newReleaseLossyPathServer(t *testing.T, step int, interval time.Duration) *
 // a small send buffer. Its protocol, pool and timeout settings are unchanged.
 func (self *releaseLossyPathServer) attach(t *testing.T, writer *HTTPAttemptStreamV2Writer) {
 	t.Helper()
-	transport := writer.client.Transport.(*http.Transport).Clone()
+	transport := validatorAPITransportBase(writer.client.Transport).(*http.Transport).Clone()
 	transport.TLSClientConfig = self.endpoint.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
 	transport.DialContext = (&net.Dialer{Timeout: 5 * time.Second, Control: releaseLossyPathSocketControl(syscall.SO_SNDBUF)}).DialContext
 	t.Cleanup(transport.CloseIdleConnections)
-	writer.client.Transport = transport
+	// under the api identity wrapper, as the writer sends
+	writer.client.Transport = validatorAPITransport(transport)
 }
 
 func (self *releaseLossyPathServer) received() ([]int, [][]byte) {
