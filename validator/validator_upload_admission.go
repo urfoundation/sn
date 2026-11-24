@@ -341,7 +341,20 @@ func (self *ValidatorUploadAdmission) WaitReady(ctx context.Context) error {
 	}
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
-	return errors.Join(self.lastError, self.seededReadinessErrorLocked(), self.ctx.Err(), ctx.Err())
+	return errors.Join(self.lastError, self.expiredLocked(self.clock()), self.seededReadinessErrorLocked(), self.ctx.Err(), ctx.Err())
+}
+
+// A published admission is current only until its validUntil. A transient
+// failure that was retained, or a refresh still in flight, records no error,
+// so past validUntil readiness itself reports this instance not current until
+// a fresh publish. A request is then answered as on an instance whose refresh
+// failed, which a sibling or a retry can serve, not as a refusal of the
+// validator.
+func (self *ValidatorUploadAdmission) expiredLocked(now time.Time) error {
+	if self.config.ProvisionalRetainedContextAuthority || self.validUntil.IsZero() || now.Before(self.validUntil) {
+		return nil
+	}
+	return fmt.Errorf("validator staging admission expired at %s and no refresh has published since", self.validUntil.UTC().Format(time.RFC3339))
 }
 
 // A successful subset remains usable, but never reports complete seeded
