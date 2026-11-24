@@ -173,6 +173,7 @@ func TestValidatorUploadAdmissionReusesVerifiedHistoryWithoutArchiveState(t *tes
 func TestValidatorUploadAdmissionRechecksAdmittedActivationOmittedByDiscovery(t *testing.T) {
 	t.Parallel()
 	fixture := newValidatorUploadAuthorityTestFixture(t)
+	fixture.keepDiscoveryRangeOpen()
 	owner, reports := validatorUploadSilentDropTestState(t, fixture)
 	start := fixture.now
 	window := time.Duration(fixture.config().MaximumHeadAgeSeconds) * time.Second
@@ -210,6 +211,7 @@ func TestValidatorUploadAdmissionRetiresSupersededEntryThroughFailedRead(t *test
 		{seeded: true},
 	} {
 		fixture := newValidatorUploadAuthorityTestFixture(t)
+		fixture.keepDiscoveryRangeOpen()
 		key := ed25519.NewKeyFromSeed(append([]byte{0x42}, make([]byte, 31)...))
 		successor := fixture.authority.Expected
 		copy(successor.VPK[:], key[32:])

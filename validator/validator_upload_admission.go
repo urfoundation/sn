@@ -9,6 +9,9 @@ package validator
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"maps"
@@ -21,6 +24,8 @@ import (
 	"time"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
+	"github.com/centrifuge/go-substrate-rpc-client/v4/types/codec"
+	gethrpc "github.com/ethereum/go-ethereum/rpc"
 
 	"github.com/urfoundation/sn/crv4"
 	"github.com/urfoundation/sn/protocol"
@@ -145,12 +150,20 @@ type validatorUploadAdmissionEntry struct {
 // One completed or failed refresh, reported once by the owned loop. Counts
 // and causes are copies; the report retains no admission state.
 type validatorUploadRefreshReport struct {
-	started            time.Time
-	finished           time.Time
-	evmHeadAge         time.Duration
-	nativeHeadAge      time.Duration
-	ranges             uint64
-	events             uint64
+	started       time.Time
+	finished      time.Time
+	evmHeadAge    time.Duration
+	nativeHeadAge time.Duration
+	ranges        uint64
+	rangeReads    uint64
+	rangesKept    uint64
+	events        uint64
+	// Time in each phase. Runtime authentication happens inside the census
+	// and the eligibility reads, once per block hash and allowlist.
+	censusTook         time.Duration
+	discoveryTook      time.Duration
+	eligibilityTook    time.Duration
+	runtime            crv4.RuntimeArtifactMemoStats
 	admitted           int
 	retained           int
 	validUntil         time.Time
@@ -178,14 +191,21 @@ type ValidatorUploadAdmission struct {
 	// under stateLock.
 	verifiedHistory     map[[32]byte]VerifiedReleaseActivationV2
 	lastRefreshDuration time.Duration
-	activationFailures  map[[32]byte]error
-	stateLock           sync.Mutex
-	entries             map[[32]byte]*validatorUploadAdmissionEntry
-	ownerSlots          map[ValidatorUploadOwner]*validatorUploadOwnerSlots
-	validUntil          time.Time
-	lastError           error
-	closed              bool
-	leases              sync.WaitGroup
+	// Closed discovery ranges' rows by range start, owned by the refresh loop
+	// like verifiedHistory. A process starts empty and scans cold once.
+	closedRanges         map[uint64]*validatorUploadClosedRange
+	closedRangeRows      int
+	closedRangeRowBudget int
+	// The start delay of a large cold scan.
+	coldScanJitter     func() time.Duration
+	activationFailures map[[32]byte]error
+	stateLock          sync.Mutex
+	entries            map[[32]byte]*validatorUploadAdmissionEntry
+	ownerSlots         map[ValidatorUploadOwner]*validatorUploadOwnerSlots
+	validUntil         time.Time
+	lastError          error
+	closed             bool
+	leases             sync.WaitGroup
 }
 
 // File custody and canonical context syntax precede the first RPC. The API
@@ -268,7 +288,8 @@ func newValidatorUploadAdmissionState(ctx context.Context, chain *ChainClient, n
 	owner := &ValidatorUploadAdmission{ctx: ownerCtx, cancel: cancel, done: make(chan struct{}), ready: make(chan struct{}), chain: chain, native: native, config: config,
 		discoveryDigests: digests, clock: time.Now, refreshReport: printValidatorUploadRefreshReport,
 		verifiedHistory: make(map[[32]byte]VerifiedReleaseActivationV2, len(digests)), activationFailures: make(map[[32]byte]error, len(digests)),
-		entries: make(map[[32]byte]*validatorUploadAdmissionEntry), ownerSlots: make(map[ValidatorUploadOwner]*validatorUploadOwnerSlots), lastError: errors.New("validator staging admission has not refreshed")}
+		entries: make(map[[32]byte]*validatorUploadAdmissionEntry), ownerSlots: make(map[ValidatorUploadOwner]*validatorUploadOwnerSlots), lastError: errors.New("validator staging admission has not refreshed"),
+		closedRanges: make(map[uint64]*validatorUploadClosedRange), closedRangeRowBudget: maximumValidatorUploadKeptRows, coldScanJitter: validatorUploadColdScanJitter}
 	if config.ProvisionalRetainedContextAuthority {
 		if err := owner.installProvisionalRetainedContextAuthority(retainedContexts); err != nil {
 			cancel()
@@ -303,7 +324,7 @@ func (self *ValidatorUploadAdmission) run() {
 		err := self.refresh(operationCtx, started)
 		cancel()
 		self.lastRefreshDuration = self.clock().Sub(started)
-		if err != nil {
+		if err != nil && !self.retainAfterTransientRefreshFailure(err) {
 			self.invalidate(err)
 		}
 		if first {
@@ -336,7 +357,20 @@ func (self *ValidatorUploadAdmission) WaitReady(ctx context.Context) error {
 	}
 	self.stateLock.Lock()
 	defer self.stateLock.Unlock()
-	return errors.Join(self.lastError, self.seededReadinessErrorLocked(), self.ctx.Err(), ctx.Err())
+	return errors.Join(self.lastError, self.expiredLocked(self.clock()), self.seededReadinessErrorLocked(), self.ctx.Err(), ctx.Err())
+}
+
+// A published admission is current only until its validUntil. A transient
+// failure that was retained, or a refresh still in flight, records no error,
+// so past validUntil readiness itself reports this instance not current until
+// a fresh publish. A request is then answered as on an instance whose refresh
+// failed, which a sibling or a retry can serve, not as a refusal of the
+// validator.
+func (self *ValidatorUploadAdmission) expiredLocked(now time.Time) error {
+	if self.config.ProvisionalRetainedContextAuthority || self.validUntil.IsZero() || now.Before(self.validUntil) {
+		return nil
+	}
+	return fmt.Errorf("validator staging admission expired at %s and no refresh has published since", self.validUntil.UTC().Format(time.RFC3339))
 }
 
 // A successful subset remains usable, but never reports complete seeded
@@ -464,8 +498,11 @@ func (self *ValidatorUploadAdmission) invalidate(err error) {
 // publishes nothing and fails with the measured cause.
 func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time) (resultErr error) {
 	report := validatorUploadRefreshReport{started: now}
+	// The census and every eligibility read authenticate the runtime at the
+	// same current hash; it is read once per refresh.
+	ctx, memo := crv4.WithRuntimeArtifactMemo(ctx)
 	defer func() {
-		report.finished, report.err = self.clock(), resultErr
+		report.finished, report.err, report.runtime = self.clock(), resultErr, memo.Stats()
 		if self.refreshReport != nil {
 			self.refreshReport(report)
 		}
@@ -498,6 +535,48 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 	if observer.Number < start || !self.config.ProvisionalSeededDiscoveryOnly && observer.Number-start >= self.config.BlocksPerRange*self.config.MaximumRanges {
 		return errors.New("validator staging complete discovery exceeds its explicit range budget")
 	}
+	// Any relayer can publish an activation, so discovery reads only the
+	// hotkeys that could be admitted now: the current permit census, at the
+	// same native hash as every eligibility read below. Its stakes rank owners
+	// when a bound is reached; admitted owners keep precedence.
+	admittedOwners := make(map[ValidatorUploadOwner]bool)
+	func() {
+		self.stateLock.Lock()
+		defer self.stateLock.Unlock()
+		for _, entry := range self.entries {
+			admittedOwners[ValidatorUploadOwner{Hotkey: entry.record.Hotkey, OperatorNoID: entry.record.NoID}] = true
+		}
+	}()
+	// Seeded testnet discovery reads no events, so it needs no census.
+	permitted := validatorUploadPermitCensus{stakes: map[[32]byte]uint64{}}
+	if !self.config.ProvisionalSeededDiscoveryOnly {
+		censusStarted := time.Now()
+		census, err := self.readValidatorUploadPermitCensus(ctx, nativeObserver, currentRuntime)
+		report.censusTook = time.Since(censusStarted)
+		if ctxErr := errors.Join(ctx.Err(), self.ctx.Err()); ctxErr != nil {
+			return errors.Join(err, ctxErr)
+		}
+		if err == nil {
+			permitted = census
+		} else {
+			// Without a census, discovery still follows the admitted hotkeys,
+			// so their rotations supersede them and their failed reads keep
+			// them only to their own expiry. Nothing new is discovered until
+			// the census reads again; no refresh fails for its absence.
+			fmt.Fprintf(os.Stderr, "validator staging permit census unavailable; discovering only the %d admitted owners' hotkeys: %v\n", len(admittedOwners), err)
+			for owner := range admittedOwners {
+				if _, exists := permitted.stakes[owner.Hotkey]; !exists {
+					permitted.stakes[owner.Hotkey] = 0
+					permitted.hotkeys = append(permitted.hotkeys, owner.Hotkey)
+				}
+			}
+			slices.SortFunc(permitted.hotkeys, func(a, b [32]byte) int { return bytes.Compare(a[:], b[:]) })
+		}
+	}
+	// Distinct hotkeys come from permitted discovery, the configured seeds
+	// and the earlier admitted entries, so this bound is never reached. It
+	// refuses only the extra candidate, never the refresh.
+	maximumEligibilityReads := uint64(len(permitted.hotkeys)) + uint64(len(self.discoveryDigests)) + uint64(len(admittedOwners))
 	next := make(map[ValidatorUploadOwner]VerifiedReleaseActivationV2)
 	seen := make(map[[32]byte]bool)
 	// Digests whose reads failed without observing ineligibility or a changed
@@ -525,6 +604,8 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 			return nil
 		}
 		seen[digest] = true
+		eligibilityStarted := time.Now()
+		defer func() { report.eligibilityTook += time.Since(eligibilityStarted) }()
 		verified, err := self.authenticateRefreshCandidate(ctx, digest, observer, nativeObserver)
 		if err != nil {
 			self.recordActivationFailure(digest, fmt.Errorf("historical activation authentication: %w", err))
@@ -547,12 +628,16 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
+			if uint64(len(current)) >= maximumEligibilityReads {
+				self.recordActivationFailure(digest, errors.New("validator staging eligibility census is full for this refresh"))
+				return nil
+			}
 			eligible = err == nil && observation.Stake.MeetsNonSelfStakeAndPermit()
 			currentErrors[record.Hotkey] = err
-			if uint64(len(current)) >= self.config.MaximumOwners {
-				return errors.New("validator staging current native owner census exceeds its bound")
-			}
 			current[record.Hotkey] = eligible
+			if eligible {
+				permitted.stakes[record.Hotkey] = observation.Stake.TotalStakeRao
+			}
 		}
 		if !eligible {
 			switch err := currentErrors[record.Hotkey]; {
@@ -568,10 +653,9 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 			return nil
 		}
 		self.recordActivationFailure(digest, nil)
+		// Owner capacity is applied when the refresh publishes: admitted
+		// owners first, then by stake. Overflow refuses only the overflow.
 		prior, exists := next[owner]
-		if !exists && uint64(len(next)) >= self.config.MaximumOwners {
-			return errors.New("validator staging owner census exceeds its bound")
-		}
 		if exists && prior.Publication.PublishedBlock > verified.Publication.PublishedBlock {
 			return nil
 		}
@@ -581,33 +665,39 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 		next[owner] = verified
 		return nil
 	}
-	discoveryRanges := self.config.MaximumRanges
-	if self.config.ProvisionalSeededDiscoveryOnly {
-		discoveryRanges = 0
-	}
-	for range discoveryRanges {
-		end := observer.Number
-		if observer.Number-start >= self.config.BlocksPerRange {
-			end = start + self.config.BlocksPerRange - 1
-		}
-		events, err := self.chain.ValidatorUploadActivationEventsContext(ctx, self.config.Deployment, start, end, self.config.BlocksPerRange, self.config.MaximumEventsPerRange, observer)
-		if err != nil {
+	var ranges []validatorUploadRange
+	if !self.config.ProvisionalSeededDiscoveryOnly {
+		var err error
+		if ranges, err = validatorUploadDiscoveryRanges(start, observer.Number, self.config.BlocksPerRange, self.config.MaximumRanges); err != nil {
 			return err
 		}
+	}
+	discoveryStarted := time.Now()
+	rangeEvents, rangeReads, rangesKept, err := self.discoverValidatorUploadRanges(ctx, ranges, permitted.hotkeys, observer)
+	report.discoveryTook = time.Since(discoveryStarted)
+	if err != nil {
+		return err
+	}
+	report.rangeReads, report.rangesKept = uint64(rangeReads), uint64(rangesKept)
+	for rangeIndex, scanned := range ranges {
+		start, end, events := scanned.from, scanned.to, rangeEvents[rangeIndex]
 		report.ranges++
 		report.events += uint64(len(events))
 		for index := range events {
 			owner := ValidatorUploadOwner{Hotkey: events[index].Hotkey, OperatorNoID: events[index].NoID}
 			latestPublishedOwnerBlocks[owner] = max(latestPublishedOwnerBlocks[owner], events[index].Block)
 			latestPublishedOwnerEvents[owner] = events[index]
-			if err := admit(events[index].Digest, &events[index]); err != nil {
+		}
+		kept, refused := selectValidatorUploadRangeEvents(events, self.config.MaximumEventsPerRange, admittedOwners, permitted.stakes)
+		for _, event := range refused {
+			seen[event.Digest] = true
+			self.recordActivationFailure(event.Digest, fmt.Errorf("validator staging range %d..%d has more permitted owners' activations than maximum_events_per_range %d; this one is refused until it fits", start, end, self.config.MaximumEventsPerRange))
+		}
+		for index := range kept {
+			if err := admit(kept[index].Digest, &kept[index]); err != nil {
 				return err
 			}
 		}
-		if end == observer.Number {
-			break
-		}
-		start = end + 1
 	}
 	// Event order resolves multiple real rotations in one block. Reference
 	// seeds are considered afterward and cannot replace a later publication.
@@ -692,14 +782,40 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 			retainedOwnerDigests[owner] = digest
 		}
 		// Owner slots never multiply under rotation or an overlapping request.
-		missing := uint64(0)
-		for owner := range next {
-			if self.ownerSlots[owner] == nil {
-				missing++
+		// An owner neither admitted now nor retained releases an idle slot; a
+		// slot with an active lease drains before it is released.
+		for owner, slots := range self.ownerSlots {
+			if _, admitted := next[owner]; admitted {
+				continue
+			}
+			if _, retained := retainedOwnerDigests[owner]; retained {
+				continue
+			}
+			if len(slots.fresh) == 0 && len(slots.retry) == 0 {
+				delete(self.ownerSlots, owner)
 			}
 		}
-		if uint64(len(self.ownerSlots))+missing > self.config.MaximumOwners {
-			return errors.New("validator staging retained owner-slot census exceeds its bound")
+		// New owners take the free capacity in order of stake. Over the bound
+		// only they are refused and reported; admitted owners keep their slots.
+		var newcomers []ValidatorUploadOwner
+		for owner := range next {
+			if _, retained := retainedOwnerDigests[owner]; !retained && self.ownerSlots[owner] == nil {
+				newcomers = append(newcomers, owner)
+			}
+		}
+		slices.SortFunc(newcomers, func(a, b ValidatorUploadOwner) int { return compareValidatorUploadOwners(a, b, nil, permitted.stakes) })
+		free := uint64(0)
+		if uint64(len(self.ownerSlots)) < self.config.MaximumOwners {
+			free = self.config.MaximumOwners - uint64(len(self.ownerSlots))
+		}
+		for index, owner := range newcomers {
+			if uint64(index) < free {
+				continue
+			}
+			if digest, err := next[owner].Publication.Record.Digest(); err == nil {
+				self.activationFailures[digest] = fmt.Errorf("validator staging owner capacity maximum_owners %d is full; this owner is refused until a slot frees", self.config.MaximumOwners)
+			}
+			delete(next, owner)
 		}
 		entries := make(map[[32]byte]*validatorUploadAdmissionEntry, len(next)+len(retainedOwnerDigests))
 		for owner, value := range next {
@@ -758,10 +874,281 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 	return err
 }
 
+// The hard bound on one range's permitted rows. Only permitted hotkeys can
+// produce them, and each publication costs its relayer gas; the configured
+// maximum_events_per_range bounds the work admitted from them.
+const maximumValidatorUploadRangeRows = 65536
+
+// The hotkeys that can be admitted at the refresh's native hash: those holding
+// a validator permit, and the registered subnet owner, whose own UID needs
+// none. It is only discovery's filter. Each candidate still passes the
+// complete eligibility read, which also supplies its stake for ranking.
+type validatorUploadPermitCensus struct {
+	hotkeys [][32]byte
+	stakes  map[[32]byte]uint64
+}
+
+// Reads SubnetworkN, the ValidatorPermit vector, each permitted UID's Keys
+// entry and SubnetOwnerHotkey under the runtime authenticated at that exact
+// hash: interfaces the producer profile pins, and successor admission checks.
+// The values come in two state_queryStorageAt round trips at that hash, the
+// subnet's three entries and then every permitted UID's Keys, each checked as
+// one state_getStorage read of it would be. The api reaches the node through a
+// forward to another host, so each round trip counts.
+func (self *ValidatorUploadAdmission) readValidatorUploadPermitCensus(ctx context.Context, nativeObserver ValidatorUploadNativeObserver, currentRuntime []crv4.RuntimeArtifactIdentity) (validatorUploadPermitCensus, error) {
+	empty := validatorUploadPermitCensus{}
+	deployment := self.config.Deployment
+	artifact, err := crv4.AuthenticateRuntimeArtifactAtContext(ctx, self.native, nativeObserver.Hash, currentRuntime...)
+	if err != nil {
+		return empty, fmt.Errorf("validator staging permit census runtime: %w", err)
+	}
+	netuid := binary.LittleEndian.AppendUint16(nil, deployment.Netuid)
+	type censusEntry struct {
+		name string
+		key  types.StorageKey
+	}
+	entryOf := func(name string, args ...[]byte) (censusEntry, error) {
+		key, err := types.CreateStorageKey(artifact.Metadata, crv4.PalletName, name, args...)
+		if err != nil {
+			return censusEntry{}, fmt.Errorf("validator staging permit census %s key: %w", name, err)
+		}
+		return censusEntry{name: name, key: key}, nil
+	}
+	// One round trip for several entries. Each value is the raw answer one
+	// state_getStorage read of its key would give, null when absent, and is
+	// checked by decode below. Only one complete change set at the census
+	// hash is an answer.
+	readAll := func(entries []censusEntry) ([]json.RawMessage, error) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		keys, names := make([]string, len(entries)), make([]string, len(entries))
+		for index, entry := range entries {
+			keys[index], names[index] = entry.key.Hex(), entry.name
+		}
+		var sets []struct {
+			Block   string              `json:"block"`
+			Changes [][]json.RawMessage `json:"changes"`
+		}
+		if err := self.native.API.Client.CallContext(ctx, &sets, "state_queryStorageAt", keys, nativeObserver.Hash.Hex()); err != nil {
+			return nil, fmt.Errorf("validator staging permit census %s read: %w", strings.Join(slices.Compact(names), ", "), err)
+		}
+		if len(sets) != 1 || !strings.EqualFold(sets[0].Block, nativeObserver.Hash.Hex()) || len(sets[0].Changes) != len(entries) {
+			return nil, fmt.Errorf("validator staging permit census %s answer is not one complete change set at the census block", strings.Join(slices.Compact(names), ", "))
+		}
+		values := make(map[string]json.RawMessage, len(entries))
+		for _, change := range sets[0].Changes {
+			var key string
+			if len(change) != 2 || json.Unmarshal(change[0], &key) != nil {
+				return nil, errors.New("validator staging permit census answer has a malformed change")
+			}
+			if _, exists := values[strings.ToLower(key)]; exists {
+				return nil, errors.New("validator staging permit census answer repeats a key")
+			}
+			values[strings.ToLower(key)] = change[1]
+		}
+		result := make([]json.RawMessage, len(entries))
+		for index, entry := range entries {
+			value, exists := values[strings.ToLower(entry.key.Hex())]
+			if !exists {
+				return nil, fmt.Errorf("validator staging permit census answer has no %s", entry.name)
+			}
+			result[index] = value
+		}
+		return result, nil
+	}
+	decode := func(name string, raw json.RawMessage, maximum int) ([]byte, error) {
+		if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+			return nil, nil
+		}
+		var encoded string
+		if err := json.Unmarshal(raw, &encoded); err != nil || len(encoded) > 2+2*maximum {
+			return nil, fmt.Errorf("validator staging permit census %s is not bounded hex", name)
+		}
+		value, err := hex.DecodeString(strings.TrimPrefix(encoded, "0x"))
+		if err != nil || !strings.HasPrefix(encoded, "0x") {
+			return nil, fmt.Errorf("validator staging permit census %s is not hex", name)
+		}
+		return value, nil
+	}
+	subnet := make([]censusEntry, 0, 3)
+	for _, name := range []string{"SubnetworkN", "ValidatorPermit", "SubnetOwnerHotkey"} {
+		entry, err := entryOf(name, netuid)
+		if err != nil {
+			return empty, err
+		}
+		subnet = append(subnet, entry)
+	}
+	subnetValues, err := readAll(subnet)
+	if err != nil {
+		return empty, err
+	}
+	census, err := decode("SubnetworkN", subnetValues[0], 2)
+	if err != nil {
+		return empty, err
+	}
+	if len(census) != 2 {
+		return empty, errors.New("validator staging permit census SubnetworkN is not an exact u16")
+	}
+	count := binary.LittleEndian.Uint16(census)
+	if count == 0 || uint32(count) > deployment.MaximumSubnetUIDs {
+		return empty, errors.New("validator staging permit census exceeds its subnet bound")
+	}
+	permits, err := decode("ValidatorPermit", subnetValues[1], int(count)+4)
+	if err != nil {
+		return empty, err
+	}
+	prefix, err := codec.Encode(types.NewUCompactFromUInt(uint64(count)))
+	if err != nil {
+		return empty, err
+	}
+	if len(permits) != len(prefix)+int(count) || !bytes.Equal(permits[:len(prefix)], prefix) {
+		return empty, errors.New("validator staging permit vector does not match the subnet census")
+	}
+	result := validatorUploadPermitCensus{stakes: make(map[[32]byte]uint64)}
+	include := func(hotkey [32]byte) {
+		if _, exists := result.stakes[hotkey]; !exists {
+			result.stakes[hotkey] = 0
+			result.hotkeys = append(result.hotkeys, hotkey)
+		}
+	}
+	var permitted []censusEntry
+	var uids []int
+	for uid, permit := range permits[len(prefix):] {
+		if permit > 1 {
+			return empty, errors.New("validator staging permit vector contains a non-boolean value")
+		}
+		if permit == 0 {
+			continue
+		}
+		entry, err := entryOf("Keys", netuid, binary.LittleEndian.AppendUint16(nil, uint16(uid)))
+		if err != nil {
+			return empty, err
+		}
+		permitted, uids = append(permitted, entry), append(uids, uid)
+	}
+	if len(permitted) != 0 {
+		hotkeys, err := readAll(permitted)
+		if err != nil {
+			return empty, err
+		}
+		for index, raw := range hotkeys {
+			hotkey, err := decode("Keys", raw, 32)
+			if err != nil {
+				return empty, err
+			}
+			if len(hotkey) != 32 || [32]byte(hotkey) == ([32]byte{}) {
+				return empty, fmt.Errorf("validator staging permit census UID %d has no hotkey", uids[index])
+			}
+			include([32]byte(hotkey))
+		}
+	}
+	owner, err := decode("SubnetOwnerHotkey", subnetValues[2], 32)
+	if err != nil {
+		return empty, err
+	}
+	if owner != nil {
+		if len(owner) != 32 {
+			return empty, errors.New("validator staging permit census subnet owner is not an exact AccountId32")
+		}
+		include([32]byte(owner))
+	}
+	slices.SortFunc(result.hotkeys, func(a, b [32]byte) int { return bytes.Compare(a[:], b[:]) })
+	return result, nil
+}
+
+// Admitted owners first, then larger stake, then hotkey and operator order.
+func compareValidatorUploadOwners(a, b ValidatorUploadOwner, admitted map[ValidatorUploadOwner]bool, stakes map[[32]byte]uint64) int {
+	if admitted[a] != admitted[b] {
+		if admitted[a] {
+			return -1
+		}
+		return 1
+	}
+	if stakes[a.Hotkey] != stakes[b.Hotkey] {
+		if stakes[a.Hotkey] > stakes[b.Hotkey] {
+			return -1
+		}
+		return 1
+	}
+	if order := bytes.Compare(a.Hotkey[:], b.Hotkey[:]); order != 0 {
+		return order
+	}
+	switch {
+	case a.OperatorNoID < b.OperatorNoID:
+		return -1
+	case a.OperatorNoID > b.OperatorNoID:
+		return 1
+	}
+	return 0
+}
+
+// A range contributes each owner's latest activation; an earlier one in the
+// same range is superseded by it. Over maximum, owners are taken in
+// compareValidatorUploadOwners order and the rest are returned as refused.
+// Kept events stay in canonical order.
+func selectValidatorUploadRangeEvents(events []ValidatorUploadActivationEvent, maximum uint64, admitted map[ValidatorUploadOwner]bool, stakes map[[32]byte]uint64) (kept, refused []ValidatorUploadActivationEvent) {
+	latest := make(map[ValidatorUploadOwner]int, len(events))
+	for index, event := range events {
+		latest[ValidatorUploadOwner{Hotkey: event.Hotkey, OperatorNoID: event.NoID}] = index
+	}
+	owners := slices.Collect(maps.Keys(latest))
+	slices.SortFunc(owners, func(a, b ValidatorUploadOwner) int { return compareValidatorUploadOwners(a, b, admitted, stakes) })
+	indexes := make([]int, 0, len(owners))
+	for rank, owner := range owners {
+		if uint64(rank) < maximum {
+			indexes = append(indexes, latest[owner])
+		} else {
+			refused = append(refused, events[latest[owner]])
+		}
+	}
+	slices.Sort(indexes)
+	for _, index := range indexes {
+		kept = append(kept, events[index])
+	}
+	return kept, refused
+}
+
+// A transient read failure keeps the admitted set until the expiry that its own
+// last complete refresh published, so one slow or dropped RPC answer does not
+// refuse every validator. Integrity failures, refused authentication and every
+// other cause still clear it at once, as does reaching that expiry.
+func (self *ValidatorUploadAdmission) retainAfterTransientRefreshFailure(err error) bool {
+	if self == nil || !transientValidatorUploadRefreshError(err) {
+		return false
+	}
+	now := self.clock()
+	self.stateLock.Lock()
+	defer self.stateLock.Unlock()
+	if self.closed || self.ctx.Err() != nil || self.lastError != nil || self.validUntil.IsZero() || !now.Before(self.validUntil) || len(self.entries) == 0 {
+		return false
+	}
+	fmt.Fprintf(os.Stderr, "validator staging refresh failure is transient; keeping %d admitted activations until %s\n", len(self.entries), self.validUntil.UTC().Format(time.RFC3339))
+	return true
+}
+
+// Timeouts and transport loss, as production steering classifies a retryable
+// read, and the EVM node's own log-query timeout. Nothing else is transient.
+func transientValidatorUploadRefreshError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if retryableProductionSteeringRead(err) {
+		return true
+	}
+	var rpcError gethrpc.Error
+	return errors.As(err, &rpcError) && strings.HasPrefix(rpcError.Error(), "query timeout")
+}
+
 // One line per refresh: its outcome, duration, head ages and every candidate
 // activation that was not admitted, so neither a silently dropped activation
 // nor a state published past its window can hide behind a generic refusal.
 func printValidatorUploadRefreshReport(report validatorUploadRefreshReport) {
+	fmt.Fprintln(os.Stderr, validatorUploadRefreshReportLine(report))
+}
+
+// The refresh's one log line, with its phases.
+func validatorUploadRefreshReportLine(report validatorUploadRefreshReport) string {
 	digests := slices.SortedFunc(maps.Keys(report.activationFailures), func(a [32]byte, b [32]byte) int { return bytes.Compare(a[:], b[:]) })
 	causes := make([]string, 0, len(digests))
 	for _, digest := range digests {
@@ -771,10 +1158,13 @@ func printValidatorUploadRefreshReport(report validatorUploadRefreshReport) {
 	if report.err != nil {
 		outcome = "failed: " + report.err.Error()
 	}
-	line := fmt.Sprintf("validator staging refresh %s; took %s, EVM head age %s, native head age %s, %d ranges, %d events, %d admitted, %d retained, valid until %s; not admitted [%s]",
+	line := fmt.Sprintf("validator staging refresh %s; took %s, EVM head age %s, native head age %s, %d ranges (%d read), %d events, %d admitted, %d retained, valid until %s; "+
+		"phases: census %s, discovery %s with %d ranges kept, eligibility %s, runtime %s in %d authentications, %d reused, %d metadata fetches; not admitted [%s]",
 		outcome, report.finished.Sub(report.started).Round(time.Millisecond), report.evmHeadAge.Round(time.Millisecond), report.nativeHeadAge.Round(time.Millisecond),
-		report.ranges, report.events, report.admitted, report.retained, report.validUntil.UTC().Format(time.RFC3339), strings.Join(causes, "; "))
-	fmt.Fprintln(os.Stderr, strings.ReplaceAll(line, "\n", " | "))
+		report.ranges, report.rangeReads, report.events, report.admitted, report.retained, report.validUntil.UTC().Format(time.RFC3339),
+		report.censusTook.Round(time.Millisecond), report.discoveryTook.Round(time.Millisecond), report.rangesKept, report.eligibilityTook.Round(time.Millisecond),
+		report.runtime.Took.Round(time.Millisecond), report.runtime.Authenticated, report.runtime.Reused, report.runtime.MetadataFetches, strings.Join(causes, "; "))
+	return strings.ReplaceAll(line, "\n", " | ")
 }
 
 // A lease owns its joined cancellation hooks and at most one nonblocking
