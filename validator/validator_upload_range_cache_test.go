@@ -297,7 +297,9 @@ func TestValidatorUploadDiscoveryColdScanFailureCancelsTheRest(t *testing.T) {
 
 // A kept row's block is rechecked against the canonical chain on every
 // refresh, though its range is not read again. When the canonical hash at
-// that block changes, the refresh fails rather than admit from the kept row.
+// that block changes, the refresh fails rather than admit from the kept row,
+// and every kept range is dropped: once the node answers consistently again,
+// the next refresh reads every range afresh, as before the cache.
 func TestValidatorUploadDiscoveryRechecksKeptRows(t *testing.T) {
 	t.Parallel()
 	fixture := newValidatorUploadAuthorityTestFixture(t)
@@ -320,6 +322,18 @@ func TestValidatorUploadDiscoveryRechecksKeptRows(t *testing.T) {
 	}
 	if got := validatorUploadRangeCacheTestRanges(validatorUploadRangeCacheTestQueries(fixture)); !slices.Equal(got, [][2]uint64{{1181, 1200}}) {
 		t.Fatalf("the recheck, not a fresh read, must catch the change: %v", got)
+	}
+	if len(owner.closedRanges) != 0 || owner.closedRangeRows != 0 {
+		t.Fatalf("a changed canonical hash left %d ranges kept", len(owner.closedRanges))
+	}
+	fixture.logLock.Lock()
+	fixture.canonicalRewrites = nil
+	fixture.logLock.Unlock()
+	if got := validatorUploadRangeCacheTestRanges(validatorUploadRangeCacheTestRefresh(t, fixture, owner)); !slices.Equal(got, append(slices.Clone(validatorUploadRangeCacheTestClosed), [2]uint64{1181, 1200})) {
+		t.Fatalf("after the change, a refresh did not read every range afresh: %v", got)
+	}
+	if err := validatorUploadDiscoveryTestBegin(t, fixture, owner, fixture.authority.Expected, fixture.now); err != nil {
+		t.Fatalf("the lane did not recover: %v", err)
 	}
 }
 
@@ -386,8 +400,9 @@ func TestValidatorUploadDiscoveryMergeKeepsReadChecks(t *testing.T) {
 		"same log twice":         {event(3, 1005, 0, 5)},
 		"two hashes for a block": {event(3, 1005, 2, 6)},
 	} {
-		if _, err := mergeValidatorUploadRangeEvents([]ValidatorUploadActivationEvent{event(1, 1005, 0, 5)}, rows); err == nil {
-			t.Errorf("%s was merged", name)
+		_, err := mergeValidatorUploadRangeEvents([]ValidatorUploadActivationEvent{event(1, 1005, 0, 5)}, rows)
+		if err == nil || errors.Is(err, errValidatorUploadCanonicalChanged) != (name == "two hashes for a block") {
+			t.Errorf("%s: %v", name, err)
 		}
 	}
 }

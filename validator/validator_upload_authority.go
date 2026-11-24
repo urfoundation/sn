@@ -214,6 +214,9 @@ type ValidatorUploadActivationEvent struct {
 	Index     uint64
 }
 
+// A numbered block no longer has the hash that a staging read recorded.
+var errValidatorUploadCanonicalChanged = errors.New("validator staging canonical EVM boundary changed")
+
 // Hash-to-number caching authenticates identity, not continued canonicality.
 // These staging boundaries always consult the actual numbered RPC header.
 func (self *ChainClient) recheckValidatorUploadBlockContext(ctx context.Context, block uint64, expected [32]byte) error {
@@ -222,7 +225,7 @@ func (self *ChainClient) recheckValidatorUploadBlockContext(ctx context.Context,
 		return err
 	}
 	if actual != expected {
-		return errors.New("validator staging canonical EVM boundary changed")
+		return errValidatorUploadCanonicalChanged
 	}
 	return ctx.Err()
 }

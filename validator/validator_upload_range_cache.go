@@ -80,7 +80,17 @@ type validatorUploadRangeRead struct {
 // backfills of newly permitted hotkeys are read one at a time. Every row of a
 // block that this refresh did not read is rechecked against the canonical
 // block hash.
-func (self *ValidatorUploadAdmission) discoverValidatorUploadRanges(ctx context.Context, ranges []validatorUploadRange, hotkeys [][32]byte, observer ValidatorUploadObserver) ([][]ValidatorUploadActivationEvent, int, error) {
+//
+// A changed canonical hash discredits every kept range, not only the one
+// that showed it: they are all dropped, so the next refresh scans cold, as a
+// new process does, and reads the chain as it is now.
+func (self *ValidatorUploadAdmission) discoverValidatorUploadRanges(ctx context.Context, ranges []validatorUploadRange, hotkeys [][32]byte, observer ValidatorUploadObserver) (_ [][]ValidatorUploadActivationEvent, _ int, resultErr error) {
+	defer func() {
+		if errors.Is(resultErr, errValidatorUploadCanonicalChanged) {
+			clear(self.closedRanges)
+			self.closedRangeRows = 0
+		}
+	}()
 	result := make([][]ValidatorUploadActivationEvent, len(ranges))
 	// An empty census reads nothing.
 	if len(hotkeys) == 0 {
@@ -195,7 +205,7 @@ func (self *ValidatorUploadAdmission) discoverValidatorUploadRanges(ctx context.
 				checked[event.Block], hash = event.BlockHash, event.BlockHash
 			}
 			if hash != event.BlockHash {
-				return nil, 0, errors.New("validator staging canonical EVM boundary changed")
+				return nil, 0, errValidatorUploadCanonicalChanged
 			}
 		}
 	}
@@ -203,7 +213,8 @@ func (self *ValidatorUploadAdmission) discoverValidatorUploadRanges(ctx context.
 }
 
 // The kept rows of a range and a backfill's rows are of different hotkeys.
-// Their union passes the checks that one read of the range makes.
+// Their union passes the checks that one read of the range makes. Two hashes
+// for one block mean the chain changed under the kept rows.
 func mergeValidatorUploadRangeEvents(prior, rows []ValidatorUploadActivationEvent) ([]ValidatorUploadActivationEvent, error) {
 	events := make([]ValidatorUploadActivationEvent, 0, len(prior)+len(rows))
 	events = append(append(events, prior...), rows...)
@@ -222,7 +233,13 @@ func mergeValidatorUploadRangeEvents(prior, rows []ValidatorUploadActivationEven
 			return nil, errors.New("validator staging event digest is duplicated")
 		}
 		digests[event.Digest] = true
-		if index != 0 && event.Block == events[index-1].Block && (event.Index == events[index-1].Index || event.BlockHash != events[index-1].BlockHash) {
+		if index == 0 || event.Block != events[index-1].Block {
+			continue
+		}
+		if event.BlockHash != events[index-1].BlockHash {
+			return nil, errValidatorUploadCanonicalChanged
+		}
+		if event.Index == events[index-1].Index {
 			return nil, errors.New("validator staging events are not a strict canonical order")
 		}
 	}
