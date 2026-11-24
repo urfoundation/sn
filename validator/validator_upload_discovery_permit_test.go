@@ -132,6 +132,7 @@ func TestValidatorUploadAdmissionSelfKeyedActivationsCannotFillARange(t *testing
 func TestValidatorUploadAdmissionOwnerOverflowRefusesOnlyTheNewcomer(t *testing.T) {
 	t.Parallel()
 	fixture := newValidatorUploadAuthorityTestFixture(t)
+	fixture.keepDiscoveryRangeOpen()
 	if fixture.config().MaximumOwners != 4 {
 		t.Fatal("fixture owner bound changed")
 	}
@@ -169,6 +170,7 @@ func TestValidatorUploadAdmissionOwnerOverflowRefusesOnlyTheNewcomer(t *testing.
 func TestValidatorUploadAdmissionReleasesIdleSlotsOfRetiredOwners(t *testing.T) {
 	t.Parallel()
 	fixture := newValidatorUploadAuthorityTestFixture(t)
+	fixture.keepDiscoveryRangeOpen()
 	for _, noID := range []uint64{3, 4, 5} {
 		fixture.publishOperator(t, noID, 1000+noID)
 	}

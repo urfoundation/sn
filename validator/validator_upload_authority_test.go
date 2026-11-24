@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -52,8 +53,20 @@ type validatorUploadAuthorityTestFixture struct {
 	// Operator IDs besides the expected record's that the coordinator lists as
 	// active at its epoch, so one permitted hotkey can be several owners.
 	extraOperators map[uint64]bool
-	// The hotkey OR-lists of the activation queries, in call order.
+	// The hotkey OR-lists and block ranges of the activation queries, in
+	// call order, under logLock: a cold scan queries concurrently.
+	logLock    sync.Mutex
 	logHotkeys [][]common.Hash
+	logRanges  [][2]uint64
+	// Called for each activation query before it answers; an error fails it.
+	logGate func(ctx context.Context, from, to uint64) error
+	// Numbered block reads, and canonical hashes that replace an event
+	// block's, under logLock.
+	blockReads        map[uint64]int
+	canonicalRewrites map[uint64]common.Hash
+	// When set, the subnet owner's hotkey at the current native hash; the
+	// permit census includes it.
+	subnetOwnerHotkey [32]byte
 	// Native storage round trips for the permit census: batches, and single
 	// reads of a census entry made outside a batch.
 	censusBatches atomic.Int64
@@ -107,6 +120,10 @@ func newValidatorUploadAuthorityTestFixture(t *testing.T) *validatorUploadAuthor
 		t.Fatal(err)
 	}
 	uidsKey, err := types.CreateStorageKey(metadata, "SubtensorModule", "Uids", binary.LittleEndian.AppendUint16(nil, 521), base.authority.Expected.Hotkey[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownerKey, err := types.CreateStorageKey(metadata, "SubtensorModule", "SubnetOwnerHotkey", binary.LittleEndian.AppendUint16(nil, 521))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -204,6 +221,19 @@ func newValidatorUploadAuthorityTestFixture(t *testing.T) *validatorUploadAuthor
 			if args[0] == epochKey.Hex() {
 				return setValidatorRuntimeIdentityTestResult(result, "0x"+hex.EncodeToString(binary.LittleEndian.AppendUint64(nil, 77)))
 			}
+			if self.subnetOwnerHotkey != ([32]byte{}) {
+				if args[0] == ownerKey.Hex() && args[1] == self.currentHash.Hex() {
+					return setValidatorRuntimeIdentityTestResult(result, "0x"+hex.EncodeToString(self.subnetOwnerHotkey[:]))
+				}
+				// The owner's hotkey holds no UID on the subnet.
+				ownerUIDKey, err := types.CreateStorageKey(metadata, "SubtensorModule", "Uids", binary.LittleEndian.AppendUint16(nil, 521), self.subnetOwnerHotkey[:])
+				if err != nil {
+					return err
+				}
+				if args[0] == ownerUIDKey.Hex() {
+					return setValidatorRuntimeIdentityTestResult(result, nil)
+				}
+			}
 		}
 		args = append([]any(nil), args...)
 		current := false
@@ -234,6 +264,15 @@ func newValidatorUploadAuthorityTestFixture(t *testing.T) *validatorUploadAuthor
 	}
 	t.Cleanup(self.chain.Close)
 	return self
+}
+
+// Some admission tests publish or hide activations after a refresh, in blocks
+// that refresh already read as finalized, which a finalized chain cannot do.
+// With the head inside the fixture's one discovery range, the range stays
+// open and every refresh reads it again, as every refresh did before closed
+// ranges were kept.
+func (self *validatorUploadAuthorityTestFixture) keepDiscoveryRangeOpen() {
+	self.block = 1199
 }
 
 // Each fixture publication first verifies genuine independently held consent
@@ -311,6 +350,15 @@ func (self *validatorUploadAuthorityTestFixture) GetBlockByNumber(ctx context.Co
 				hash = common.Hash(event.BlockHash)
 			}
 		}
+		self.logLock.Lock()
+		if self.blockReads == nil {
+			self.blockReads = make(map[uint64]int)
+		}
+		self.blockReads[number]++
+		if rewritten, ok := self.canonicalRewrites[number]; ok {
+			hash = rewritten
+		}
+		self.logLock.Unlock()
 		if block < 0 || hash == (common.Hash{}) {
 			return nil, errors.New("staging fixture has no such canonical numbered block")
 		}
@@ -412,7 +460,15 @@ func (self *validatorUploadAuthorityTestFixture) GetLogs(ctx context.Context, fi
 		if string(topics[1]) != "null" || json.Unmarshal(topics[2], &list) != nil || len(list) == 0 {
 			return nil, errors.New("fixture event filter topics are malformed")
 		}
+		self.logLock.Lock()
 		self.logHotkeys = append(self.logHotkeys, list)
+		self.logRanges = append(self.logRanges, [2]uint64{uint64(from), uint64(to)})
+		self.logLock.Unlock()
+		if self.logGate != nil {
+			if err := self.logGate(ctx, uint64(from), uint64(to)); err != nil {
+				return nil, err
+			}
+		}
 		hotkeys = make(map[common.Hash]bool, len(list))
 		for _, hotkey := range list {
 			hotkeys[hotkey] = true
