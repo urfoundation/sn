@@ -200,7 +200,7 @@ func TestRuntime494SourceSubmissionSignsTransactionVersion2(t *testing.T) {
 			t.Fatal("a transaction-version-1 signature verified as a runtime494 submission")
 		}
 		sign(2)
-		for _, relabel := range []struct{ spec, transaction uint32 }{{494, 1}, {494, 3}, {495, 2}, {493, 2}} {
+		for _, relabel := range []struct{ spec, transaction uint32 }{{494, 1}, {494, 3}, {496, 2}, {493, 2}} {
 			changed := *prepared
 			source := *prepared.SourceCommitment
 			source.RuntimeSpec, source.TransactionVersion = relabel.spec, relabel.transaction
@@ -218,7 +218,7 @@ func TestRuntime494SourceEncodingAdmitsOnlyTheReviewedTransactionVersion(t *test
 	for _, test := range []struct {
 		spec, transaction uint32
 		ok                bool
-	}{{494, 2, true}, {494, 1, true}, {467, 1, true}, {494, 3, false}, {495, 2, false}, {493, 2, false}, {0, 1, false}} {
+	}{{494, 2, true}, {494, 1, true}, {467, 1, true}, {494, 3, false}, {496, 2, false}, {493, 2, false}, {0, 1, false}} {
 		prepared, _ := sourcePreparedTest(t)
 		prepared.SourceCommitment.RuntimeSpec, prepared.SourceCommitment.TransactionVersion = test.spec, test.transaction
 		if _, _, _, err := preparedSourceEncoding(prepared); (err == nil) != test.ok {
@@ -239,7 +239,7 @@ func TestRuntime494IsAnAdmittedSuccessorAtTransactionVersion2(t *testing.T) {
 		want    string
 	}{
 		{name: "runtime494", version: runtime494TestIdentity},
-		{name: "spec495", version: RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 495, TransactionVersion: 2, StateVersion: 1}, want: "not a successor"},
+		{name: "spec496", version: RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 496, TransactionVersion: 2, StateVersion: 1}, want: "not a successor"},
 		{name: "transaction3", version: RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 494, TransactionVersion: 3, StateVersion: 1}, want: "not a successor"},
 		{name: "state2", version: RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 494, TransactionVersion: 2, StateVersion: 2}, want: "not a successor"},
 	} {
@@ -286,7 +286,7 @@ func TestRuntime494StakeReadAdmitsOnlyTheReviewedTransactionVersion(t *testing.T
 		ok      bool
 	}{
 		{version: runtime494TestIdentity, ok: true},
-		{version: RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 495, TransactionVersion: 2, StateVersion: 1}},
+		{version: RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 496, TransactionVersion: 2, StateVersion: 1}},
 		{version: RuntimeVersionIdentity{SpecName: "node-subtensor", SpecVersion: 494, TransactionVersion: 3, StateVersion: 1}},
 	} {
 		fixture := newValidatorStakeCapabilityTestFixture(t)
