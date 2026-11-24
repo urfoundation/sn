@@ -15,6 +15,9 @@ import (
 	"fmt"
 	"math/big"
 	"net/http/httptest"
+	"slices"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -47,7 +50,31 @@ type validatorUploadAuthorityTestFixture struct {
 	logCalls                   atomic.Uint64
 	activationReads            atomic.Uint64
 	absentActivationReads      atomic.Uint64
+	// Operator IDs besides the expected record's that the coordinator lists as
+	// active at its epoch, so one permitted hotkey can be several owners.
+	extraOperators map[uint64]bool
+	// The hotkey OR-lists and block ranges of the activation queries, in
+	// call order, under logLock: a cold scan queries concurrently.
+	logLock    sync.Mutex
+	logHotkeys [][]common.Hash
+	logRanges  [][2]uint64
+	// Called for each activation query before it answers; an error fails it.
+	logGate func(ctx context.Context, from, to uint64) error
+	// Numbered block reads, and canonical hashes that replace an event
+	// block's, under logLock.
+	blockReads        map[uint64]int
+	canonicalRewrites map[uint64]common.Hash
+	// When set, the subnet owner's hotkey at the current native hash; the
+	// permit census includes it.
+	subnetOwnerHotkey [32]byte
+	// Native storage round trips for the permit census: batches, and single
+	// reads of a census entry made outside a batch.
+	censusBatches atomic.Int64
+	censusReads   atomic.Int64
 }
+
+// A batch answers each key through the fixture's own single reads.
+type validatorUploadFixtureBatchKey struct{}
 
 // Both native clocks are real fixed SCALE responses. Current permit can
 // differ from historical permit without modifying either query's identity.
@@ -96,10 +123,67 @@ func newValidatorUploadAuthorityTestFixture(t *testing.T) *validatorUploadAuthor
 	if err != nil {
 		t.Fatal(err)
 	}
-	base.native.chain.API.Client = &validatorRuntimeIdentityTestClient{callContext: func(ctx context.Context, result any, method string, args ...any) error {
+	ownerKey, err := types.CreateStorageKey(metadata, "SubtensorModule", "SubnetOwnerHotkey", binary.LittleEndian.AppendUint16(nil, 521))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The census entries' storage prefixes, and the permitted UID's Keys entry.
+	var censusPrefixes []string
+	for _, name := range []string{"SubnetworkN", "ValidatorPermit", "SubnetOwnerHotkey"} {
+		key, err := types.CreateStorageKey(metadata, "SubtensorModule", name, binary.LittleEndian.AppendUint16(nil, 521))
+		if err != nil {
+			t.Fatal(err)
+		}
+		censusPrefixes = append(censusPrefixes, key.Hex()[:66])
+	}
+	permittedKey, err := types.CreateStorageKey(metadata, "SubtensorModule", "Keys", binary.LittleEndian.AppendUint16(nil, 521), binary.LittleEndian.AppendUint16(nil, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	censusPrefixes = append(censusPrefixes, permittedKey.Hex()[:66])
+	var hook func(ctx context.Context, result any, method string, args ...any) error
+	hook = func(ctx context.Context, result any, method string, args ...any) error {
 		base.native.ctx = ctx
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		// As a node answers state_queryStorageAt at one hash: one change set,
+		// every key with its value or null, each read as state_getStorage.
+		if method == "state_queryStorageAt" && len(args) == 2 {
+			self.censusBatches.Add(1)
+			keys, _ := args[0].([]string)
+			at, _ := args[1].(string)
+			if self.fault == "census-batch-unavailable" {
+				return errors.New("fixture storage batch is unavailable")
+			}
+			changes := make([][]any, 0, len(keys))
+			for _, key := range keys {
+				raw := json.RawMessage("null")
+				if err := hook(context.WithValue(ctx, validatorUploadFixtureBatchKey{}, true), &raw, "state_getStorage", key, at); err != nil {
+					return err
+				}
+				changes = append(changes, []any{key, raw})
+			}
+			if self.fault == "census-batch-partial" && len(changes) != 0 {
+				changes = changes[:len(changes)-1]
+			}
+			block := at
+			if self.fault == "census-batch-foreign-block" {
+				block = types.Hash{0x66}.Hex()
+			}
+			encoded, err := json.Marshal([]map[string]any{{"block": block, "changes": changes}})
+			if err != nil {
+				return err
+			}
+			return json.Unmarshal(encoded, result)
+		}
+		if method == "state_getStorage" && len(args) == 2 && ctx.Value(validatorUploadFixtureBatchKey{}) == nil {
+			if key, ok := args[0].(string); ok && slices.ContainsFunc(censusPrefixes, func(prefix string) bool { return strings.HasPrefix(key, prefix) }) {
+				self.censusReads.Add(1)
+			}
+		}
+		if self.fault == "census-keys-absent" && method == "state_getStorage" && len(args) == 2 && args[0] == permittedKey.Hex() && args[1] == self.currentHash.Hex() {
+			return setValidatorRuntimeIdentityTestResult(result, nil)
 		}
 		if method == "chain_getFinalizedHead" {
 			return setValidatorRuntimeIdentityTestResult(result, self.currentHash.Hex())
@@ -137,6 +221,19 @@ func newValidatorUploadAuthorityTestFixture(t *testing.T) *validatorUploadAuthor
 			if args[0] == epochKey.Hex() {
 				return setValidatorRuntimeIdentityTestResult(result, "0x"+hex.EncodeToString(binary.LittleEndian.AppendUint64(nil, 77)))
 			}
+			if self.subnetOwnerHotkey != ([32]byte{}) {
+				if args[0] == ownerKey.Hex() && args[1] == self.currentHash.Hex() {
+					return setValidatorRuntimeIdentityTestResult(result, "0x"+hex.EncodeToString(self.subnetOwnerHotkey[:]))
+				}
+				// The owner's hotkey holds no UID on the subnet.
+				ownerUIDKey, err := types.CreateStorageKey(metadata, "SubtensorModule", "Uids", binary.LittleEndian.AppendUint16(nil, 521), self.subnetOwnerHotkey[:])
+				if err != nil {
+					return err
+				}
+				if args[0] == ownerUIDKey.Hex() {
+					return setValidatorRuntimeIdentityTestResult(result, nil)
+				}
+			}
 		}
 		args = append([]any(nil), args...)
 		current := false
@@ -152,7 +249,8 @@ func newValidatorUploadAuthorityTestFixture(t *testing.T) *validatorUploadAuthor
 		}
 		defer func() { base.native.permit = permit }()
 		return original.CallContext(ctx, result, method, args...)
-	}}
+	}
+	base.native.chain.API.Client = &validatorRuntimeIdentityTestClient{callContext: hook}
 	self.publish(t, base.authority.Expected, 1001, ed25519.NewKeyFromSeed(append([]byte{0x41}, make([]byte, 31)...)))
 	server := gethrpc.NewServer()
 	if err := server.RegisterName("eth", self); err != nil {
@@ -166,6 +264,15 @@ func newValidatorUploadAuthorityTestFixture(t *testing.T) *validatorUploadAuthor
 	}
 	t.Cleanup(self.chain.Close)
 	return self
+}
+
+// Some admission tests publish or hide activations after a refresh, in blocks
+// that refresh already read as finalized, which a finalized chain cannot do.
+// With the head inside the fixture's one discovery range, the range stays
+// open and every refresh reads it again, as every refresh did before closed
+// ranges were kept.
+func (self *validatorUploadAuthorityTestFixture) keepDiscoveryRangeOpen() {
+	self.block = 1199
 }
 
 // Each fixture publication first verifies genuine independently held consent
@@ -243,6 +350,15 @@ func (self *validatorUploadAuthorityTestFixture) GetBlockByNumber(ctx context.Co
 				hash = common.Hash(event.BlockHash)
 			}
 		}
+		self.logLock.Lock()
+		if self.blockReads == nil {
+			self.blockReads = make(map[uint64]int)
+		}
+		self.blockReads[number]++
+		if rewritten, ok := self.canonicalRewrites[number]; ok {
+			hash = rewritten
+		}
+		self.logLock.Unlock()
 		if block < 0 || hash == (common.Hash{}) {
 			return nil, errors.New("staging fixture has no such canonical numbered block")
 		}
@@ -272,6 +388,19 @@ func (self *validatorUploadAuthorityTestFixture) GetBlockByHash(ctx context.Cont
 func (self *validatorUploadAuthorityTestFixture) Call(ctx context.Context, call map[string]hexutil.Bytes, selector gethrpc.BlockNumberOrHash) (hexutil.Bytes, error) {
 	contract := stabi.NewSTValidatorEvidence()
 	input := call["input"]
+	coordinator := stabi.NewSTCoordinator()
+	epoch := new(big.Int).SetUint64(self.authority.Expected.Domain.Epoch)
+	for noID := range self.extraOperators {
+		if !bytes.Equal(input, coordinator.PackOperatorAt(new(big.Int).SetUint64(noID), epoch)) || common.BytesToAddress(call["to"]) != common.Address(self.authority.Expected.Domain.Coordinator) {
+			continue
+		}
+		parsed, err := stabi.STCoordinatorMetaData.ParseABI()
+		if err != nil {
+			return nil, err
+		}
+		encoded, err := parsed.Methods["operatorAt"].Outputs.Pack(stabi.STCoordinatorOperatorVersion{Active: true, EffectiveEpoch: self.authority.Expected.Domain.Epoch})
+		return encoded, errors.Join(err, ctx.Err())
+	}
 	if len(input) == 36 && bytes.Equal(input[:4], contract.PackActivation([32]byte{})[:4]) && common.BytesToAddress(call["to"]) == self.authority.Journal {
 		self.activationReads.Add(1)
 		if selector.BlockHash == nil || *selector.BlockHash != common.Hash(self.blockHash) || !selector.RequireCanonical || selector.BlockNumber != nil {
@@ -312,13 +441,43 @@ func (self *validatorUploadAuthorityTestFixture) GetLogs(ctx context.Context, fi
 	}
 	var address common.Address
 	var from, to hexutil.Uint64
-	var topics []common.Hash
+	var topics []json.RawMessage
 	if err := errors.Join(json.Unmarshal(filter["address"], &address), json.Unmarshal(filter["fromBlock"], &from), json.Unmarshal(filter["toBlock"], &to), json.Unmarshal(filter["topics"], &topics)); err != nil {
 		return nil, err
 	}
 	topic := crypto.Keccak256Hash([]byte("ActivationPublished(bytes32,bytes32,uint64,uint64)"))
-	if address != self.authority.Journal || len(topics) != 1 || topics[0] != topic || from > to {
+	var first common.Hash
+	if len(topics) == 0 || json.Unmarshal(topics[0], &first) != nil || address != self.authority.Journal || first != topic || from > to {
 		return nil, errors.New("fixture event filter differs from independent deployment")
+	}
+	// As a node does: the third topic is an OR-list of hotkeys, the second
+	// any digest. A filter without it reads every hotkey's activation.
+	var hotkeys map[common.Hash]bool
+	switch len(topics) {
+	case 1:
+	case 3:
+		var list []common.Hash
+		if string(topics[1]) != "null" || json.Unmarshal(topics[2], &list) != nil || len(list) == 0 {
+			return nil, errors.New("fixture event filter topics are malformed")
+		}
+		self.logLock.Lock()
+		self.logHotkeys = append(self.logHotkeys, list)
+		self.logRanges = append(self.logRanges, [2]uint64{uint64(from), uint64(to)})
+		self.logLock.Unlock()
+		if self.logGate != nil {
+			if err := self.logGate(ctx, uint64(from), uint64(to)); err != nil {
+				return nil, err
+			}
+		}
+		hotkeys = make(map[common.Hash]bool, len(list))
+		for _, hotkey := range list {
+			hotkeys[hotkey] = true
+		}
+	default:
+		return nil, errors.New("fixture event filter topics are malformed")
+	}
+	if self.fault == "unfiltered-node" {
+		hotkeys = nil
 	}
 	if self.fault == "null-events" {
 		return nil, nil
@@ -329,7 +488,7 @@ func (self *validatorUploadAuthorityTestFixture) GetLogs(ctx context.Context, fi
 		return rows, ctx.Err()
 	}
 	for _, event := range self.events {
-		if event.Block < uint64(from) || event.Block > uint64(to) {
+		if event.Block < uint64(from) || event.Block > uint64(to) || hotkeys != nil && !hotkeys[common.Hash(event.Hotkey)] {
 			continue
 		}
 		epoch := common.BigToHash(new(big.Int).SetUint64(event.Epoch))
@@ -361,7 +520,7 @@ func TestValidatorUploadAuthorityDiscoversAndAuthenticatesRealAnchor(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	events, err := fixture.chain.ValidatorUploadActivationEventsContext(t.Context(), fixture.deployment(), 1001, 1200, 200, 8, observer)
+	events, err := fixture.chain.ValidatorUploadActivationEventsContext(t.Context(), fixture.deployment(), 1001, 1200, 200, 8, [][32]byte{fixture.authority.Expected.Hotkey}, observer)
 	if err != nil || len(events) != 1 {
 		t.Fatalf("real finalized event discovery: %v", err)
 	}
@@ -399,7 +558,7 @@ func TestValidatorUploadAuthorityRejectsMalformedDiscoveryAndRecords(t *testing.
 			}
 			continue
 		}
-		got, err := fixture.chain.ValidatorUploadActivationEventsContext(t.Context(), fixture.deployment(), 1001, 1200, 200, 8, observer)
+		got, err := fixture.chain.ValidatorUploadActivationEventsContext(t.Context(), fixture.deployment(), 1001, 1200, 200, 8, [][32]byte{fixture.authority.Expected.Hotkey}, observer)
 		if err == nil || got != nil {
 			t.Fatalf("%s event escaped: %v / %v", fault, got, err)
 		}
@@ -464,7 +623,7 @@ func TestValidatorUploadAuthorityBoundsAndPreCancellationPrecedeRPC(t *testing.T
 			ctx = nil
 		}
 		before := fixture.calls.Load()
-		result, err := fixture.chain.ValidatorUploadActivationEventsContext(ctx, fixture.deployment(), from, to, blocks, events, observer)
+		result, err := fixture.chain.ValidatorUploadActivationEventsContext(ctx, fixture.deployment(), from, to, blocks, events, [][32]byte{fixture.authority.Expected.Hotkey}, observer)
 		if err == nil || result != nil || fixture.calls.Load() != before {
 			t.Fatalf("%s bad bounds reached RPC: %v / %v", fault, result, err)
 		}

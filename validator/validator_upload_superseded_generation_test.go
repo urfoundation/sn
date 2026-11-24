@@ -24,6 +24,7 @@ func TestValidatorUploadAdmissionSuccessorReadFailureCannotKeepPriorGeneration(t
 		{block: 1001, currentFault: "current-schedule-unavailable"},
 	} {
 		fixture := newValidatorUploadAuthorityTestFixture(t)
+		fixture.keepDiscoveryRangeOpen()
 		owner, reports := validatorUploadSilentDropTestState(t, fixture)
 		start := fixture.now
 		if err := owner.refresh(t.Context(), start); err != nil {
