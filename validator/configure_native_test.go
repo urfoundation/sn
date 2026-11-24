@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -175,5 +176,33 @@ func TestConfigureNativeAdmitsSuccessorOnlyWithOptIn(t *testing.T) {
 		if !strings.Contains(log.String(), "admitted runtime node-subtensor/475") || !strings.Contains(log.String(), "successor of approved 473") {
 			t.Fatalf("setup admitted a successor silently: %q", log.String())
 		}
+	}
+}
+
+// The bundled defaults are public terms only: public endpoints, and no
+// private host, address, path or key material of any existing validator.
+func TestBundledMainnetProfileNamesNothingPrivate(t *testing.T) {
+	profile, err := readReleaseMainnetProfile()
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := strings.ToLower(string(releaseMainnetProfileBytes))
+	for _, private := range []*regexp.Regexp{
+		regexp.MustCompile(`\b127\.\d+\.\d+\.\d+\b|\blocalhost\b`),
+		regexp.MustCompile(`\b10\.\d+\.\d+\.\d+\b|\b172\.(1[6-9]|2\d|3[01])\.\d+\.\d+\b|\b192\.168\.\d+\.\d+\b`),
+		regexp.MustCompile(`"/(srv|etc|home|users|var|root)/`),
+		regexp.MustCompile(`\.(seed|key|jwt)"`),
+	} {
+		if match := private.FindString(text); match != "" {
+			t.Errorf("bundled profile contains %q", match)
+		}
+	}
+	for _, endpoint := range append(append([]string{}, profile.Config.RPC...), profile.Config.Substrate...) {
+		if !strings.HasPrefix(endpoint, "https://") && !strings.HasPrefix(endpoint, "wss://") {
+			t.Errorf("bundled endpoint %q is not a public TLS endpoint", endpoint)
+		}
+	}
+	if profile.Config.HotkeySeedFile != "" || profile.Config.StateDir != "" || profile.Config.ValidatorID != 0 || profile.Config.TreasuryApproval != nil {
+		t.Fatal("bundled profile carries a validator's own identity or paths")
 	}
 }
