@@ -150,12 +150,18 @@ type validatorUploadAdmissionEntry struct {
 // One completed or failed refresh, reported once by the owned loop. Counts
 // and causes are copies; the report retains no admission state.
 type validatorUploadRefreshReport struct {
-	started            time.Time
-	finished           time.Time
-	evmHeadAge         time.Duration
-	nativeHeadAge      time.Duration
-	ranges             uint64
-	events             uint64
+	started       time.Time
+	finished      time.Time
+	evmHeadAge    time.Duration
+	nativeHeadAge time.Duration
+	ranges        uint64
+	events        uint64
+	// Time in each phase. Runtime authentication happens inside the census
+	// and the eligibility reads, once per block hash and allowlist.
+	censusTook         time.Duration
+	discoveryTook      time.Duration
+	eligibilityTook    time.Duration
+	runtime            crv4.RuntimeArtifactMemoStats
 	admitted           int
 	retained           int
 	validUntil         time.Time
@@ -482,8 +488,11 @@ func (self *ValidatorUploadAdmission) invalidate(err error) {
 // publishes nothing and fails with the measured cause.
 func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time) (resultErr error) {
 	report := validatorUploadRefreshReport{started: now}
+	// The census and every eligibility read authenticate the runtime at the
+	// same current hash; it is read once per refresh.
+	ctx, memo := crv4.WithRuntimeArtifactMemo(ctx)
 	defer func() {
-		report.finished, report.err = self.clock(), resultErr
+		report.finished, report.err, report.runtime = self.clock(), resultErr, memo.Stats()
 		if self.refreshReport != nil {
 			self.refreshReport(report)
 		}
@@ -531,7 +540,9 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 	// Seeded testnet discovery reads no events, so it needs no census.
 	permitted := validatorUploadPermitCensus{stakes: map[[32]byte]uint64{}}
 	if !self.config.ProvisionalSeededDiscoveryOnly {
+		censusStarted := time.Now()
 		census, err := self.readValidatorUploadPermitCensus(ctx, nativeObserver, currentRuntime)
+		report.censusTook = time.Since(censusStarted)
 		if ctxErr := errors.Join(ctx.Err(), self.ctx.Err()); ctxErr != nil {
 			return errors.Join(err, ctxErr)
 		}
@@ -583,6 +594,8 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 			return nil
 		}
 		seen[digest] = true
+		eligibilityStarted := time.Now()
+		defer func() { report.eligibilityTook += time.Since(eligibilityStarted) }()
 		verified, err := self.authenticateRefreshCandidate(ctx, digest, observer, nativeObserver)
 		if err != nil {
 			self.recordActivationFailure(digest, fmt.Errorf("historical activation authentication: %w", err))
@@ -651,7 +664,9 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 		if observer.Number-start >= self.config.BlocksPerRange {
 			end = start + self.config.BlocksPerRange - 1
 		}
+		discoveryStarted := time.Now()
 		events, err := self.chain.ValidatorUploadActivationEventsContext(ctx, self.config.Deployment, start, end, self.config.BlocksPerRange, maximumValidatorUploadRangeRows, permitted.hotkeys, observer)
+		report.discoveryTook += time.Since(discoveryStarted)
 		if err != nil {
 			return err
 		}
@@ -1122,6 +1137,11 @@ func transientValidatorUploadRefreshError(err error) bool {
 // activation that was not admitted, so neither a silently dropped activation
 // nor a state published past its window can hide behind a generic refusal.
 func printValidatorUploadRefreshReport(report validatorUploadRefreshReport) {
+	fmt.Fprintln(os.Stderr, validatorUploadRefreshReportLine(report))
+}
+
+// The refresh's one log line, with its phases.
+func validatorUploadRefreshReportLine(report validatorUploadRefreshReport) string {
 	digests := slices.SortedFunc(maps.Keys(report.activationFailures), func(a [32]byte, b [32]byte) int { return bytes.Compare(a[:], b[:]) })
 	causes := make([]string, 0, len(digests))
 	for _, digest := range digests {
@@ -1131,10 +1151,13 @@ func printValidatorUploadRefreshReport(report validatorUploadRefreshReport) {
 	if report.err != nil {
 		outcome = "failed: " + report.err.Error()
 	}
-	line := fmt.Sprintf("validator staging refresh %s; took %s, EVM head age %s, native head age %s, %d ranges, %d events, %d admitted, %d retained, valid until %s; not admitted [%s]",
+	line := fmt.Sprintf("validator staging refresh %s; took %s, EVM head age %s, native head age %s, %d ranges, %d events, %d admitted, %d retained, valid until %s; "+
+		"phases: census %s, discovery %s, eligibility %s, runtime %s in %d authentications, %d reused, %d metadata fetches; not admitted [%s]",
 		outcome, report.finished.Sub(report.started).Round(time.Millisecond), report.evmHeadAge.Round(time.Millisecond), report.nativeHeadAge.Round(time.Millisecond),
-		report.ranges, report.events, report.admitted, report.retained, report.validUntil.UTC().Format(time.RFC3339), strings.Join(causes, "; "))
-	fmt.Fprintln(os.Stderr, strings.ReplaceAll(line, "\n", " | "))
+		report.ranges, report.events, report.admitted, report.retained, report.validUntil.UTC().Format(time.RFC3339),
+		report.censusTook.Round(time.Millisecond), report.discoveryTook.Round(time.Millisecond), report.eligibilityTook.Round(time.Millisecond),
+		report.runtime.Took.Round(time.Millisecond), report.runtime.Authenticated, report.runtime.Reused, report.runtime.MetadataFetches, strings.Join(causes, "; "))
+	return strings.ReplaceAll(line, "\n", " | ")
 }
 
 // A lease owns its joined cancellation hooks and at most one nonblocking
