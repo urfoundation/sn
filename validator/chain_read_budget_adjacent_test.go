@@ -158,7 +158,7 @@ func TestChainReadBudgetRecoversUploadObserverAndEvents(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		events, err := chain.ValidatorUploadActivationEventsContext(t.Context(), fixture.deployment(), 1001, 1200, 200, 8, observer)
+		events, err := chain.ValidatorUploadActivationEventsContext(t.Context(), fixture.deployment(), 1001, 1200, 200, 8, [][32]byte{fixture.authority.Expected.Hotkey}, observer)
 		if err != nil || len(events) != 1 || attempts != 2 || events[0].Digest != fixture.events[0].Digest {
 			t.Fatalf("%s discovery did not recover: attempts=%d events=%v error=%v", method, attempts, events, err)
 		}

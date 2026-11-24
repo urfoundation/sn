@@ -47,6 +47,11 @@ type validatorUploadAuthorityTestFixture struct {
 	logCalls                   atomic.Uint64
 	activationReads            atomic.Uint64
 	absentActivationReads      atomic.Uint64
+	// Operator IDs besides the expected record's that the coordinator lists as
+	// active at its epoch, so one permitted hotkey can be several owners.
+	extraOperators map[uint64]bool
+	// The hotkey OR-lists of the activation queries, in call order.
+	logHotkeys [][]common.Hash
 }
 
 // Both native clocks are real fixed SCALE responses. Current permit can
@@ -272,6 +277,19 @@ func (self *validatorUploadAuthorityTestFixture) GetBlockByHash(ctx context.Cont
 func (self *validatorUploadAuthorityTestFixture) Call(ctx context.Context, call map[string]hexutil.Bytes, selector gethrpc.BlockNumberOrHash) (hexutil.Bytes, error) {
 	contract := stabi.NewSTValidatorEvidence()
 	input := call["input"]
+	coordinator := stabi.NewSTCoordinator()
+	epoch := new(big.Int).SetUint64(self.authority.Expected.Domain.Epoch)
+	for noID := range self.extraOperators {
+		if !bytes.Equal(input, coordinator.PackOperatorAt(new(big.Int).SetUint64(noID), epoch)) || common.BytesToAddress(call["to"]) != common.Address(self.authority.Expected.Domain.Coordinator) {
+			continue
+		}
+		parsed, err := stabi.STCoordinatorMetaData.ParseABI()
+		if err != nil {
+			return nil, err
+		}
+		encoded, err := parsed.Methods["operatorAt"].Outputs.Pack(stabi.STCoordinatorOperatorVersion{Active: true, EffectiveEpoch: self.authority.Expected.Domain.Epoch})
+		return encoded, errors.Join(err, ctx.Err())
+	}
 	if len(input) == 36 && bytes.Equal(input[:4], contract.PackActivation([32]byte{})[:4]) && common.BytesToAddress(call["to"]) == self.authority.Journal {
 		self.activationReads.Add(1)
 		if selector.BlockHash == nil || *selector.BlockHash != common.Hash(self.blockHash) || !selector.RequireCanonical || selector.BlockNumber != nil {
@@ -312,13 +330,35 @@ func (self *validatorUploadAuthorityTestFixture) GetLogs(ctx context.Context, fi
 	}
 	var address common.Address
 	var from, to hexutil.Uint64
-	var topics []common.Hash
+	var topics []json.RawMessage
 	if err := errors.Join(json.Unmarshal(filter["address"], &address), json.Unmarshal(filter["fromBlock"], &from), json.Unmarshal(filter["toBlock"], &to), json.Unmarshal(filter["topics"], &topics)); err != nil {
 		return nil, err
 	}
 	topic := crypto.Keccak256Hash([]byte("ActivationPublished(bytes32,bytes32,uint64,uint64)"))
-	if address != self.authority.Journal || len(topics) != 1 || topics[0] != topic || from > to {
+	var first common.Hash
+	if len(topics) == 0 || json.Unmarshal(topics[0], &first) != nil || address != self.authority.Journal || first != topic || from > to {
 		return nil, errors.New("fixture event filter differs from independent deployment")
+	}
+	// As a node does: the third topic is an OR-list of hotkeys, the second
+	// any digest. A filter without it reads every hotkey's activation.
+	var hotkeys map[common.Hash]bool
+	switch len(topics) {
+	case 1:
+	case 3:
+		var list []common.Hash
+		if string(topics[1]) != "null" || json.Unmarshal(topics[2], &list) != nil || len(list) == 0 {
+			return nil, errors.New("fixture event filter topics are malformed")
+		}
+		self.logHotkeys = append(self.logHotkeys, list)
+		hotkeys = make(map[common.Hash]bool, len(list))
+		for _, hotkey := range list {
+			hotkeys[hotkey] = true
+		}
+	default:
+		return nil, errors.New("fixture event filter topics are malformed")
+	}
+	if self.fault == "unfiltered-node" {
+		hotkeys = nil
 	}
 	if self.fault == "null-events" {
 		return nil, nil
@@ -329,7 +369,7 @@ func (self *validatorUploadAuthorityTestFixture) GetLogs(ctx context.Context, fi
 		return rows, ctx.Err()
 	}
 	for _, event := range self.events {
-		if event.Block < uint64(from) || event.Block > uint64(to) {
+		if event.Block < uint64(from) || event.Block > uint64(to) || hotkeys != nil && !hotkeys[common.Hash(event.Hotkey)] {
 			continue
 		}
 		epoch := common.BigToHash(new(big.Int).SetUint64(event.Epoch))
@@ -361,7 +401,7 @@ func TestValidatorUploadAuthorityDiscoversAndAuthenticatesRealAnchor(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	events, err := fixture.chain.ValidatorUploadActivationEventsContext(t.Context(), fixture.deployment(), 1001, 1200, 200, 8, observer)
+	events, err := fixture.chain.ValidatorUploadActivationEventsContext(t.Context(), fixture.deployment(), 1001, 1200, 200, 8, [][32]byte{fixture.authority.Expected.Hotkey}, observer)
 	if err != nil || len(events) != 1 {
 		t.Fatalf("real finalized event discovery: %v", err)
 	}
@@ -399,7 +439,7 @@ func TestValidatorUploadAuthorityRejectsMalformedDiscoveryAndRecords(t *testing.
 			}
 			continue
 		}
-		got, err := fixture.chain.ValidatorUploadActivationEventsContext(t.Context(), fixture.deployment(), 1001, 1200, 200, 8, observer)
+		got, err := fixture.chain.ValidatorUploadActivationEventsContext(t.Context(), fixture.deployment(), 1001, 1200, 200, 8, [][32]byte{fixture.authority.Expected.Hotkey}, observer)
 		if err == nil || got != nil {
 			t.Fatalf("%s event escaped: %v / %v", fault, got, err)
 		}
@@ -464,7 +504,7 @@ func TestValidatorUploadAuthorityBoundsAndPreCancellationPrecedeRPC(t *testing.T
 			ctx = nil
 		}
 		before := fixture.calls.Load()
-		result, err := fixture.chain.ValidatorUploadActivationEventsContext(ctx, fixture.deployment(), from, to, blocks, events, observer)
+		result, err := fixture.chain.ValidatorUploadActivationEventsContext(ctx, fixture.deployment(), from, to, blocks, events, [][32]byte{fixture.authority.Expected.Hotkey}, observer)
 		if err == nil || result != nil || fixture.calls.Load() != before {
 			t.Fatalf("%s bad bounds reached RPC: %v / %v", fault, result, err)
 		}

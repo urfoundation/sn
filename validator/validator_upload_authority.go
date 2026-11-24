@@ -5,6 +5,7 @@ package validator
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/binary"
 	"encoding/hex"
@@ -13,6 +14,7 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"slices"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -225,10 +227,26 @@ func (self *ChainClient) recheckValidatorUploadBlockContext(ctx context.Context,
 	return ctx.Err()
 }
 
+// Discovery asks the node only for these hotkeys' activations, chunked so a
+// filter stays small. A node that ignores the topic filter cannot add work:
+// rows for other hotkeys are dropped here before any count or bound.
+const maximumValidatorUploadDiscoveryHotkeysPerQuery = 64
+
+// The largest permit census a discovery filter accepts, the same bound as a
+// complete subnet census read.
+const maximumValidatorUploadDiscoveryHotkeys = 4096
+
 // Every range is explicit and finite; the shared HTTP transport bounds the
 // JSON allocation before this narrower event-count check. No provider limit
 // or silently truncated page is treated as a complete discovery census.
-func (self *ChainClient) ValidatorUploadActivationEventsContext(ctx context.Context, deployment ValidatorUploadDeployment, from, to, maximumBlocks, maximumEvents uint64, observer ValidatorUploadObserver) (result []ValidatorUploadActivationEvent, resultErr error) {
+//
+// publishActivation is open to any relayer and checks consent, not
+// eligibility, so an unfiltered range could be filled with self-keyed
+// activations. Only events of the given hotkeys, the caller's current permit
+// census, are read and counted. An empty census reads nothing. More rows than
+// maximumEvents is still an error: it bounds this reader's work and memory,
+// and only permitted hotkeys can produce the rows.
+func (self *ChainClient) ValidatorUploadActivationEventsContext(ctx context.Context, deployment ValidatorUploadDeployment, from, to, maximumBlocks, maximumEvents uint64, hotkeys [][32]byte, observer ValidatorUploadObserver) (result []ValidatorUploadActivationEvent, resultErr error) {
 	if ctx == nil || self == nil || self.client == nil || self.chainId == nil {
 		return nil, errors.New("validator staging event reader is unavailable")
 	}
@@ -246,11 +264,27 @@ func (self *ChainClient) ValidatorUploadActivationEventsContext(ctx context.Cont
 		to > observer.Number || observer.Hash == ([32]byte{}) || observer.Number > math.MaxInt64 {
 		return nil, errors.New("validator staging discovery range exceeds its approved domain or bounds")
 	}
+	if len(hotkeys) > maximumValidatorUploadDiscoveryHotkeys {
+		return nil, errors.New("validator staging discovery permit census exceeds its bound")
+	}
+	requested := make(map[[32]byte]bool, len(hotkeys))
+	ordered := make([]common.Hash, 0, len(hotkeys))
+	for _, hotkey := range hotkeys {
+		if hotkey == ([32]byte{}) || requested[hotkey] {
+			return nil, errors.New("validator staging discovery permit census has an absent or duplicate hotkey")
+		}
+		requested[hotkey] = true
+		ordered = append(ordered, common.Hash(hotkey))
+	}
+	if len(ordered) == 0 {
+		return []ValidatorUploadActivationEvent{}, nil
+	}
+	slices.SortFunc(ordered, func(a, b common.Hash) int { return bytes.Compare(a[:], b[:]) })
 	if err := self.recheckValidatorUploadBlockContext(ctx, observer.Number, observer.Hash); err != nil {
 		return nil, err
 	}
 	topic := crypto.Keccak256Hash([]byte("ActivationPublished(bytes32,bytes32,uint64,uint64)"))
-	var rows []struct {
+	type row struct {
 		Address     *common.Address `json:"address"`
 		Topics      []common.Hash   `json:"topics"`
 		Data        hexutil.Bytes   `json:"data"`
@@ -259,17 +293,55 @@ func (self *ChainClient) ValidatorUploadActivationEventsContext(ctx context.Cont
 		LogIndex    *hexutil.Uint64 `json:"logIndex"`
 		Removed     *bool           `json:"removed"`
 	}
-	filter := map[string]any{"address": common.Address(deployment.Journal), "fromBlock": hexutil.EncodeUint64(from), "toBlock": hexutil.EncodeUint64(to), "topics": []common.Hash{topic}}
-	if err := self.retryChainRead(ctx, func(callCtx context.Context) error {
-		rows = nil
-		return self.client.Client().CallContext(callCtx, &rows, "eth_getLogs", filter)
-	}); err != nil {
-		return nil, err
+	var rows []row
+	for first := 0; first < len(ordered); first += maximumValidatorUploadDiscoveryHotkeysPerQuery {
+		chunk := ordered[first:min(len(ordered), first+maximumValidatorUploadDiscoveryHotkeysPerQuery)]
+		filter := map[string]any{"address": common.Address(deployment.Journal), "fromBlock": hexutil.EncodeUint64(from), "toBlock": hexutil.EncodeUint64(to), "topics": []any{topic, nil, chunk}}
+		var chunkRows []row
+		if err := self.retryChainRead(ctx, func(callCtx context.Context) error {
+			chunkRows = nil
+			return self.client.Client().CallContext(callCtx, &chunkRows, "eth_getLogs", filter)
+		}); err != nil {
+			return nil, err
+		}
+		// JSON null is not an authenticated empty range. Geth leaves a nonnil
+		// empty array nonnil, while null and a missing result are both refused.
+		if chunkRows == nil {
+			return nil, errors.New("validator staging event result is absent or exceeds its bound")
+		}
+		kept := 0
+		for _, value := range chunkRows {
+			// Only an unfiltered node returns another hotkey's row. It is not
+			// counted, read or admitted; a malformed row still refuses below.
+			if len(value.Topics) == 4 && value.Topics[0] == topic && !requested[[32]byte(value.Topics[2])] {
+				continue
+			}
+			// Each answer keeps its own canonical order; merging chunks below
+			// must not hide an answer that was out of order.
+			if kept != 0 && value.BlockNumber != nil && value.LogIndex != nil && rows[len(rows)-1].BlockNumber != nil && rows[len(rows)-1].LogIndex != nil {
+				prior := rows[len(rows)-1]
+				if *value.BlockNumber < *prior.BlockNumber || *value.BlockNumber == *prior.BlockNumber && *value.LogIndex <= *prior.LogIndex {
+					return nil, errors.New("validator staging events are not a strict canonical order")
+				}
+			}
+			rows = append(rows, value)
+			kept++
+		}
+		if uint64(len(rows)) > maximumEvents {
+			return nil, errors.New("validator staging event result is absent or exceeds its bound")
+		}
 	}
-	// JSON null is not an authenticated empty range. Geth leaves a nonnil
-	// empty array nonnil, while null and a missing result are both refused.
-	if rows == nil || uint64(len(rows)) > maximumEvents {
-		return nil, errors.New("validator staging event result is absent or exceeds its bound")
+	// Several chunks merge into one canonical order, which is checked below.
+	if len(ordered) > maximumValidatorUploadDiscoveryHotkeysPerQuery {
+		slices.SortStableFunc(rows, func(a, b row) int {
+			if a.BlockNumber == nil || b.BlockNumber == nil || a.LogIndex == nil || b.LogIndex == nil {
+				return 0
+			}
+			if *a.BlockNumber != *b.BlockNumber {
+				return cmp.Compare(*a.BlockNumber, *b.BlockNumber)
+			}
+			return cmp.Compare(*a.LogIndex, *b.LogIndex)
+		})
 	}
 	result = make([]ValidatorUploadActivationEvent, 0, len(rows))
 	seen := make(map[[32]byte]bool, len(rows))
