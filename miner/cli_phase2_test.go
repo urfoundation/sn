@@ -36,7 +36,21 @@ func phase2State(t *testing.T) string {
 	t.Setenv("URNETWORK_AUTO_UPDATE", "")
 	t.Setenv("URNETWORK_SERVICE_NAME", "")
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(t.TempDir(), "config"))
+	// a host with no container and no mount table, whatever runs the test
+	setMinerHostRoot(t, t.TempDir())
+	t.Setenv("KUBERNETES_SERVICE_HOST", "")
+	t.Setenv(minerStateSubstitutedDirEnv, "")
+	t.Setenv(minerStateSubstitutedProblemEnv, "")
 	return dir
+}
+
+// setMinerHostRoot makes root the host whose container and mount facts
+// status, doctor and provide read (state_persistence.go).
+func setMinerHostRoot(t *testing.T, root string) {
+	t.Helper()
+	previous := minerHostRoot
+	minerHostRoot = root
+	t.Cleanup(func() { minerHostRoot = previous })
 }
 
 // Provides the executable marker and system unit directory that the real
@@ -133,7 +147,7 @@ func TestMinerStatusFileFollowsProgress(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer progress.close()
-	stop := startMinerStatusFile(t.Context(), progress, nil, nil)
+	stop := startMinerStatusFile(t.Context(), progress, nil, nil, nil)
 	deadline := time.Now().Add(5 * time.Second)
 	var status *minerLocalStatus
 	for time.Now().Before(deadline) {

@@ -41,6 +41,11 @@ const (
 	providerNetworkTokenRenewalWait
 	providerNetworkTokenRenewalStopped
 	providerNetworkSignInQuarantined
+	// the state directory, and so the device's identity, is lost with its
+	// container or the machine's memory (state_persistence.go)
+	providerStateNotPersistent
+	// a newer release is out and nothing here installs it (release_check.go)
+	providerUpdateAvailable
 )
 
 // The guidance of a rejected or no longer renewable network sign-in. The
@@ -200,6 +205,10 @@ func (self *providerDiagnostics) observeGuided(event providerDiagnosticEvent, pr
 		domain, code = "authentication", "network_sign_in_renewal_stopped"
 	case providerNetworkSignInQuarantined:
 		domain, code = "authentication", "network_sign_in_quarantined"
+	case providerStateNotPersistent:
+		domain, code = "keys", minerFindingStateNotPersistent
+	case providerUpdateAvailable:
+		code = minerFindingUpdateAvailable
 	}
 	if event != providerExtenderObserved {
 		extender = nil

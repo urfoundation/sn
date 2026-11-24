@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -37,6 +38,19 @@ type providerRunSettings struct {
 	contractCapturePath      string
 	contractCaptureSha256    string
 	requireContractCapture   bool
+	// the root the state persistence check reads the host's container and
+	// mount facts below ("/"); "" makes no check (state_persistence.go)
+	hostRoot string
+	// the release check's timing; nil makes no check, as in an operator child
+	// of provide --all-operators, whose supervisor checks (release_check.go)
+	releaseCheck *minerReleaseCheckSettings
+	// where a finding is written for a person, as a framed block; nil writes
+	// none (miner_findings.go)
+	findingLog io.Writer
+	// an operator child of provide --all-operators: the supervisor's log tells
+	// of a state directory lost with its container, so the child writes its
+	// block only when it registered a new device
+	operatorChild bool
 }
 
 // This owner starts exactly one Serve goroutine after listener admission. Its

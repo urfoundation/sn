@@ -23,6 +23,8 @@ import (
 type ProviderClientKeyOwner struct {
 	store *registrationStore
 	seed  []byte
+	// this open generated the seed: the directory held no provider identity
+	created bool
 }
 
 // These are separate operator decisions. Legacy adoption asserts that the
@@ -87,6 +89,7 @@ func openProviderClientKey(ctx context.Context, keyPath string, options Provider
 		if err := store.write(".provider.key", seed); err != nil {
 			return nil, err
 		}
+		self.created = true
 		if hooks.afterSeed != nil {
 			if err := hooks.afterSeed(); err != nil {
 				return nil, err
@@ -241,6 +244,11 @@ func (self *ProviderClientKeyOwner) RejectClientJwt(clientPath string) (returnEr
 
 // Independent device settings receive their own immutable seed copy.
 func (self *ProviderClientKeyOwner) Seed() []byte { return slices.Clone(self.seed) }
+
+// Whether this open generated the key, so the device registers as a new
+// provider. A seed retained from an earlier open, including one an interrupted
+// first start published, is not created again.
+func (self *ProviderClientKeyOwner) Created() bool { return self.created }
 
 // Closing belongs to the enclosing service after every user has joined.
 func (self *ProviderClientKeyOwner) Close() error {
