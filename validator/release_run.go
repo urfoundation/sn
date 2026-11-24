@@ -736,7 +736,7 @@ func startReleaseOperatorWithAdmission(ctx context.Context, cfg *ReleaseConfig, 
 		},
 	}
 	// every api request carries the validator's bearer and rate class token
-	uninstallIdentity, err := installReleaseValidatorAPIIdentity(op, func() string {
+	uninstallIdentity, err := installReleaseValidatorAPIIdentity(ctx, op, func() string {
 		if cancelled.Load() || ctx.Err() != nil {
 			return ""
 		}

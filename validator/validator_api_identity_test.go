@@ -6,7 +6,6 @@
 package validator
 
 import (
-	"context"
 	"crypto/ed25519"
 	"encoding/json"
 	"net/http"
@@ -28,8 +27,10 @@ type validatorAPIIdentityTestAPI struct {
 	replicaNoID uint64
 	mints       atomic.Int64
 	failMints   atomic.Bool
-	lock        sync.Mutex
-	seen        []http.Header
+	// when set, a mint answers only once this closes
+	blockMints atomic.Pointer[chan struct{}]
+	lock       sync.Mutex
+	seen       []http.Header
 }
 
 func newValidatorAPIIdentityTestAPI(t *testing.T, replicaNoID uint64, now func() time.Time) *validatorAPIIdentityTestAPI {
@@ -38,6 +39,13 @@ func newValidatorAPIIdentityTestAPI(t *testing.T, replicaNoID uint64, now func()
 	self.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == validatorClassMintPath {
 			self.mints.Add(1)
+			if block := self.blockMints.Load(); block != nil {
+				select {
+				case <-*block:
+				case <-r.Context().Done():
+					return
+				}
+			}
 			credential, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
 			intent, err := protocol.VerifyValidatorClassHeader(r.Header.Get(protocol.ValidatorClassIntentHeader))
 			sessionHash, hashErr := protocol.ValidatorAttemptUploadSessionHash(credential)
@@ -101,7 +109,7 @@ func TestValidatorAPITransportAddsIdentityOnlyForTheAPIHost(t *testing.T) {
 	t.Parallel()
 	api := newValidatorAPIIdentityTestAPI(t, 9, time.Now)
 	other := newValidatorAPIIdentityTestAPI(t, 9, time.Now)
-	class, err := newValidatorClassTokens(api.server.URL, func() string { return "client-jwt" }, validatorAPIIdentityTestSigner(t, 9))
+	class, err := newValidatorClassTokens(t.Context(), 9, api.server.URL, func() string { return "client-jwt" }, validatorAPIIdentityTestSigner(t, 9))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,44 +141,173 @@ func TestValidatorAPITransportAddsIdentityOnlyForTheAPIHost(t *testing.T) {
 	}
 }
 
-// A token is reused until the refresh margin, then minted again. A failed
-// mint keeps the live token, isn't retried for a while, and after the token
-// expires leaves requests with none.
-func TestValidatorClassTokensRefreshAndBackOff(t *testing.T) {
+// A test clock safe to read from the mint's goroutine and the fake api.
+type validatorClassTestClock struct {
+	nanos atomic.Int64
+}
+
+func newValidatorClassTestClock() *validatorClassTestClock {
+	self := &validatorClassTestClock{}
+	self.nanos.Store(time.Unix(1_800_000_000, 0).UnixNano())
+	return self
+}
+
+func (self *validatorClassTestClock) now() time.Time {
+	return time.Unix(0, self.nanos.Load())
+}
+
+func (self *validatorClassTestClock) advance(d time.Duration) {
+	self.nanos.Add(int64(d))
+}
+
+// Waits for a running background mint to be recorded.
+func (self *validatorClassTokens) testingSettle() {
+	self.lock.Lock()
+	minting := self.minting
+	self.lock.Unlock()
+	if minting != nil {
+		<-minting
+	}
+}
+
+// Two runtimes naming the same api origin can't be told apart by host: its
+// requests carry neither's identity until one is removed.
+func TestValidatorAPITransportAddsNoIdentityForASharedHost(t *testing.T) {
 	t.Parallel()
-	now := time.Unix(1_800_000_000, 0)
-	clock := func() time.Time { return now }
-	api := newValidatorAPIIdentityTestAPI(t, 9, clock)
-	class, err := newValidatorClassTokens(api.server.URL, func() string { return "client-jwt" }, validatorAPIIdentityTestSigner(t, 9))
+	api := newValidatorAPIIdentityTestAPI(t, 9, time.Now)
+	uninstallA, err := installValidatorAPIIdentity(api.server.URL, &validatorAPIIdentity{credential: func() string { return "client-a" }})
 	if err != nil {
 		t.Fatal(err)
 	}
-	class.now = clock
-	if token := class.current(context.Background()); token != "class-for-client-jwt" || api.mints.Load() != 1 {
+	defer uninstallA()
+	uninstallB, err := installValidatorAPIIdentity(api.server.URL, &validatorAPIIdentity{credential: func() string { return "client-b" }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	validatorAPIIdentityTestGet(t, api.server.URL+"/sn/artifact", "")
+	if seen := api.lastHeaders(); seen.Get("Authorization") != "" {
+		t.Fatalf("a shared host's request carried %q", seen.Get("Authorization"))
+	}
+	uninstallB()
+	validatorAPIIdentityTestGet(t, api.server.URL+"/sn/artifact", "")
+	if seen := api.lastHeaders(); seen.Get("Authorization") != "Bearer client-a" {
+		t.Fatalf("the remaining runtime's request carried %q", seen.Get("Authorization"))
+	}
+}
+
+// A token is reused until the refresh margin, then minted again in the
+// background while it is still sent. A failed mint keeps the live token and
+// is retried after 30 s, doubling while it keeps failing; an expired token is
+// never sent.
+func TestValidatorClassTokensRefreshAndBackOff(t *testing.T) {
+	t.Parallel()
+	clock := newValidatorClassTestClock()
+	api := newValidatorAPIIdentityTestAPI(t, 9, clock.now)
+	class, err := newValidatorClassTokens(t.Context(), 9, api.server.URL, func() string { return "client-jwt" }, validatorAPIIdentityTestSigner(t, 9))
+	if err != nil {
+		t.Fatal(err)
+	}
+	class.now = clock.now
+	// tokens from the fake api live 4 min
+	if token := class.current(t.Context()); token != "class-for-client-jwt" || api.mints.Load() != 1 {
 		t.Fatalf("first token %q after %d mints", token, api.mints.Load())
 	}
-	now = now.Add(time.Minute)
-	if class.current(context.Background()); api.mints.Load() != 1 {
-		t.Fatal("a token was minted again inside its refresh margin")
+	clock.advance(time.Minute)
+	if class.current(t.Context()); api.mints.Load() != 1 {
+		t.Fatal("a token was minted again outside its refresh margin")
 	}
-	// inside the margin: a failed mint keeps the live token
+	// inside the margin, with mints failing: the live token is still sent
 	api.failMints.Store(true)
-	now = now.Add(90 * time.Second)
-	if token := class.current(context.Background()); token != "class-for-client-jwt" || api.mints.Load() != 2 {
+	clock.advance(90 * time.Second)
+	if token := class.current(t.Context()); token != "class-for-client-jwt" {
+		t.Fatalf("a refresh withheld the live token: %q", token)
+	}
+	class.testingSettle()
+	if token := class.current(t.Context()); token != "class-for-client-jwt" || api.mints.Load() != 2 {
 		t.Fatalf("a failed refresh lost the live token: %q after %d mints", token, api.mints.Load())
 	}
-	if class.current(context.Background()); api.mints.Load() != 2 {
-		t.Fatal("a failed mint was retried at once")
-	}
-	// past the token's expiry and the retry interval, with mints failing
-	now = now.Add(2 * time.Minute)
-	if token := class.current(context.Background()); token != "" || api.mints.Load() != 3 {
+	// past the token's expiry and the first retry interval
+	clock.advance(2 * time.Minute)
+	if token := class.current(t.Context()); token != "" || api.mints.Load() != 3 {
 		t.Fatalf("an expired token was sent: %q after %d mints", token, api.mints.Load())
 	}
+	// the second failure doubled the interval to 60 s
 	api.failMints.Store(false)
-	now = now.Add(validatorClassRetryInterval)
-	if token := class.current(context.Background()); token != "class-for-client-jwt" || api.mints.Load() != 4 {
+	clock.advance(validatorClassRetryInterval)
+	if token := class.current(t.Context()); token != "" || api.mints.Load() != 3 {
+		t.Fatalf("a mint was retried inside the doubled interval: %q after %d mints", token, api.mints.Load())
+	}
+	clock.advance(validatorClassRetryInterval)
+	if token := class.current(t.Context()); token != "class-for-client-jwt" || api.mints.Load() != 4 {
 		t.Fatalf("the class did not recover: %q after %d mints", token, api.mints.Load())
+	}
+}
+
+// A slow mint never holds a request that has a live token, and holds one
+// without a live token at most the mint wait. Without a session, nothing is
+// minted and no retry is spent.
+func TestValidatorClassTokensNeverHoldRequestsOnASlowMint(t *testing.T) {
+	t.Parallel()
+	clock := newValidatorClassTestClock()
+	api := newValidatorAPIIdentityTestAPI(t, 9, clock.now)
+	var credential atomic.Value
+	credential.Store("")
+	class, err := newValidatorClassTokens(t.Context(), 9, api.server.URL, func() string { return credential.Load().(string) }, validatorAPIIdentityTestSigner(t, 9))
+	if err != nil {
+		t.Fatal(err)
+	}
+	class.now = clock.now
+	class.mintWait = 50 * time.Millisecond
+	if token := class.current(t.Context()); token != "" || api.mints.Load() != 0 {
+		t.Fatalf("a mint without a session: %q after %d mints", token, api.mints.Load())
+	}
+	credential.Store("client-jwt")
+	if token := class.current(t.Context()); token != "class-for-client-jwt" {
+		t.Fatalf("a session's first token was %q; a missing session spent a retry", token)
+	}
+	block := make(chan struct{})
+	api.blockMints.Store(&block)
+	clock.advance(150 * time.Second)
+	started := time.Now()
+	if token := class.current(t.Context()); token != "class-for-client-jwt" || time.Second < time.Since(started) {
+		t.Fatalf("a request with a live token waited %s on a slow mint and got %q", time.Since(started), token)
+	}
+	// the token expires while the mint is still held
+	clock.advance(2 * time.Minute)
+	started = time.Now()
+	if token := class.current(t.Context()); token != "" || time.Second < time.Since(started) {
+		t.Fatalf("a request without a live token waited %s and got %q", time.Since(started), token)
+	}
+	close(block)
+	class.testingSettle()
+	if token := class.current(t.Context()); token != "class-for-client-jwt" || api.mints.Load() != 2 {
+		t.Fatalf("the held mint's token was not kept: %q after %d mints", token, api.mints.Load())
+	}
+	// a closed class ends its mints and starts none
+	clock.advance(5 * time.Minute)
+	class.close()
+	if token := class.current(t.Context()); token != "" || api.mints.Load() != 2 {
+		t.Fatalf("a closed class minted: %q after %d mints", token, api.mints.Load())
+	}
+}
+
+type validatorAPIIdentityTestCloser struct {
+	http.RoundTripper
+	closed atomic.Int64
+}
+
+func (self *validatorAPIIdentityTestCloser) CloseIdleConnections() {
+	self.closed.Add(1)
+}
+
+// A client's CloseIdleConnections still reaches the transport under the
+// wrapper; before, it stopped at the wrapper.
+func TestValidatorAPITransportClosesIdleConnections(t *testing.T) {
+	t.Parallel()
+	base := &validatorAPIIdentityTestCloser{RoundTripper: http.DefaultTransport}
+	(&http.Client{Transport: validatorAPITransport(base)}).CloseIdleConnections()
+	if base.closed.Load() != 1 {
+		t.Fatal("closing a wrapped client's idle connections did not reach its transport")
 	}
 }
 

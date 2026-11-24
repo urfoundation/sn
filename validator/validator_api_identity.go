@@ -32,9 +32,12 @@ import (
 const (
 	// a class token is refreshed when less than this is left of it
 	validatorClassRefreshMargin = 2 * time.Minute
-	// after a failed mint, the next is tried no sooner than this
-	validatorClassRetryInterval = 30 * time.Second
-	validatorClassMintTimeout   = 10 * time.Second
+	// after a failed mint the next waits this long, doubling up to the maximum
+	validatorClassRetryInterval        = 30 * time.Second
+	maximumValidatorClassRetryInterval = 4 * time.Minute
+	validatorClassMintTimeout          = 10 * time.Second
+	// a request with no live token waits at most this long for a mint
+	validatorClassMintWait = 2 * time.Second
 	// a class token lives at most this long, as the api mints it
 	validatorClassMaximumLifetime   = 5*time.Minute + 30*time.Second
 	maximumValidatorClassTokenBytes = 1024
@@ -50,8 +53,10 @@ type validatorAPIIdentity struct {
 	class *validatorClassTokens
 }
 
-// The installed identities by lowercase api host. Copied on write.
-var validatorAPIIdentities atomic.Pointer[map[string]*validatorAPIIdentity]
+// The installed identities by lowercase api host. Copied on write. Two
+// runtimes may name the same api origin; their requests can't be told apart
+// by host, so such a host gets no identity until one of them is removed.
+var validatorAPIIdentities atomic.Pointer[map[string][]*validatorAPIIdentity]
 var validatorAPIIdentitiesLock sync.Mutex
 
 // Installs identity for the api at origin until the returned func runs.
@@ -61,43 +66,56 @@ func installValidatorAPIIdentity(origin string, identity *validatorAPIIdentity) 
 		return nil, errors.New("validator api identity needs an api origin and a credential")
 	}
 	host := strings.ToLower(parsed.Host)
-	validatorAPIIdentitiesLock.Lock()
-	defer validatorAPIIdentitiesLock.Unlock()
-	next := map[string]*validatorAPIIdentity{}
-	if current := validatorAPIIdentities.Load(); current != nil {
-		for key, value := range *current {
-			next[key] = value
-		}
-	}
-	next[host] = identity
-	validatorAPIIdentities.Store(&next)
+	updateValidatorAPIIdentities(func(identities map[string][]*validatorAPIIdentity) {
+		identities[host] = append(identities[host], identity)
+	})
 	var once sync.Once
 	return func() {
 		once.Do(func() {
-			validatorAPIIdentitiesLock.Lock()
-			defer validatorAPIIdentitiesLock.Unlock()
-			current := validatorAPIIdentities.Load()
-			if current == nil || (*current)[host] != identity {
-				return
-			}
-			next := map[string]*validatorAPIIdentity{}
-			for key, value := range *current {
-				if key != host {
-					next[key] = value
+			updateValidatorAPIIdentities(func(identities map[string][]*validatorAPIIdentity) {
+				kept := []*validatorAPIIdentity{}
+				for _, installed := range identities[host] {
+					if installed != identity {
+						kept = append(kept, installed)
+					}
 				}
+				if len(kept) == 0 {
+					delete(identities, host)
+				} else {
+					identities[host] = kept
+				}
+			})
+			if identity.class != nil {
+				identity.class.close()
 			}
-			validatorAPIIdentities.Store(&next)
 		})
 	}, nil
 }
 
-// The installed identity of a request's host, or nil.
+// Replaces the installed identities with update's change to a copy.
+func updateValidatorAPIIdentities(update func(map[string][]*validatorAPIIdentity)) {
+	validatorAPIIdentitiesLock.Lock()
+	defer validatorAPIIdentitiesLock.Unlock()
+	next := map[string][]*validatorAPIIdentity{}
+	if current := validatorAPIIdentities.Load(); current != nil {
+		for host, installed := range *current {
+			next[host] = append([]*validatorAPIIdentity{}, installed...)
+		}
+	}
+	update(next)
+	validatorAPIIdentities.Store(&next)
+}
+
+// The one installed identity of a request's host, or nil.
 func validatorAPIIdentityOf(r *http.Request) *validatorAPIIdentity {
 	identities := validatorAPIIdentities.Load()
 	if identities == nil || r == nil || r.URL == nil {
 		return nil
 	}
-	return (*identities)[strings.ToLower(r.URL.Host)]
+	if installed := (*identities)[strings.ToLower(r.URL.Host)]; len(installed) == 1 {
+		return installed[0]
+	}
+	return nil
 }
 
 // Adds an installed api origin's bearer and class token to each request for
@@ -136,6 +154,14 @@ func sameValidatorAPITransport(a http.RoundTripper, b http.RoundTripper) bool {
 	return a == b
 }
 
+// Closes base's idle connections, as http.Client.CloseIdleConnections does
+// for an unwrapped transport.
+func (self *validatorAPITransportWrapper) CloseIdleConnections() {
+	if closer, ok := self.base.(interface{ CloseIdleConnections() }); ok {
+		closer.CloseIdleConnections()
+	}
+}
+
 // See http.RoundTripper. The request is cloned before its headers change.
 func (self *validatorAPITransportWrapper) RoundTrip(r *http.Request) (*http.Response, error) {
 	identity := validatorAPIIdentityOf(r)
@@ -156,38 +182,57 @@ func (self *validatorAPITransportWrapper) RoundTrip(r *http.Request) (*http.Resp
 	return self.base.RoundTrip(clone)
 }
 
-// One api origin's class tokens: the current one, minted again when less than
-// the refresh margin is left. A request never waits on a mint another
-// request started, and a failed mint is not tried again for a while; until a
-// mint succeeds, requests carry the bearer alone, under the identity limit.
+// One api origin's class tokens. A token is used until the refresh margin,
+// then minted again in the background while requests keep using it; only a
+// request with no live token waits for a mint, and at most
+// validatorClassMintWait. A failed mint is retried after 30 s, doubling to
+// 4 min while it keeps failing. Until a mint succeeds, requests carry the
+// bearer alone, under the identity limit.
 type validatorClassTokens struct {
+	// the operator runtime's: its end ends a running mint
+	ctx    context.Context
+	cancel context.CancelFunc
+	noID   uint64
+
 	endpoint   string
 	credential func() string
 	signer     *validatorAttemptUploadSigner
 	// unwrapped, so a mint never asks for a class token itself
-	client *http.Client
-	now    func() time.Time
+	client   *http.Client
+	now      func() time.Time
+	mintWait time.Duration
 
 	lock        sync.Mutex
 	token       string
 	expires     time.Time
 	nextAttempt time.Time
-	minting     bool
+	retry       time.Duration
+	// closed when the running mint ends; nil when none runs
+	minting chan struct{}
+	// the last mint's outcome, so diagnostics report only changes
+	ready  bool
+	failed bool
+	closed bool
 }
 
-func newValidatorClassTokens(origin string, credential func() string, signer *validatorAttemptUploadSigner) (*validatorClassTokens, error) {
+func newValidatorClassTokens(ctx context.Context, noID uint64, origin string, credential func() string, signer *validatorAttemptUploadSigner) (*validatorClassTokens, error) {
 	base, err := url.Parse(origin)
 	if err != nil || base.Host == "" || credential == nil || signer == nil {
 		return nil, errors.New("validator class tokens need an api origin, a credential and a signer")
 	}
+	ctx, cancel := context.WithCancel(ctx)
 	return &validatorClassTokens{
+		ctx:        ctx,
+		cancel:     cancel,
+		noID:       noID,
 		endpoint:   base.ResolveReference(&url.URL{Path: validatorClassMintPath}).String(),
 		credential: credential,
 		signer:     signer,
 		client: &http.Client{Timeout: validatorClassMintTimeout, Transport: releaseAPIHTTPTransport, CheckRedirect: func(*http.Request, []*http.Request) error {
 			return http.ErrUseLastResponse
 		}},
-		now: time.Now,
+		now:      time.Now,
+		mintWait: validatorClassMintWait,
 	}, nil
 }
 
@@ -195,30 +240,32 @@ func newValidatorClassTokens(origin string, credential func() string, signer *va
 func (self *validatorClassTokens) current(ctx context.Context) string {
 	now := self.now()
 	self.lock.Lock()
-	if self.token != "" && now.Add(validatorClassRefreshMargin).Before(self.expires) {
-		token := self.token
+	live := self.liveWithLock(now)
+	if live != "" && now.Add(validatorClassRefreshMargin).Before(self.expires) {
 		self.lock.Unlock()
-		return token
+		return live
 	}
-	if self.minting || now.Before(self.nextAttempt) {
-		token := self.liveWithLock(now)
-		self.lock.Unlock()
-		return token
+	minting := self.minting
+	// without a session there is nothing to consent for, so no attempt is spent
+	if minting == nil && !self.closed && !now.Before(self.nextAttempt) && self.credential() != "" {
+		minting = make(chan struct{})
+		self.minting = minting
+		go self.refresh(minting)
 	}
-	self.minting = true
 	self.lock.Unlock()
-
-	token, expires, err := self.mint(ctx, now)
-
+	if live != "" || minting == nil {
+		return live
+	}
+	wait := time.NewTimer(self.mintWait)
+	defer wait.Stop()
+	select {
+	case <-minting:
+	case <-wait.C:
+	case <-ctx.Done():
+	}
 	self.lock.Lock()
 	defer self.lock.Unlock()
-	self.minting = false
-	if err != nil {
-		self.nextAttempt = now.Add(validatorClassRetryInterval)
-		return self.liveWithLock(now)
-	}
-	self.token, self.expires, self.nextAttempt = token, expires, time.Time{}
-	return token
+	return self.liveWithLock(self.now())
 }
 
 // The held token if it has not expired.
@@ -229,45 +276,94 @@ func (self *validatorClassTokens) liveWithLock(now time.Time) string {
 	return ""
 }
 
-// One mint: the class consent for the current credential, beside it.
-func (self *validatorClassTokens) mint(ctx context.Context, now time.Time) (string, time.Time, error) {
+// One background mint; minting closes when it has been recorded.
+func (self *validatorClassTokens) refresh(minting chan struct{}) {
+	defer close(minting)
+	now := self.now()
+	token, expires, cause, err := self.mint(now)
+	self.lock.Lock()
+	self.minting = nil
+	code := ""
+	if err != nil {
+		self.retry = min(max(2*self.retry, validatorClassRetryInterval), maximumValidatorClassRetryInterval)
+		self.nextAttempt = now.Add(self.retry)
+		if !self.failed && self.ctx.Err() == nil {
+			code = "validator_class_unavailable"
+		}
+		self.ready, self.failed = false, true
+	} else {
+		self.token, self.expires, self.nextAttempt, self.retry = token, expires, time.Time{}, 0
+		if !self.ready {
+			code = "validator_class_ready"
+		}
+		self.ready, self.failed = true, false
+	}
+	self.lock.Unlock()
+	if code != "" {
+		releaseDiagnostic(self.ctx, "operator", code, 0, false, 0, releaseDiagnosticFacts{operatorId: self.noID, operatorKnown: true, cause: cause})
+	}
+}
+
+// Ends a running mint and waits for it; no mint starts after.
+func (self *validatorClassTokens) close() {
+	self.lock.Lock()
+	self.closed = true
+	minting := self.minting
+	self.lock.Unlock()
+	self.cancel()
+	if minting != nil {
+		<-minting
+	}
+}
+
+// One mint: the class consent for the current credential, beside it. The
+// cause classifies a failure for the diagnostics only.
+func (self *validatorClassTokens) mint(now time.Time) (string, time.Time, releaseDiagnosticCause, error) {
 	credential := self.credential()
 	if credential == "" {
-		return "", time.Time{}, errors.New("validator class mint has no api session")
+		return "", time.Time{}, releaseDiagnosticUnavailable, errors.New("validator class mint has no api session")
 	}
 	header, err := self.signer.classHeaderAt(credential, now)
 	if err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, releaseDiagnosticHardError, err
 	}
-	ctx, cancel := context.WithTimeout(ctx, validatorClassMintTimeout)
+	ctx, cancel := context.WithTimeout(self.ctx, validatorClassMintTimeout)
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, self.endpoint, nil)
 	if err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, releaseDiagnosticHardError, err
 	}
 	request.Header.Set("Authorization", "Bearer "+credential)
 	request.Header.Set(protocol.ValidatorClassIntentHeader, header)
 	response, err := self.client.Do(request)
 	if err != nil {
-		return "", time.Time{}, err
+		if ctx.Err() != nil {
+			return "", time.Time{}, releaseDiagnosticTimeout, err
+		}
+		return "", time.Time{}, releaseDiagnosticTransport, err
 	}
 	defer response.Body.Close()
 	body, err := io.ReadAll(io.LimitReader(response.Body, 16*1024))
 	if err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, releaseDiagnosticTransport, err
 	}
-	if response.StatusCode != http.StatusOK {
-		return "", time.Time{}, errors.New("validator class mint answered " + response.Status)
+	switch {
+	case response.StatusCode == http.StatusOK:
+	case 500 <= response.StatusCode:
+		return "", time.Time{}, releaseDiagnosticUnavailable, errors.New("validator class mint answered " + response.Status)
+	default:
+		// refused: the admission does not admit this validator, or the consent
+		return "", time.Time{}, releaseDiagnosticHardError, errors.New("validator class mint answered " + response.Status)
 	}
 	var result struct {
 		Token     string    `json:"token"`
 		ExpiresAt time.Time `json:"expires_at"`
 	}
 	if err := json.Unmarshal(body, &result); err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, releaseDiagnosticHardError, err
 	}
 	if result.Token == "" || maximumValidatorClassTokenBytes < len(result.Token) || !now.Before(result.ExpiresAt) || now.Add(validatorClassMaximumLifetime).Before(result.ExpiresAt) {
-		return "", time.Time{}, errors.New("validator class mint answered no usable token")
+		return "", time.Time{}, releaseDiagnosticHardError, errors.New("validator class mint answered no usable token")
 	}
-	return result.Token, result.ExpiresAt, nil
+	return result.Token, result.ExpiresAt, releaseDiagnosticUnknown, nil
 }

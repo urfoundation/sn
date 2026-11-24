@@ -353,7 +353,7 @@ func newProductionReleaseOperator(ctx context.Context, cfg *ReleaseConfig, op Op
 		return nil
 	}
 	// every api request carries the validator's bearer and rate class token
-	uninstallIdentity, err := installReleaseValidatorAPIIdentity(op, credential, state.uploadSource)
+	uninstallIdentity, err := installReleaseValidatorAPIIdentity(ctx, op, credential, state.uploadSource)
 	if err != nil {
 		return nil, err
 	}
