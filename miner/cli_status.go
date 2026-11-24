@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/docopt/docopt-go"
@@ -55,8 +56,16 @@ type minerStatusReport struct {
 	// either
 	PortMapping *minerPortMappingStatus `json:"port_mapping,omitempty"`
 	StateDir    string                  `json:"state_dir"`
-	Problems    []string                `json:"problems"`
-	Next        string                  `json:"next,omitempty"`
+	// the application container the miner runs in (state_persistence.go),
+	// absent outside one
+	Container string `json:"container,omitempty"`
+	// what is wrong with how the miner runs here, each with its fix: the
+	// state directory's persistence, read now, and the running miner's own
+	// findings (miner_findings.go). They never change the state or the exit
+	// code: the miner provides with them.
+	Findings []minerFinding `json:"findings,omitempty"`
+	Problems []string       `json:"problems"`
+	Next     string         `json:"next,omitempty"`
 }
 
 // minerExtenderReport is the extender's standing with the fix, when one
@@ -67,6 +76,15 @@ type minerExtenderReport struct {
 }
 
 const minerInstallerUpdateUnknown = "can't tell whether it checks for updates here"
+
+// Why a container's miner doesn't update itself.
+const minerContainerUpdateWhy = "only a new image updates a container's miner"
+
+// The status row label of a finding's code.
+var minerFindingLabels = map[string]string{
+	minerFindingStateNotPersistent: "Identity",
+	minerFindingUpdateAvailable:    "Version",
+}
 
 type minerUpdateReport struct {
 	Auto      bool   `json:"auto"`
@@ -81,6 +99,9 @@ type minerUpdateReport struct {
 func buildMinerStatusReport(now time.Time) (minerStatusReport, int) {
 	dir, _ := providerStateDir()
 	report := minerStatusReport{Version: cliBareVersion(), StateDir: dir, Problems: []string{}}
+	facts := readMinerHostFacts(minerHostRoot, os.Getenv)
+	report.Container = facts.container
+	findings := newMinerFindings()
 	signIn := readMinerSignIn()
 	device := readMinerDevice()
 	if !signIn.signedIn && !device.hasHistory {
@@ -111,7 +132,21 @@ func buildMinerStatusReport(now time.Time) (minerStatusReport, int) {
 				report.Extender.Fix = minerExtenderBindFix()
 			}
 		}
+		for _, finding := range local.Findings {
+			findings.set(finding)
+		}
 	}
+	// the state directory as it is kept now, in place of what the miner found
+	// at its start
+	if dir != "" {
+		executable, _ := cliExecutable()
+		if finding := minerStatePersistenceFinding(assessMinerStatePersistence(facts, dir), readMinerStateSubstitution(os.Getenv, dir), false, minerContainerImage(executable), now); finding != nil {
+			findings.set(*finding)
+		} else {
+			findings.clear(minerFindingStateNotPersistent)
+		}
+	}
+	report.Findings = findings.current()
 	report.Service = readMinerServiceState()
 	if !report.Running && report.Service.Active {
 		report.Running, report.Unreported = true, true
@@ -138,6 +173,10 @@ func buildMinerStatusReport(now time.Time) (minerStatusReport, int) {
 				report.Update.Why = "turned off in " + installer.display()
 			}
 		}
+	}
+	if report.Container != "" {
+		// a container's miner is its image's: nothing here replaces it
+		report.Update = minerUpdateReport{Auto: false, Why: minerContainerUpdateWhy, Latest: report.Update.Latest}
 	}
 
 	code := 0
@@ -241,7 +280,9 @@ func statusCmd(opts docopt.Opts, stdout io.Writer) int {
 	w.portMapping(report.PortMapping)
 	_, release := parseMinerReleaseVersion(report.Version)
 	_, testFeed := minerUpdateSource()
-	if by := report.Update.By; by != "" {
+	if report.Container != "" {
+		w.row(nil, "Updates", cliDim(stdout, "by a new image: this container's miner never updates itself"))
+	} else if by := report.Update.By; by != "" {
 		switch {
 		case report.Update.Auto:
 			w.row(true, "Updates", "automatic, by "+by)
@@ -268,8 +309,17 @@ func statusCmd(opts docopt.Opts, stdout io.Writer) int {
 	} else {
 		w.row(true, "Updates", "automatic")
 	}
-	if report.Next != "" {
-		fmt.Fprintf(stdout, "\n  %s %s\n", cliColorArrow(stdout), report.Next)
+	for _, finding := range report.Findings {
+		w.warn(minerFindingLabels[finding.Code], finding.Title)
+	}
+	next := report.Next
+	if next == "" && 0 < len(report.Findings) {
+		// doctor says each finding's fix
+		executable, _ := cliExecutable()
+		next = minerDoctorCommand(executable)
+	}
+	if next != "" {
+		fmt.Fprintf(stdout, "\n  %s %s\n", cliColorArrow(stdout), next)
 	}
 	return code
 }
@@ -336,9 +386,26 @@ func (self statusWriter) mark(mark any, label string, detail string) {
 	self.row(mark, label, detail)
 }
 
+// explain writes a finding's summary and fix under the row before it,
+// indented past the label, each fix line on its own.
+func (self statusWriter) explain(summary string, fix string) {
+	indent := strings.Repeat(" ", 17)
+	if summary != "" {
+		fmt.Fprintf(self.out, "%s%s\n", indent, summary)
+	}
+	if fix == "" {
+		return
+	}
+	fmt.Fprintf(self.out, "%s%s\n", indent, cliBold(self.out, "Fix:"))
+	for _, line := range strings.Split(fix, "\n") {
+		fmt.Fprintf(self.out, "%s  %s\n", indent, line)
+	}
+}
+
 // doctor
 
 func doctorCmd(opts docopt.Opts, stdout io.Writer) int {
+	settings := defaultDoctorSettings()
 	w := statusWriter{out: stdout}
 	problems := 0
 	fail := func(label string, detail string) {
@@ -359,6 +426,22 @@ func doctorCmd(opts docopt.Opts, stdout io.Writer) int {
 		fail("State folder", detail)
 	} else {
 		w.row(true, "State folder", displayStateDir()+" is private")
+	}
+
+	// whether the state folder, the device's identity, outlives this
+	// container and a reboot (state_persistence.go)
+	facts := readMinerHostFacts(minerHostRoot, os.Getenv)
+	executable, _ := cliExecutable()
+	if dir != "" {
+		persistence := assessMinerStatePersistence(facts, dir)
+		if finding := minerStatePersistenceFinding(persistence, readMinerStateSubstitution(os.Getenv, dir), false, minerContainerImage(executable), time.Now()); finding != nil {
+			fail("Identity", finding.Title)
+			w.explain(finding.Summary, finding.Fix)
+		} else if persistence.container != "" && persistence.mounted {
+			w.row(true, "Identity", "kept: "+dir+" is on its own mount, "+persistence.mount.mountPoint+", which outlives this container")
+		} else {
+			w.row(true, "Identity", "kept in "+displayStateDir())
+		}
 	}
 
 	report, _ := buildMinerStatusReport(time.Now())
@@ -414,19 +497,42 @@ func doctorCmd(opts docopt.Opts, stdout io.Writer) int {
 	w.portMapping(report.PortMapping)
 
 	// updates: can this binary replace itself?
-	if by := report.Update.By; by != "" {
+	if facts.container != "" {
+		w.row(nil, "Updates", "by a new image: this container's miner never updates itself")
+	} else if by := report.Update.By; by != "" {
 		if report.Update.Auto {
 			w.row(true, "Updates", "automatic, by "+by)
 		} else {
 			w.row(nil, "Updates", report.Update.Why+" (provider update --on)")
 		}
-	} else if executable, err := cliExecutable(); err == nil {
+	} else if executable != "" {
 		if _, release := parseMinerReleaseVersion(cliBareVersion()); release && report.Update.Auto {
 			if problem := writableDirProblem(filepath.Dir(executable)); problem != "" {
 				fail("Updates", "can't install updates: "+problem)
 			} else {
 				w.row(true, "Updates", "automatic, and "+filepath.Dir(executable)+" is writable")
 			}
+		}
+	}
+
+	// the version: is a newer release out that nothing here installs
+	// (release_check.go)
+	current := cliBareVersion()
+	if running, release := parseMinerReleaseVersion(current); !release {
+		w.row(nil, "Version", current+": a development build, so no release replaces it")
+	} else {
+		ctx, cancel := context.WithTimeout(context.Background(), settings.ReleaseTimeout)
+		latest, err := doctorRelease(ctx)
+		cancel()
+		if err != nil {
+			w.row(nil, "Version", current+"; can't read the latest release: "+firstLine(err.Error()))
+		} else if finding := minerUpdateFinding(current, latest, readMinerUpdater(facts.container), minerContainerImage(executable), time.Now(), defaultMinerReleaseCheckSettings()); finding != nil {
+			fail("Version", finding.Title)
+			w.explain(finding.Summary, finding.Fix)
+		} else if newer, _ := parseMinerReleaseVersion(latest.TagName); newer.newerThan(running) {
+			w.row(true, "Version", latest.version()+" is out, and this miner's automatic update installs it")
+		} else {
+			w.row(true, "Version", current+" is the latest release")
 		}
 	}
 
@@ -468,6 +574,25 @@ type doctorCheck struct {
 	ok     bool
 	label  string
 	detail string
+}
+
+// The waits of doctor's checks of the release feed and the exit's DNS.
+type doctorSettings struct {
+	// ReleaseTimeout bounds the read of the release feed: 15 seconds, a
+	// GitHub answer with room for a slow link.
+	ReleaseTimeout time.Duration
+}
+
+func defaultDoctorSettings() *doctorSettings {
+	return &doctorSettings{
+		ReleaseTimeout: 15 * time.Second,
+	}
+}
+
+// doctorRelease reads the latest release for doctor's Version row, as
+// provider update does. A variable so tests stay off the network.
+var doctorRelease = func(ctx context.Context) (*minerRelease, error) {
+	return fetchMinerRelease(ctx)
 }
 
 // doctorNetwork resolves the API host, connects to it and looks at the TLS
