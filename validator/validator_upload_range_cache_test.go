@@ -13,6 +13,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -436,11 +437,28 @@ func TestValidatorUploadDiscoveryKeepsPartialProgress(t *testing.T) {
 			t.Cleanup(func() { owner.cancel(); owner.invalidate(errors.New("fixture closed")); owner.leases.Wait() })
 			owner.coldScanJitter = func() time.Duration { return 0 }
 			cutFrom := uint64(1001 + 20*6)
+			// The read after the cut starts only once the read before it is
+			// complete and has freed its slot (readValidatorUploadRanges).
+			afterCut := make(chan struct{})
+			var afterCutOnce sync.Once
 			fixture.logGate = func(ctx context.Context, from, to uint64) error {
 				switch {
 				case from < cutFrom || from > 1198:
 					return nil
+				case from == cutFrom+6:
+					afterCutOnce.Do(func() { close(afterCut) })
 				case from == cutFrom && cut == "failed read":
+					// Fail once the read after the cut has reached the fixture:
+					// the 20 ranges before the cut are then complete, and no
+					// abandoned read can reach the fixture's log after this
+					// refresh returns. Failing at once raced both: 19 kept, or
+					// a range read twice in the next refresh's log.
+					select {
+					case <-afterCut:
+					case <-ctx.Done():
+						return ctx.Err()
+					case <-time.After(10 * time.Second):
+					}
 					return errors.New("fixture refuses this range read")
 				}
 				<-ctx.Done()
