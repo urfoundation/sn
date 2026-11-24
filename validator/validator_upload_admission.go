@@ -150,13 +150,19 @@ type validatorUploadAdmissionEntry struct {
 // One completed or failed refresh, reported once by the owned loop. Counts
 // and causes are copies; the report retains no admission state.
 type validatorUploadRefreshReport struct {
-	started            time.Time
-	finished           time.Time
-	evmHeadAge         time.Duration
-	nativeHeadAge      time.Duration
-	ranges             uint64
-	rangeReads         uint64
-	events             uint64
+	started       time.Time
+	finished      time.Time
+	evmHeadAge    time.Duration
+	nativeHeadAge time.Duration
+	ranges        uint64
+	rangeReads    uint64
+	events        uint64
+	// Time in each phase. Runtime authentication happens inside the census
+	// and the eligibility reads, once per block hash and allowlist.
+	censusTook         time.Duration
+	discoveryTook      time.Duration
+	eligibilityTook    time.Duration
+	runtime            crv4.RuntimeArtifactMemoStats
 	admitted           int
 	retained           int
 	validUntil         time.Time
@@ -489,8 +495,11 @@ func (self *ValidatorUploadAdmission) invalidate(err error) {
 // publishes nothing and fails with the measured cause.
 func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time) (resultErr error) {
 	report := validatorUploadRefreshReport{started: now}
+	// The census and every eligibility read authenticate the runtime at the
+	// same current hash; it is read once per refresh.
+	ctx, memo := crv4.WithRuntimeArtifactMemo(ctx)
 	defer func() {
-		report.finished, report.err = self.clock(), resultErr
+		report.finished, report.err, report.runtime = self.clock(), resultErr, memo.Stats()
 		if self.refreshReport != nil {
 			self.refreshReport(report)
 		}
@@ -538,7 +547,9 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 	// Seeded testnet discovery reads no events, so it needs no census.
 	permitted := validatorUploadPermitCensus{stakes: map[[32]byte]uint64{}}
 	if !self.config.ProvisionalSeededDiscoveryOnly {
+		censusStarted := time.Now()
 		census, err := self.readValidatorUploadPermitCensus(ctx, nativeObserver, currentRuntime)
+		report.censusTook = time.Since(censusStarted)
 		if ctxErr := errors.Join(ctx.Err(), self.ctx.Err()); ctxErr != nil {
 			return errors.Join(err, ctxErr)
 		}
@@ -590,6 +601,8 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 			return nil
 		}
 		seen[digest] = true
+		eligibilityStarted := time.Now()
+		defer func() { report.eligibilityTook += time.Since(eligibilityStarted) }()
 		verified, err := self.authenticateRefreshCandidate(ctx, digest, observer, nativeObserver)
 		if err != nil {
 			self.recordActivationFailure(digest, fmt.Errorf("historical activation authentication: %w", err))
@@ -656,7 +669,9 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 			return err
 		}
 	}
+	discoveryStarted := time.Now()
 	rangeEvents, rangeReads, err := self.discoverValidatorUploadRanges(ctx, ranges, permitted.hotkeys, observer)
+	report.discoveryTook = time.Since(discoveryStarted)
 	if err != nil {
 		return err
 	}
@@ -873,6 +888,10 @@ type validatorUploadPermitCensus struct {
 // Reads SubnetworkN, the ValidatorPermit vector, each permitted UID's Keys
 // entry and SubnetOwnerHotkey under the runtime authenticated at that exact
 // hash: interfaces the producer profile pins, and successor admission checks.
+// The values come in two state_queryStorageAt round trips at that hash, the
+// subnet's three entries and then every permitted UID's Keys, each checked as
+// one state_getStorage read of it would be. The api reaches the node through a
+// forward to another host, so each round trip counts.
 func (self *ValidatorUploadAdmission) readValidatorUploadPermitCensus(ctx context.Context, nativeObserver ValidatorUploadNativeObserver, currentRuntime []crv4.RuntimeArtifactIdentity) (validatorUploadPermitCensus, error) {
 	empty := validatorUploadPermitCensus{}
 	deployment := self.config.Deployment
@@ -881,18 +900,61 @@ func (self *ValidatorUploadAdmission) readValidatorUploadPermitCensus(ctx contex
 		return empty, fmt.Errorf("validator staging permit census runtime: %w", err)
 	}
 	netuid := binary.LittleEndian.AppendUint16(nil, deployment.Netuid)
-	read := func(name string, maximum int, args ...[]byte) ([]byte, error) {
+	type censusEntry struct {
+		name string
+		key  types.StorageKey
+	}
+	entryOf := func(name string, args ...[]byte) (censusEntry, error) {
+		key, err := types.CreateStorageKey(artifact.Metadata, crv4.PalletName, name, args...)
+		if err != nil {
+			return censusEntry{}, fmt.Errorf("validator staging permit census %s key: %w", name, err)
+		}
+		return censusEntry{name: name, key: key}, nil
+	}
+	// One round trip for several entries. Each value is the raw answer one
+	// state_getStorage read of its key would give, null when absent, and is
+	// checked by decode below. Only one complete change set at the census
+	// hash is an answer.
+	readAll := func(entries []censusEntry) ([]json.RawMessage, error) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		key, err := types.CreateStorageKey(artifact.Metadata, crv4.PalletName, name, args...)
-		if err != nil {
-			return nil, fmt.Errorf("validator staging permit census %s key: %w", name, err)
+		keys, names := make([]string, len(entries)), make([]string, len(entries))
+		for index, entry := range entries {
+			keys[index], names[index] = entry.key.Hex(), entry.name
 		}
-		raw := json.RawMessage("null")
-		if err := self.native.API.Client.CallContext(ctx, &raw, "state_getStorage", key.Hex(), nativeObserver.Hash.Hex()); err != nil {
-			return nil, fmt.Errorf("validator staging permit census %s read: %w", name, err)
+		var sets []struct {
+			Block   string              `json:"block"`
+			Changes [][]json.RawMessage `json:"changes"`
 		}
+		if err := self.native.API.Client.CallContext(ctx, &sets, "state_queryStorageAt", keys, nativeObserver.Hash.Hex()); err != nil {
+			return nil, fmt.Errorf("validator staging permit census %s read: %w", strings.Join(slices.Compact(names), ", "), err)
+		}
+		if len(sets) != 1 || !strings.EqualFold(sets[0].Block, nativeObserver.Hash.Hex()) || len(sets[0].Changes) != len(entries) {
+			return nil, fmt.Errorf("validator staging permit census %s answer is not one complete change set at the census block", strings.Join(slices.Compact(names), ", "))
+		}
+		values := make(map[string]json.RawMessage, len(entries))
+		for _, change := range sets[0].Changes {
+			var key string
+			if len(change) != 2 || json.Unmarshal(change[0], &key) != nil {
+				return nil, errors.New("validator staging permit census answer has a malformed change")
+			}
+			if _, exists := values[strings.ToLower(key)]; exists {
+				return nil, errors.New("validator staging permit census answer repeats a key")
+			}
+			values[strings.ToLower(key)] = change[1]
+		}
+		result := make([]json.RawMessage, len(entries))
+		for index, entry := range entries {
+			value, exists := values[strings.ToLower(entry.key.Hex())]
+			if !exists {
+				return nil, fmt.Errorf("validator staging permit census answer has no %s", entry.name)
+			}
+			result[index] = value
+		}
+		return result, nil
+	}
+	decode := func(name string, raw json.RawMessage, maximum int) ([]byte, error) {
 		if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
 			return nil, nil
 		}
@@ -906,7 +968,19 @@ func (self *ValidatorUploadAdmission) readValidatorUploadPermitCensus(ctx contex
 		}
 		return value, nil
 	}
-	census, err := read("SubnetworkN", 2, netuid)
+	subnet := make([]censusEntry, 0, 3)
+	for _, name := range []string{"SubnetworkN", "ValidatorPermit", "SubnetOwnerHotkey"} {
+		entry, err := entryOf(name, netuid)
+		if err != nil {
+			return empty, err
+		}
+		subnet = append(subnet, entry)
+	}
+	subnetValues, err := readAll(subnet)
+	if err != nil {
+		return empty, err
+	}
+	census, err := decode("SubnetworkN", subnetValues[0], 2)
 	if err != nil {
 		return empty, err
 	}
@@ -917,7 +991,7 @@ func (self *ValidatorUploadAdmission) readValidatorUploadPermitCensus(ctx contex
 	if count == 0 || uint32(count) > deployment.MaximumSubnetUIDs {
 		return empty, errors.New("validator staging permit census exceeds its subnet bound")
 	}
-	permits, err := read("ValidatorPermit", int(count)+4, netuid)
+	permits, err := decode("ValidatorPermit", subnetValues[1], int(count)+4)
 	if err != nil {
 		return empty, err
 	}
@@ -935,6 +1009,8 @@ func (self *ValidatorUploadAdmission) readValidatorUploadPermitCensus(ctx contex
 			result.hotkeys = append(result.hotkeys, hotkey)
 		}
 	}
+	var permitted []censusEntry
+	var uids []int
 	for uid, permit := range permits[len(prefix):] {
 		if permit > 1 {
 			return empty, errors.New("validator staging permit vector contains a non-boolean value")
@@ -942,16 +1018,29 @@ func (self *ValidatorUploadAdmission) readValidatorUploadPermitCensus(ctx contex
 		if permit == 0 {
 			continue
 		}
-		hotkey, err := read("Keys", 32, netuid, binary.LittleEndian.AppendUint16(nil, uint16(uid)))
+		entry, err := entryOf("Keys", netuid, binary.LittleEndian.AppendUint16(nil, uint16(uid)))
 		if err != nil {
 			return empty, err
 		}
-		if len(hotkey) != 32 || [32]byte(hotkey) == ([32]byte{}) {
-			return empty, fmt.Errorf("validator staging permit census UID %d has no hotkey", uid)
-		}
-		include([32]byte(hotkey))
+		permitted, uids = append(permitted, entry), append(uids, uid)
 	}
-	owner, err := read("SubnetOwnerHotkey", 32, netuid)
+	if len(permitted) != 0 {
+		hotkeys, err := readAll(permitted)
+		if err != nil {
+			return empty, err
+		}
+		for index, raw := range hotkeys {
+			hotkey, err := decode("Keys", raw, 32)
+			if err != nil {
+				return empty, err
+			}
+			if len(hotkey) != 32 || [32]byte(hotkey) == ([32]byte{}) {
+				return empty, fmt.Errorf("validator staging permit census UID %d has no hotkey", uids[index])
+			}
+			include([32]byte(hotkey))
+		}
+	}
+	owner, err := decode("SubnetOwnerHotkey", subnetValues[2], 32)
 	if err != nil {
 		return empty, err
 	}
@@ -1052,6 +1141,11 @@ func transientValidatorUploadRefreshError(err error) bool {
 // activation that was not admitted, so neither a silently dropped activation
 // nor a state published past its window can hide behind a generic refusal.
 func printValidatorUploadRefreshReport(report validatorUploadRefreshReport) {
+	fmt.Fprintln(os.Stderr, validatorUploadRefreshReportLine(report))
+}
+
+// The refresh's one log line, with its phases.
+func validatorUploadRefreshReportLine(report validatorUploadRefreshReport) string {
 	digests := slices.SortedFunc(maps.Keys(report.activationFailures), func(a [32]byte, b [32]byte) int { return bytes.Compare(a[:], b[:]) })
 	causes := make([]string, 0, len(digests))
 	for _, digest := range digests {
@@ -1061,10 +1155,13 @@ func printValidatorUploadRefreshReport(report validatorUploadRefreshReport) {
 	if report.err != nil {
 		outcome = "failed: " + report.err.Error()
 	}
-	line := fmt.Sprintf("validator staging refresh %s; took %s, EVM head age %s, native head age %s, %d ranges (%d read), %d events, %d admitted, %d retained, valid until %s; not admitted [%s]",
+	line := fmt.Sprintf("validator staging refresh %s; took %s, EVM head age %s, native head age %s, %d ranges (%d read), %d events, %d admitted, %d retained, valid until %s; "+
+		"phases: census %s, discovery %s, eligibility %s, runtime %s in %d authentications, %d reused, %d metadata fetches; not admitted [%s]",
 		outcome, report.finished.Sub(report.started).Round(time.Millisecond), report.evmHeadAge.Round(time.Millisecond), report.nativeHeadAge.Round(time.Millisecond),
-		report.ranges, report.rangeReads, report.events, report.admitted, report.retained, report.validUntil.UTC().Format(time.RFC3339), strings.Join(causes, "; "))
-	fmt.Fprintln(os.Stderr, strings.ReplaceAll(line, "\n", " | "))
+		report.ranges, report.rangeReads, report.events, report.admitted, report.retained, report.validUntil.UTC().Format(time.RFC3339),
+		report.censusTook.Round(time.Millisecond), report.discoveryTook.Round(time.Millisecond), report.eligibilityTook.Round(time.Millisecond),
+		report.runtime.Took.Round(time.Millisecond), report.runtime.Authenticated, report.runtime.Reused, report.runtime.MetadataFetches, strings.Join(causes, "; "))
+	return strings.ReplaceAll(line, "\n", " | ")
 }
 
 // A lease owns its joined cancellation hooks and at most one nonblocking

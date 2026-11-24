@@ -15,6 +15,8 @@ import (
 	"fmt"
 	"math/big"
 	"net/http/httptest"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -65,7 +67,14 @@ type validatorUploadAuthorityTestFixture struct {
 	// When set, the subnet owner's hotkey at the current native hash; the
 	// permit census includes it.
 	subnetOwnerHotkey [32]byte
+	// Native storage round trips for the permit census: batches, and single
+	// reads of a census entry made outside a batch.
+	censusBatches atomic.Int64
+	censusReads   atomic.Int64
 }
+
+// A batch answers each key through the fixture's own single reads.
+type validatorUploadFixtureBatchKey struct{}
 
 // Both native clocks are real fixed SCALE responses. Current permit can
 // differ from historical permit without modifying either query's identity.
@@ -118,10 +127,63 @@ func newValidatorUploadAuthorityTestFixture(t *testing.T) *validatorUploadAuthor
 	if err != nil {
 		t.Fatal(err)
 	}
-	base.native.chain.API.Client = &validatorRuntimeIdentityTestClient{callContext: func(ctx context.Context, result any, method string, args ...any) error {
+	// The census entries' storage prefixes, and the permitted UID's Keys entry.
+	var censusPrefixes []string
+	for _, name := range []string{"SubnetworkN", "ValidatorPermit", "SubnetOwnerHotkey"} {
+		key, err := types.CreateStorageKey(metadata, "SubtensorModule", name, binary.LittleEndian.AppendUint16(nil, 521))
+		if err != nil {
+			t.Fatal(err)
+		}
+		censusPrefixes = append(censusPrefixes, key.Hex()[:66])
+	}
+	permittedKey, err := types.CreateStorageKey(metadata, "SubtensorModule", "Keys", binary.LittleEndian.AppendUint16(nil, 521), binary.LittleEndian.AppendUint16(nil, 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	censusPrefixes = append(censusPrefixes, permittedKey.Hex()[:66])
+	var hook func(ctx context.Context, result any, method string, args ...any) error
+	hook = func(ctx context.Context, result any, method string, args ...any) error {
 		base.native.ctx = ctx
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		// As a node answers state_queryStorageAt at one hash: one change set,
+		// every key with its value or null, each read as state_getStorage.
+		if method == "state_queryStorageAt" && len(args) == 2 {
+			self.censusBatches.Add(1)
+			keys, _ := args[0].([]string)
+			at, _ := args[1].(string)
+			if self.fault == "census-batch-unavailable" {
+				return errors.New("fixture storage batch is unavailable")
+			}
+			changes := make([][]any, 0, len(keys))
+			for _, key := range keys {
+				raw := json.RawMessage("null")
+				if err := hook(context.WithValue(ctx, validatorUploadFixtureBatchKey{}, true), &raw, "state_getStorage", key, at); err != nil {
+					return err
+				}
+				changes = append(changes, []any{key, raw})
+			}
+			if self.fault == "census-batch-partial" && len(changes) != 0 {
+				changes = changes[:len(changes)-1]
+			}
+			block := at
+			if self.fault == "census-batch-foreign-block" {
+				block = types.Hash{0x66}.Hex()
+			}
+			encoded, err := json.Marshal([]map[string]any{{"block": block, "changes": changes}})
+			if err != nil {
+				return err
+			}
+			return json.Unmarshal(encoded, result)
+		}
+		if method == "state_getStorage" && len(args) == 2 && ctx.Value(validatorUploadFixtureBatchKey{}) == nil {
+			if key, ok := args[0].(string); ok && slices.ContainsFunc(censusPrefixes, func(prefix string) bool { return strings.HasPrefix(key, prefix) }) {
+				self.censusReads.Add(1)
+			}
+		}
+		if self.fault == "census-keys-absent" && method == "state_getStorage" && len(args) == 2 && args[0] == permittedKey.Hex() && args[1] == self.currentHash.Hex() {
+			return setValidatorRuntimeIdentityTestResult(result, nil)
 		}
 		if method == "chain_getFinalizedHead" {
 			return setValidatorRuntimeIdentityTestResult(result, self.currentHash.Hex())
@@ -187,7 +249,8 @@ func newValidatorUploadAuthorityTestFixture(t *testing.T) *validatorUploadAuthor
 		}
 		defer func() { base.native.permit = permit }()
 		return original.CallContext(ctx, result, method, args...)
-	}}
+	}
+	base.native.chain.API.Client = &validatorRuntimeIdentityTestClient{callContext: hook}
 	self.publish(t, base.authority.Expected, 1001, ed25519.NewKeyFromSeed(append([]byte{0x41}, make([]byte, 31)...)))
 	server := gethrpc.NewServer()
 	if err := server.RegisterName("eth", self); err != nil {

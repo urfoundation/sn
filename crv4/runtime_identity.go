@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/centrifuge/go-substrate-rpc-client/v4/scale"
 	"github.com/centrifuge/go-substrate-rpc-client/v4/types"
@@ -453,6 +454,9 @@ func RuntimeMetadataAtContext(ctx context.Context, chain *Chain, blockHash types
 	if ctx == nil || chain == nil || chain.API == nil || chain.API.Client == nil || blockHash == (types.Hash{}) {
 		return nil, "", errors.New("runtime metadata read dependencies are unavailable")
 	}
+	if memo := runtimeArtifactMemoFrom(ctx); memo != nil {
+		memo.countMetadataFetch()
+	}
 	var encoded string
 	if err := chain.API.Client.CallContext(ctx, &encoded, "state_getMetadata", blockHash.Hex()); err != nil {
 		return nil, "", err
@@ -471,6 +475,21 @@ func RuntimeMetadataAt(chain *Chain, blockHash types.Hash) (*types.Metadata, str
 // Wasm and proves Metadata_metadata reaches its pinned bytes without a stateful
 // host call.
 func AuthenticateRuntimeArtifactAtContext(ctx context.Context, chain *Chain, blockHash types.Hash, allowedIdentities ...RuntimeArtifactIdentity) (AuthenticatedRuntimeArtifact, error) {
+	memo := runtimeArtifactMemoFrom(ctx)
+	if memo == nil {
+		return authenticateRuntimeArtifactAtContext(ctx, chain, blockHash, allowedIdentities...)
+	}
+	key := runtimeArtifactMemoKey{chain: chain, blockHash: blockHash, allowed: fmt.Sprint(allowedIdentities)}
+	if result, found := memo.lookup(key); found {
+		return result, nil
+	}
+	started := time.Now()
+	result, err := authenticateRuntimeArtifactAtContext(ctx, chain, blockHash, allowedIdentities...)
+	memo.record(key, result, err, time.Since(started))
+	return result, err
+}
+
+func authenticateRuntimeArtifactAtContext(ctx context.Context, chain *Chain, blockHash types.Hash, allowedIdentities ...RuntimeArtifactIdentity) (AuthenticatedRuntimeArtifact, error) {
 	result := AuthenticatedRuntimeArtifact{BlockHash: blockHash}
 	if ctx == nil || chain == nil || chain.API == nil || chain.API.Client == nil || blockHash == (types.Hash{}) || len(allowedIdentities) == 0 {
 		return result, errors.New("runtime artifact authentication dependencies are unavailable")
@@ -569,4 +588,86 @@ func AuthenticateRuntimeArtifactAtContext(ctx context.Context, chain *Chain, blo
 		identity: *selectedIdentity, metadata: metadata, transport: transport, successor: successor,
 	}
 	return result, nil
+}
+
+// RuntimeArtifactMemo keeps, within one context, each successful runtime
+// authentication of one chain, block hash and allowlist. A block's runtime
+// never changes, so a reader that authenticates one block several times, as
+// an upload admission refresh does for its census and every eligibility
+// read, reads that runtime once. A failure is not kept: every call that
+// failed before fails the same way.
+type RuntimeArtifactMemo struct {
+	lock    sync.Mutex
+	entries map[runtimeArtifactMemoKey]AuthenticatedRuntimeArtifact
+	stats   RuntimeArtifactMemoStats
+}
+
+// What runtime authentication cost under one memo.
+type RuntimeArtifactMemoStats struct {
+	// Authentications made, failed ones included, and their total time.
+	Authenticated int
+	Took          time.Duration
+	// Calls answered from the memo.
+	Reused int
+	// Full metadata reads made under the memo.
+	MetadataFetches int
+}
+
+type runtimeArtifactMemoKey struct {
+	chain     *Chain
+	blockHash types.Hash
+	allowed   string
+}
+
+type runtimeArtifactMemoContextKey struct{}
+
+// WithRuntimeArtifactMemo returns a context whose runtime authentications
+// share one memo, and that memo.
+func WithRuntimeArtifactMemo(ctx context.Context) (context.Context, *RuntimeArtifactMemo) {
+	memo := &RuntimeArtifactMemo{entries: make(map[runtimeArtifactMemoKey]AuthenticatedRuntimeArtifact)}
+	return context.WithValue(ctx, runtimeArtifactMemoContextKey{}, memo), memo
+}
+
+func runtimeArtifactMemoFrom(ctx context.Context) *RuntimeArtifactMemo {
+	if ctx == nil {
+		return nil
+	}
+	memo, _ := ctx.Value(runtimeArtifactMemoContextKey{}).(*RuntimeArtifactMemo)
+	return memo
+}
+
+// Stats is a copy of the memo's counts so far.
+func (self *RuntimeArtifactMemo) Stats() RuntimeArtifactMemoStats {
+	if self == nil {
+		return RuntimeArtifactMemoStats{}
+	}
+	self.lock.Lock()
+	defer self.lock.Unlock()
+	return self.stats
+}
+
+func (self *RuntimeArtifactMemo) lookup(key runtimeArtifactMemoKey) (AuthenticatedRuntimeArtifact, bool) {
+	self.lock.Lock()
+	defer self.lock.Unlock()
+	result, found := self.entries[key]
+	if found {
+		self.stats.Reused++
+	}
+	return result, found
+}
+
+func (self *RuntimeArtifactMemo) record(key runtimeArtifactMemoKey, result AuthenticatedRuntimeArtifact, err error, took time.Duration) {
+	self.lock.Lock()
+	defer self.lock.Unlock()
+	self.stats.Authenticated++
+	self.stats.Took += took
+	if err == nil {
+		self.entries[key] = result
+	}
+}
+
+func (self *RuntimeArtifactMemo) countMetadataFetch() {
+	self.lock.Lock()
+	defer self.lock.Unlock()
+	self.stats.MetadataFetches++
 }
