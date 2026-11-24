@@ -13,10 +13,17 @@ import "slices"
 // encoding, and the signed-extension set is unchanged (CheckMetadataHash
 // included), so its transaction version 2 changes only the signed value that
 // the signer already takes from the authenticated runtime. Pinned in
-// runtime494_metadata_test.go. Any other identity, including a later spec at
-// transaction version 2, stays outside the family until its own review.
+// runtime494_metadata_test.go.
+// Runtime495 (subtensor v495, e536e6bf; Finney from block 9578500,
+// 2026-11-24) keeps transaction version 2: it appends no call, every call,
+// event and storage item the producer consumes keeps its index and encoding,
+// and the signed-extension set is unchanged. Pinned in
+// runtime495_metadata_test.go.
+// Any other identity, including a later spec at transaction version 2, stays
+// outside the family until its own review.
 var reviewedRaisedTransactionVersions = []RuntimeVersionIdentity{
 	{SpecName: "node-subtensor", SpecVersion: 494, TransactionVersion: 2, StateVersion: 1},
+	{SpecName: "node-subtensor", SpecVersion: 495, TransactionVersion: 2, StateVersion: 1},
 }
 
 // Reports whether this exact identity raised its transaction version above the
