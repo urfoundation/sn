@@ -177,9 +177,9 @@ func TestSetupWritesTheSignedConfigFromAWalletHotkey(t *testing.T) {
 	if !strings.Contains(stdout, "validator setup storage --validator-uid=<UID> --fresh") || !strings.Contains(stdout, "validator run") {
 		t.Fatalf("setup did not print the next steps: %s", stdout)
 	}
-	code, stdout, stderr = fixture.run(t, "--wallet.name=operator", "--wallet.hotkey=sn25")
-	if code != 0 || fixture.reads != 1 || !strings.Contains(stdout, "(existing)") {
-		t.Fatalf("a second setup did not reuse the config: exit=%d reads=%d %s %s", code, fixture.reads, stdout, stderr)
+	code, stdout, stderr = fixture.run(t, "--wallet.name=operator", "--wallet.hotkey=sn25", "--rpc=https://evm.other.example")
+	if code != 0 || fixture.reads != 1 || !strings.Contains(stdout, "(existing)") || !strings.Contains(stderr, "--rpc changed nothing") {
+		t.Fatalf("a second setup did not reuse the config and say so: exit=%d reads=%d %s %s", code, fixture.reads, stdout, stderr)
 	}
 	other := filepath.Join(fixture.home, "other.seed")
 	if err := os.WriteFile(other, []byte("0x"+strings.Repeat("21", 32)+"\n"), 0o600); err != nil {
@@ -328,11 +328,44 @@ func TestSetupLaterStepsNeedTheEarlierOnes(t *testing.T) {
 		{args: []string{"storage", "--apply", "--fresh"}, code: 2, want: "--apply takes only the plan"},
 		{args: []string{"activate", "--dry-run"}, code: 2, want: "--relayer-key-file"},
 		{args: []string{"activate", "--relayer-key-file=/tmp/relayer.key", "--dry-run"}, code: 1, want: "no prepared storage"},
+		{args: []string{"auth"}, code: 1, want: "no prepared storage"},
 		{args: []string{"unknown"}, code: 2, want: "unknown setup step"},
 	} {
 		code, _, stderr := fixture.run(t, test.args...)
 		if code != test.code || !strings.Contains(stderr, test.want) {
 			t.Errorf("%v: exit=%d %q", test.args, code, stderr)
 		}
+	}
+}
+
+// Each storage state names what to do next instead of failing opaquely.
+func TestSetupStorageNamesItsState(t *testing.T) {
+	fixture := newSetupTestFixture(t)
+	home, err := resolveValidatorHome("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(home.StorageDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	request := []string{"storage", "--validator-uid=3", "--fresh", "--mount-path=/srv", "--filesystem-uuid=11111111-2222-3333-4444-555555555555", "--filesystem-type=ext4"}
+	for _, test := range []struct {
+		file string
+		want string
+	}{
+		{file: home.StorageRequest(), want: "an earlier storage request did not finish"},
+		{file: home.StoragePlan(), want: "a storage plan is already written"},
+		{file: home.StorageResult(), want: "storage is already prepared"},
+	} {
+		if err := os.WriteFile(test.file, []byte("{}\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		code, _, stderr := fixture.run(t, request...)
+		if code != 1 || !strings.Contains(stderr, test.want) {
+			t.Fatalf("%s: exit=%d %q", filepath.Base(test.file), code, stderr)
+		}
+	}
+	if code, _, stderr := fixture.run(t, "storage", "--validator-uid=3", "--fresh", "--mount-path=/srv"); code != 2 || !strings.Contains(stderr, "give all of --mount-path") {
+		t.Fatalf("partial mount facts: exit=%d %q", code, stderr)
 	}
 }

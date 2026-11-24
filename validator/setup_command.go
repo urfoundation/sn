@@ -300,9 +300,14 @@ func setupInitial(ctx context.Context, args []string, stdout, stderr io.Writer, 
 		return true, fmt.Errorf("unexpected arguments %q", flags.Args())
 	}
 	explicitValidatorID := false
+	var configChoices []string
 	flags.Visit(func(value *flag.Flag) {
-		if value.Name == "validator-id" {
+		switch value.Name {
+		case "validator-id":
 			explicitValidatorID = true
+			configChoices = append(configChoices, "--"+value.Name)
+		case "rpc", "substrate", "approval-valid-for":
+			configChoices = append(configChoices, "--"+value.Name)
 		}
 	})
 	if explicitValidatorID && options.validatorID == 0 {
@@ -368,6 +373,9 @@ func setupInitial(ctx context.Context, args []string, stdout, stderr io.Writer, 
 			return false, err
 		}
 		fmt.Fprintf(stdout, "config: %s (existing)\n", home.InitialConfig())
+		if len(configChoices) != 0 {
+			fmt.Fprintf(stderr, "validator setup: the existing signed configuration keeps its own values, so %s changed nothing; set up a new --home to change them\n", strings.Join(configChoices, ", "))
+		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return false, err
 	} else {
@@ -548,10 +556,13 @@ func setupStorage(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	} else if *mount == "" || *uuid == "" || *filesystem == "" {
 		return true, errors.New("give all of --mount-path, --filesystem-uuid and --filesystem-type, or none of them on Linux")
 	}
-	for _, path := range []string{home.StorageRequest(), home.StoragePlan(), home.StorageResult()} {
-		if _, err := os.Lstat(path); err == nil {
-			return false, fmt.Errorf("%s already exists; a storage request is made once for a fresh runtime directory", path)
-		}
+	switch {
+	case setupFileExists(home.StorageResult()):
+		return false, fmt.Errorf("storage is already prepared (%s); next: validator setup auth", home.StorageResult())
+	case setupFileExists(home.StoragePlan()):
+		return false, fmt.Errorf("a storage plan is already written (%s); review it and run `validator setup storage --apply`, or remove %s to start over", home.StoragePlan(), home.StorageDir())
+	case setupFileExists(home.StorageRequest()):
+		return false, fmt.Errorf("an earlier storage request did not finish (%s); fix its cause, remove %s and the files it left in %s, then run this step again", home.StorageRequest(), home.StorageDir(), home.Runtime())
 	}
 	request := []string{"--config=" + home.InitialConfig(), "--root-dir=" + home.Runtime(), "--validator-uid=" + *uid, "--mount-path=" + *mount,
 		"--filesystem-uuid=" + *uuid, "--filesystem-type=" + *filesystem, "--fresh", "--out=" + home.StorageRequest()}
@@ -578,6 +589,11 @@ func setupStorage(ctx context.Context, args []string, stdout, stderr io.Writer) 
 	}
 	fmt.Fprintf(stdout, "%s\nplan: %s\nReview the plan, then apply it: validator setup storage --apply\n", encoded, home.StoragePlan())
 	return false, nil
+}
+
+func setupFileExists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
 }
 
 // "sha256:<hex>" of a file's exact bytes, the pin storage preparation takes.
@@ -632,6 +648,11 @@ func setupAuth(ctx context.Context, args []string, stdout, stderr io.Writer) (bo
 	if err != nil {
 		return false, err
 	}
+	// The credential is written under the runtime root, which storage
+	// preparation requires to be empty, so sign-in follows preparation.
+	if _, err := readSetupStorageDeclaration(home); err != nil {
+		return false, err
+	}
 	argv := []string{"auth", "--config=" + home.InitialConfig(), "--no_id=1"}
 	if *force {
 		argv = append(argv, "-f")
@@ -676,9 +697,6 @@ func setupActivate(ctx context.Context, args []string, stdout, stderr io.Writer)
 	mode := "--dry-run"
 	if *apply {
 		mode = "--apply"
-		if err := os.MkdirAll(home.Activation(), 0o700); err != nil {
-			return false, err
-		}
 	}
 	argv := []string{"activate", "--config=" + home.InitialConfig(), "--relayer_key_file=" + expandHome(*relayer), mode,
 		"--rendered-config=" + home.RunConfig(), "--successor-approval=" + home.SuccessorApproval(), "--original-authority=" + home.OriginalAuthority(),
