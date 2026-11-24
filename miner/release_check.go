@@ -64,7 +64,7 @@ type minerUpdater struct {
 	off string
 }
 
-// readMinerUpdater reads who updates this miner, in container (one of
+// Reads who updates this miner, in container (one of
 // minerContainer*, or "").
 func readMinerUpdater(container string) minerUpdater {
 	updater := minerUpdater{container: container}
@@ -85,7 +85,7 @@ func readMinerUpdater(container string) minerUpdater {
 	return updater
 }
 
-// minerUpdateFinding is what to tell the operator of a miner that runs
+// What to tell the operator of a miner that runs
 // current while release is the latest, nil for nothing: current is the
 // latest, or isn't a release, or an updater will install the release in time.
 func minerUpdateFinding(current string, release *minerRelease, updater minerUpdater, image string, now time.Time, settings *minerReleaseCheckSettings) *minerFinding {
@@ -174,7 +174,7 @@ type minerReleaseCheck struct {
 	settings *minerReleaseCheckSettings
 }
 
-// check asks the feed once. A finding is set and reported; a build that is the
+// Asks the feed once. A finding is set and reported; a build that is the
 // latest clears it; a feed that can't be read changes nothing.
 func (self *minerReleaseCheck) check(ctx context.Context) {
 	release, err := self.fetch(ctx)
@@ -192,7 +192,7 @@ func (self *minerReleaseCheck) check(ctx context.Context) {
 	}
 }
 
-// start checks FirstCheckDelay after it is called and then every
+// Checks FirstCheckDelay after it is called and then every
 // CheckInterval, each wait plus up to CheckJitter, until ctx ends or stop is
 // called. stop joins the loop.
 func (self *minerReleaseCheck) start(ctx context.Context) (stop func()) {
