@@ -806,6 +806,7 @@ func provideWith(opts docopt.Opts, start bool) {
 	settings.operatorChild = os.Getenv(operatorChildMarkerEnv) != ""
 	if !settings.operatorChild {
 		settings.releaseCheck = defaultMinerReleaseCheckSettings()
+		settings.exitDnsCheck = defaultMinerExitDnsCheckSettings()
 	}
 	settings.workCapturePath, _ = opts.String("--whole-work-capture")
 	settings.workCaptureSha256, _ = opts.String("--whole-work-capture-sha256")
@@ -922,6 +923,13 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 	}
 	if self.releaseCheck != nil {
 		defer self.newReleaseCheck(output, findings, facts.container).start(ctx)()
+	}
+	if self.exitDnsCheck != nil && len(self.proxySettings) == 0 {
+		exitDns := &minerExitDnsCheck{settings: self.exitDnsCheck, dohUrls: connect.DefaultDnsResolverSettings().RemoteDohUrlsIpv4, findings: findings, report: func(finding minerFinding) {
+			output.observeGuided(providerExitDnsBlocked, 0, false, nil, 0, nil, "", finding.guidance())
+			writeMinerFindingBlock(self.findingLog, finding)
+		}}
+		defer exitDns.start(ctx)()
 	}
 	status, err := newProviderStatusServer(self.port, output, cancel, progress)
 	if err != nil {

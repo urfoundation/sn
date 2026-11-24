@@ -182,6 +182,10 @@ func TestDoctorTellsAContainerOfItsIdentityAndVersion(t *testing.T) {
 	doctorNetwork = func(string) []doctorCheck { return []doctorCheck{{true, "Network", "skipped in tests"}} }
 	latest := &minerRelease{TagName: updaterTestNewerTag, PublishedAt: time.Now().Add(-time.Hour)}
 	doctorRelease = func(context.Context) (*minerRelease, error) { return latest, nil }
+	// every encrypted DNS server answers (exit_dns_test.go)
+	previousExitDns := minerExitDnsQuery
+	minerExitDnsQuery = func(context.Context, string, string) bool { return true }
+	t.Cleanup(func() { minerExitDnsQuery = previousExitDns })
 
 	setMinerHostRoot(t, fakeMinerHost(t, map[string]string{".dockerenv": "", "proc/self/mountinfo": minerTestContainerMounts()}))
 	var out bytes.Buffer

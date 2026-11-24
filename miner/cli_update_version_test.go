@@ -199,6 +199,9 @@ func TestTheUpdaterTakesAStampedBuildForARelease(t *testing.T) {
 	previousRelease := doctorRelease
 	doctorRelease = func(context.Context) (*minerRelease, error) { return nil, errors.New("off the network in tests") }
 	defer func() { doctorRelease = previousRelease }()
+	previousExitDns := minerExitDnsQuery
+	minerExitDnsQuery = func(context.Context, string, string) bool { return true }
+	defer func() { minerExitDnsQuery = previousExitDns }()
 	out.Reset()
 	doctorCmd(docopt.Opts{}, &out)
 	if got := out.String(); !strings.Contains(got, "Updates") || !strings.Contains(got, "is writable") {

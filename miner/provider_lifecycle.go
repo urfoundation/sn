@@ -44,6 +44,10 @@ type providerRunSettings struct {
 	// the release check's timing; nil makes no check, as in an operator child
 	// of provide --all-operators, whose supervisor checks (release_check.go)
 	releaseCheck *minerReleaseCheckSettings
+	// the exit DNS check's timing; nil makes no check, as in an operator
+	// child, whose supervisor checks; a run of proxy slots makes none either
+	// (exit_dns.go)
+	exitDnsCheck *minerExitDnsCheckSettings
 	// where a finding is written for a person, as a framed block; nil writes
 	// none (miner_findings.go)
 	findingLog io.Writer
