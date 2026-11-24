@@ -189,8 +189,11 @@ type ValidatorUploadAdmission struct {
 	ownerSlots          map[ValidatorUploadOwner]*validatorUploadOwnerSlots
 	validUntil          time.Time
 	lastError           error
-	closed              bool
-	leases              sync.WaitGroup
+	// Set when the last publish's permit census was unavailable, so its
+	// discovery followed only the admitted hotkeys.
+	censusUnavailable error
+	closed            bool
+	leases            sync.WaitGroup
 }
 
 // File custody and canonical context syntax precede the first RPC. The API
@@ -343,6 +346,12 @@ func (self *ValidatorUploadAdmission) WaitReady(ctx context.Context) error {
 	defer self.stateLock.Unlock()
 	return errors.Join(self.lastError, self.expiredLocked(self.clock()), self.seededReadinessErrorLocked(), self.ctx.Err(), ctx.Err())
 }
+
+// ErrValidatorUploadAuthorityNotCurrent marks a refusal that says nothing about
+// the validator: this instance could not verify its activation now. A sibling
+// instance, or this one after its next refresh, may admit it, so the api
+// answers it as not current (503), not as an authorization refusal (403).
+var ErrValidatorUploadAuthorityNotCurrent = errors.New("validator staging authority is not current for this activation")
 
 // A published admission is current only until its validUntil. A transient
 // failure that was retained, or a refresh still in flight, records no error,
@@ -530,6 +539,7 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 	}()
 	// Seeded testnet discovery reads no events, so it needs no census.
 	permitted := validatorUploadPermitCensus{stakes: map[[32]byte]uint64{}}
+	var censusUnavailable error
 	if !self.config.ProvisionalSeededDiscoveryOnly {
 		census, err := self.readValidatorUploadPermitCensus(ctx, nativeObserver, currentRuntime)
 		if ctxErr := errors.Join(ctx.Err(), self.ctx.Err()); ctxErr != nil {
@@ -543,6 +553,7 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 			// them only to their own expiry. Nothing new is discovered until
 			// the census reads again; no refresh fails for its absence.
 			fmt.Fprintf(os.Stderr, "validator staging permit census unavailable; discovering only the %d admitted owners' hotkeys: %v\n", len(admittedOwners), err)
+			censusUnavailable = err
 			for owner := range admittedOwners {
 				if _, exists := permitted.stakes[owner.Hotkey]; !exists {
 					permitted.stakes[owner.Hotkey] = 0
@@ -835,7 +846,7 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 		}
 		report.admitted, report.retained = len(entries)-len(retainedOwnerDigests), len(retainedOwnerDigests)
 		report.activationFailures = maps.Clone(self.activationFailures)
-		self.entries, self.validUntil, self.lastError = entries, validUntil, nil
+		self.entries, self.validUntil, self.lastError, self.censusUnavailable = entries, validUntil, nil, censusUnavailable
 		return nil
 	}()
 	for _, cancel := range retired {
@@ -1190,18 +1201,32 @@ func (self *ValidatorUploadAdmission) beginAt(ctx context.Context, header string
 		validUntil = entry.validUntil
 	}
 	expired := !self.config.ProvisionalRetainedContextAuthority && !now.Before(validUntil)
+	// Two refusals say nothing about the validator: an admitted activation
+	// whose verification expired with no fresh one, and an activation this
+	// instance did not look for, because its permit census was unavailable and
+	// discovery followed only the admitted hotkeys. A sibling instance, or this
+	// one after its next refresh, may admit either.
+	notCurrent := func(err error) error { return fmt.Errorf("%w; %w", err, ErrValidatorUploadAuthorityNotCurrent) }
 	if entry == nil || expired {
 		if err := self.activationFailures[intent.ActivationHash]; err != nil {
-			return nil, fmt.Errorf("validator staging activation %x is unavailable: %w", intent.ActivationHash[:8], err)
+			err = fmt.Errorf("validator staging activation %x is unavailable: %w", intent.ActivationHash[:8], err)
+			if entry != nil {
+				err = notCurrent(err)
+			}
+			return nil, err
 		}
 	}
 	switch {
 	case self.closed:
 		return nil, errors.New("validator staging activation is absent, stale or superseded: admission is closed")
 	case entry == nil:
-		return nil, fmt.Errorf("validator staging activation is absent, stale or superseded: activation %x is not admitted", intent.ActivationHash[:8])
+		err := fmt.Errorf("validator staging activation is absent, stale or superseded: activation %x is not admitted", intent.ActivationHash[:8])
+		if self.censusUnavailable != nil {
+			err = notCurrent(err)
+		}
+		return nil, err
 	case expired:
-		return nil, fmt.Errorf("validator staging activation is absent, stale or superseded: admission expired at %s", validUntil.UTC().Format(time.RFC3339))
+		return nil, notCurrent(fmt.Errorf("validator staging activation is absent, stale or superseded: admission expired at %s", validUntil.UTC().Format(time.RFC3339)))
 	case entry.record.VPK != intent.VPK || entry.ctx.Err() != nil:
 		return nil, fmt.Errorf("validator staging activation is absent, stale or superseded: activation %x names another key or was superseded", intent.ActivationHash[:8])
 	}
