@@ -81,6 +81,7 @@ The default URLs are:
     operators_url: %[3]s
 
 Usage:
+    validator setup [<setup-arguments>...]
     validator storage-prepare <storage_arguments>...
     validator configure [<configure-options>...]
     validator storage-inspect --durable-volumes=<path> --durable-volumes-sha256=<hash> --directory=<path>...
@@ -112,7 +113,7 @@ Usage:
         [--rendered-config=<path> --successor-approval=<path> --original-authority=<path> [(--approval-signature=<hex> | --approval-key-file=<path>)]]
         [--durable-volumes=<path> --durable-volumes-sha256=<hash>]
         [-v...]
-    validator run [--config=<path>] [--progress-file=<path>]
+    validator run [--config=<path> | --home=<path>] [--progress-file=<path>]
         [--ledger_auditor_key_file=<path>] [--ledger_max_bytes=<n>] [--drand_url=<url>]
         [--amendments-fallback=<path>]
         [--steering-operation-timeout=<duration>]
@@ -140,11 +141,13 @@ Options:
     -v...                        Verbose level (repeatable).
     -f                           Force overwrite the JWT token store file, if exists.
     --api_url=<api_url>          Custom API URL.
-	--config=<path>                Complete replacement for the embedded release.yml used by run when omitted.
-                                 The bundled template is incomplete; production requires reviewed pins,
-                                 credentials and signed authority in a complete document.
-                                 init/register/stake/activate/status accept it before its evidence_v2
-                                 inputs are rendered; run does not.
+	--config=<path>                A complete signed configuration. Without it, run uses the home that
+                                 validator setup made. init/register/stake/activate/status accept it
+                                 before its evidence_v2 inputs are rendered; run does not.
+    --home=<path>                The home validator setup made, by default ~/.urnetwork/sn25-validator.
+                                 run takes its rendered configuration and storage declaration from it,
+                                 writes its progress file there, keeps verified startup progress and
+                                 allows a 60m steering operation; any of these flags overrides it.
 	--progress-file=<path>         Optional bounded operational JSON outside protocol state.
     --ledger_auditor_key_file=<path>  Hex secp256k1 EVM key of the settlement v2 auditor, which sends
                                  approvals, challenges and demands. Without it none is sent.
@@ -255,6 +258,15 @@ func Run(args []string) {
 		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 		defer stop()
 		if code := runValidatorStoragePrepare(ctx, args[1:], os.Stdout, os.Stderr); code != 0 {
+			stop()
+			os.Exit(code)
+		}
+		return
+	}
+	if len(args) != 0 && args[0] == "setup" {
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer stop()
+		if code := runSetupCommand(ctx, args[1:], os.Stdout, os.Stderr); code != 0 {
 			stop()
 			os.Exit(code)
 		}
@@ -558,6 +570,13 @@ func dispatchValidatorRun(opts docopt.Opts, handlers validatorRunHandlers) error
 	if explicitConfig && strings.TrimSpace(configPath) == "" {
 		return errors.New("--config requires a nonempty file path")
 	}
+	homePath, explicitHome := opts["--home"].(string)
+	if explicitHome && strings.TrimSpace(homePath) == "" {
+		return errors.New("--home requires a nonempty directory")
+	}
+	if explicitConfig && explicitHome {
+		return errors.New("choose --config or --home")
+	}
 	measurement, allOperators := optBool(opts, "--measurement-only"), optBool(opts, "--all-operators")
 	if (measurement || allOperators) && explicitConfig || measurement && allOperators {
 		return errors.New("choose release configuration or one measurement mode")
@@ -573,8 +592,14 @@ func dispatchValidatorRun(opts docopt.Opts, handlers validatorRunHandlers) error
 		}
 		return nil
 	}
-	// An omitted path is the bundled document. An explicit path always names
-	// the whole replacement document; a missing file never selects defaults.
+	// An explicit path always names the whole document; a missing file never
+	// selects defaults. Without one, the home that setup made supplies it.
+	if !explicitConfig {
+		var err error
+		if configPath, err = validatorHomeRunConfig(opts, homePath); err != nil {
+			return err
+		}
+	}
 	handlers.release(opts, configPath)
 	return nil
 }
