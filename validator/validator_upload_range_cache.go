@@ -6,21 +6,36 @@
 // Each refresh then reads only the open range at the head, plus the closed
 // ranges again for hotkeys that newly hold a permit, all of those hotkeys in
 // one OR-list. A process starts with nothing kept: its first scan reads every
-// range, a few at a time. Kept rows still pass the canonical-hash recheck on
-// every refresh.
+// closed range, two at a time after a random start delay, and keeps each one
+// it completes even when the refresh fails, so a scan cut by the deadline
+// continues where it stopped. Kept rows still pass the canonical-hash recheck
+// on every refresh.
 package validator
 
 import (
 	"cmp"
 	"context"
 	"errors"
+	"math/rand/v2"
 	"slices"
 	"sync"
+	"time"
 )
 
-// Concurrent range reads of a cold scan, made while a process has kept
-// nothing yet. Every later read is made one at a time.
-const validatorUploadColdScanParallelism = 4
+// Concurrent reads of closed ranges that nothing is kept for. The open range
+// and backfills are read one at a time. A roll restarts several processes at
+// once against one node, which also serves the validator.
+const validatorUploadColdScanParallelism = 2
+
+// A process that keeps nothing starts a cold scan of at least this many
+// ranges after a random delay below maximumValidatorUploadColdScanJitter, so
+// the processes of one roll do not all scan at once.
+const validatorUploadColdScanJitterRanges = 8
+const maximumValidatorUploadColdScanJitter = 20 * time.Second
+
+func validatorUploadColdScanJitter() time.Duration {
+	return rand.N(maximumValidatorUploadColdScanJitter)
+}
 
 // The rows that all closed ranges may keep together, about 16 MiB. A range
 // past it is not kept and is read again on every refresh, as before the cache.
@@ -74,8 +89,8 @@ type validatorUploadRangeRead struct {
 	hotkeys [][32]byte
 }
 
-// The permitted rows of each range, in range order, and the number of range
-// reads made. Closed ranges with nothing kept are read first, several at a
+// The permitted rows of each range, in range order, the number of range reads
+// made and the number of closed ranges answered from kept rows alone. Closed ranges with nothing kept are read first, several at a
 // time only while the process has kept nothing; then the open range and the
 // backfills of newly permitted hotkeys are read one at a time. Every row of a
 // block that this refresh did not read is rechecked against the canonical
@@ -84,7 +99,7 @@ type validatorUploadRangeRead struct {
 // A changed canonical hash discredits every kept range, not only the one
 // that showed it: they are all dropped, so the next refresh scans cold, as a
 // new process does, and reads the chain as it is now.
-func (self *ValidatorUploadAdmission) discoverValidatorUploadRanges(ctx context.Context, ranges []validatorUploadRange, hotkeys [][32]byte, observer ValidatorUploadObserver) (_ [][]ValidatorUploadActivationEvent, _ int, resultErr error) {
+func (self *ValidatorUploadAdmission) discoverValidatorUploadRanges(ctx context.Context, ranges []validatorUploadRange, hotkeys [][32]byte, observer ValidatorUploadObserver) (_ [][]ValidatorUploadActivationEvent, _ int, _ int, resultErr error) {
 	defer func() {
 		if errors.Is(resultErr, errValidatorUploadCanonicalChanged) {
 			clear(self.closedRanges)
@@ -94,7 +109,7 @@ func (self *ValidatorUploadAdmission) discoverValidatorUploadRanges(ctx context.
 	result := make([][]ValidatorUploadActivationEvent, len(ranges))
 	// An empty census reads nothing.
 	if len(hotkeys) == 0 {
-		return result, 0, ctx.Err()
+		return result, 0, 0, ctx.Err()
 	}
 	permitted := make(map[[32]byte]bool, len(hotkeys))
 	for _, hotkey := range hotkeys {
@@ -121,74 +136,89 @@ func (self *ValidatorUploadAdmission) discoverValidatorUploadRanges(ctx context.
 			}
 		}
 	}
-	parallel := 1
-	if len(self.closedRanges) == 0 {
-		parallel = validatorUploadColdScanParallelism
+	if len(cold) >= validatorUploadColdScanJitterRanges && len(self.closedRanges) == 0 && self.coldScanJitter != nil {
+		if delay := self.coldScanJitter(); delay > 0 {
+			timer := time.NewTimer(delay)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil, 0, 0, ctx.Err()
+			case <-timer.C:
+			}
+		}
 	}
 	read := func(ctx context.Context, request validatorUploadRangeRead) ([]ValidatorUploadActivationEvent, error) {
 		return self.chain.ValidatorUploadActivationEventsContext(ctx, self.config.Deployment, request.from, request.to, self.config.BlocksPerRange, maximumValidatorUploadRangeRows, request.hotkeys, observer)
 	}
-	coldRows, err := readValidatorUploadRanges(ctx, cold, parallel, read)
-	if err != nil {
-		return nil, 0, err
-	}
-	warmRows, err := readValidatorUploadRanges(ctx, warm, 1, read)
-	if err != nil {
-		return nil, 0, err
-	}
 	// The read rechecked each of its rows' blocks.
 	checked := make(map[uint64][32]byte)
 	served := make([]bool, len(ranges))
+	// One completed read: an open range's rows are this refresh's; a closed
+	// range's join its kept rows and stay kept.
+	keep := func(request validatorUploadRangeRead, rows []ValidatorUploadActivationEvent) error {
+		for _, event := range rows {
+			checked[event.Block] = event.BlockHash
+		}
+		served[request.index] = true
+		scanned := ranges[request.index]
+		if !scanned.closed {
+			result[request.index] = rows
+			return nil
+		}
+		// Rows of hotkeys that lost their permit are dropped; such a
+		// hotkey is read again if it regains one.
+		var prior []ValidatorUploadActivationEvent
+		hotkeysRead := make(map[[32]byte]bool, len(hotkeys))
+		if kept := self.closedRanges[scanned.from]; kept != nil && kept.to == scanned.to {
+			for hotkey := range kept.hotkeys {
+				if permitted[hotkey] {
+					hotkeysRead[hotkey] = true
+				}
+			}
+			for _, event := range kept.events {
+				if permitted[event.Hotkey] {
+					prior = append(prior, event)
+				}
+			}
+		}
+		for _, hotkey := range request.hotkeys {
+			hotkeysRead[hotkey] = true
+		}
+		events, err := mergeValidatorUploadRangeEvents(prior, rows)
+		if err != nil {
+			return err
+		}
+		self.keepValidatorUploadClosedRange(scanned.from, &validatorUploadClosedRange{to: scanned.to, hotkeys: hotkeysRead, events: events})
+		result[request.index] = events
+		return nil
+	}
+	// Each completed read is kept before a failed one fails the refresh.
 	for _, reads := range []struct {
 		requests []validatorUploadRangeRead
-		rows     [][]ValidatorUploadActivationEvent
-	}{{cold, coldRows}, {warm, warmRows}} {
+		parallel int
+	}{{cold, validatorUploadColdScanParallelism}, {warm, 1}} {
+		rows, done, err := readValidatorUploadRanges(ctx, reads.requests, reads.parallel, read)
 		for position, request := range reads.requests {
-			rows := reads.rows[position]
-			for _, event := range rows {
-				checked[event.Block] = event.BlockHash
-			}
-			served[request.index] = true
-			scanned := ranges[request.index]
-			if !scanned.closed {
-				result[request.index] = rows
-				continue
-			}
-			// Rows of hotkeys that lost their permit are dropped; such a
-			// hotkey is read again if it regains one.
-			var prior []ValidatorUploadActivationEvent
-			hotkeysRead := make(map[[32]byte]bool, len(hotkeys))
-			if kept := self.closedRanges[scanned.from]; kept != nil && kept.to == scanned.to {
-				for hotkey := range kept.hotkeys {
-					if permitted[hotkey] {
-						hotkeysRead[hotkey] = true
-					}
-				}
-				for _, event := range kept.events {
-					if permitted[event.Hotkey] {
-						prior = append(prior, event)
-					}
+			if done[position] {
+				if err := keep(request, rows[position]); err != nil {
+					return nil, 0, 0, err
 				}
 			}
-			for _, hotkey := range request.hotkeys {
-				hotkeysRead[hotkey] = true
-			}
-			events, err := mergeValidatorUploadRangeEvents(prior, rows)
-			if err != nil {
-				return nil, 0, err
-			}
-			self.keepValidatorUploadClosedRange(scanned.from, &validatorUploadClosedRange{to: scanned.to, hotkeys: hotkeysRead, events: events})
-			result[request.index] = events
+		}
+		if err != nil {
+			return nil, 0, 0, err
 		}
 	}
+	answeredFromKept := 0
 	for index, scanned := range ranges {
 		if served[index] {
 			continue
 		}
 		kept := self.closedRanges[scanned.from]
 		if kept == nil {
-			return nil, 0, errors.New("validator staging closed range was neither kept nor read")
+			return nil, 0, 0, errors.New("validator staging closed range was neither kept nor read")
 		}
+		answeredFromKept++
 		for _, event := range kept.events {
 			if permitted[event.Hotkey] {
 				result[index] = append(result[index], event)
@@ -200,16 +230,16 @@ func (self *ValidatorUploadAdmission) discoverValidatorUploadRanges(ctx context.
 			hash, done := checked[event.Block]
 			if !done {
 				if err := self.chain.recheckValidatorUploadBlockContext(ctx, event.Block, event.BlockHash); err != nil {
-					return nil, 0, err
+					return nil, 0, 0, err
 				}
 				checked[event.Block], hash = event.BlockHash, event.BlockHash
 			}
 			if hash != event.BlockHash {
-				return nil, 0, errValidatorUploadCanonicalChanged
+				return nil, 0, 0, errValidatorUploadCanonicalChanged
 			}
 		}
 	}
-	return result, len(cold) + len(warm), ctx.Err()
+	return result, len(cold) + len(warm), answeredFromKept, ctx.Err()
 }
 
 // The kept rows of a range and a backfill's rows are of different hotkeys.
@@ -260,16 +290,17 @@ func (self *ValidatorUploadAdmission) keepValidatorUploadClosedRange(from uint64
 }
 
 // Makes reads at most parallel at a time and returns their rows in request
-// order. The first failure cancels the reads in flight, starts no others and
-// is the error returned.
-func readValidatorUploadRanges(ctx context.Context, requests []validatorUploadRangeRead, parallel int, read func(context.Context, validatorUploadRangeRead) ([]ValidatorUploadActivationEvent, error)) ([][]ValidatorUploadActivationEvent, error) {
+// order, with which of them completed. The first failure cancels the reads in
+// flight, starts no others and is the error returned.
+func readValidatorUploadRanges(ctx context.Context, requests []validatorUploadRangeRead, parallel int, read func(context.Context, validatorUploadRangeRead) ([]ValidatorUploadActivationEvent, error)) ([][]ValidatorUploadActivationEvent, []bool, error) {
+	rows := make([][]ValidatorUploadActivationEvent, len(requests))
+	done := make([]bool, len(requests))
 	if len(requests) == 0 {
-		return nil, ctx.Err()
+		return rows, done, ctx.Err()
 	}
 	parallel = max(parallel, 1)
 	readCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	rows := make([][]ValidatorUploadActivationEvent, len(requests))
 	slots := make(chan struct{}, parallel)
 	var group sync.WaitGroup
 	var failure error
@@ -296,15 +327,12 @@ func readValidatorUploadRanges(ctx context.Context, requests []validatorUploadRa
 				})
 				return
 			}
-			rows[index] = value
+			rows[index], done[index] = value, true
 		}()
 	}
 	group.Wait()
 	if failure != nil {
-		return nil, failure
+		return rows, done, failure
 	}
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	return rows, nil
+	return rows, done, ctx.Err()
 }

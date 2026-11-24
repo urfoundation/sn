@@ -93,8 +93,10 @@ func TestValidatorUploadDiscoverySteadyStateReadsOnlyTheOpenRange(t *testing.T) 
 	t.Parallel()
 	fixture := newValidatorUploadAuthorityTestFixture(t)
 	owner := validatorUploadRangeCacheTestOwner(t, fixture)
-	var reads []uint64
-	owner.refreshReport = func(report validatorUploadRefreshReport) { reads = append(reads, report.rangeReads) }
+	var reads, kept []uint64
+	owner.refreshReport = func(report validatorUploadRefreshReport) {
+		reads, kept = append(reads, report.rangeReads), append(kept, report.rangesKept)
+	}
 	first := validatorUploadRangeCacheTestRefresh(t, fixture, owner)
 	if want := append(slices.Clone(validatorUploadRangeCacheTestClosed), [2]uint64{1181, 1200}); !slices.Equal(validatorUploadRangeCacheTestRanges(first), want) {
 		t.Fatalf("the first scan did not read every range once: %v", validatorUploadRangeCacheTestRanges(first))
@@ -108,8 +110,8 @@ func TestValidatorUploadDiscoverySteadyStateReadsOnlyTheOpenRange(t *testing.T) 
 			t.Fatalf("the activation in a kept range lost its admission: %v", err)
 		}
 	}
-	if !slices.Equal(reads, []uint64{7, 1, 1}) {
-		t.Fatalf("refresh reports name %v range reads, not 7, 1, 1", reads)
+	if !slices.Equal(reads, []uint64{7, 1, 1}) || !slices.Equal(kept, []uint64{0, 6, 6}) {
+		t.Fatalf("refresh reports name %v range reads and %v kept, not 7, 1, 1 and 0, 6, 6", reads, kept)
 	}
 }
 
@@ -213,10 +215,10 @@ func TestValidatorUploadDiscoveryRestartScansColdOnce(t *testing.T) {
 	}
 }
 
-// The six closed ranges of a cold scan are read four at a time, never more.
-// Each read waits until four are in flight or every cold read has started, so
+// The six closed ranges of a cold scan are read two at a time, never more.
+// Each read waits until two are in flight or every cold read has started, so
 // a larger or smaller bound shows in the peak. The open range follows alone.
-func TestValidatorUploadDiscoveryColdScanReadsFourAtATime(t *testing.T) {
+func TestValidatorUploadDiscoveryColdScanReadsTwoAtATime(t *testing.T) {
 	t.Parallel()
 	fixture := newValidatorUploadAuthorityTestFixture(t)
 	owner := validatorUploadRangeCacheTestOwner(t, fixture)
@@ -254,7 +256,7 @@ func TestValidatorUploadDiscoveryColdScanReadsFourAtATime(t *testing.T) {
 
 // The first failed read of a cold scan cancels the reads in flight and starts
 // no other: the refresh fails at once with that read's error, and the
-// ranges after the first four are never asked for.
+// ranges after the first two are never asked for.
 func TestValidatorUploadDiscoveryColdScanFailureCancelsTheRest(t *testing.T) {
 	t.Parallel()
 	fixture := newValidatorUploadAuthorityTestFixture(t)
@@ -262,7 +264,7 @@ func TestValidatorUploadDiscoveryColdScanFailureCancelsTheRest(t *testing.T) {
 	var started, cancelled, unreleased atomic.Int64
 	fixture.logGate = func(ctx context.Context, from, to uint64) error {
 		started.Add(1)
-		if from == 1061 {
+		if from == 1031 {
 			return errors.New("fixture refuses this range read")
 		}
 		select {
@@ -289,7 +291,7 @@ func TestValidatorUploadDiscoveryColdScanFailureCancelsTheRest(t *testing.T) {
 		t.Fatalf("of %d started reads, %d were cancelled and %d ran on", started.Load(), cancelled.Load(), unreleased.Load())
 	}
 	for _, query := range validatorUploadRangeCacheTestQueries(fixture) {
-		if query.from >= 1121 {
+		if query.from >= 1061 {
 			t.Fatalf("range %d..%d was read after the failure", query.from, query.to)
 		}
 	}
@@ -404,5 +406,108 @@ func TestValidatorUploadDiscoveryMergeKeepsReadChecks(t *testing.T) {
 		if err == nil || errors.Is(err, errValidatorUploadCanonicalChanged) != (name == "two hashes for a block") {
 			t.Errorf("%s: %v", name, err)
 		}
+	}
+}
+
+// Six-block ranges from the deployment block 1001: with the head at 1200,
+// 33 are closed and [1199, 1200] is open, 34 in all, as on mainnet today.
+func validatorUploadRangeCacheTestLongConfig(fixture *validatorUploadAuthorityTestFixture) ValidatorUploadAdmissionConfig {
+	config := fixture.config()
+	config.BlocksPerRange = 6
+	config.MaximumRanges = 34
+	return config
+}
+
+// A cold scan cut at its 21st range, by a failed read or by the refresh's
+// deadline, keeps the 20 ranges it completed. The next refresh reads only the
+// 13 closed ranges left and the open range. Before, the cut lost the whole
+// scan and the next refresh started over, so a scan longer than the deadline
+// never finished.
+func TestValidatorUploadDiscoveryKeepsPartialProgress(t *testing.T) {
+	t.Parallel()
+	for _, cut := range []string{"failed read", "deadline"} {
+		t.Run(cut, func(t *testing.T) {
+			t.Parallel()
+			fixture := newValidatorUploadAuthorityTestFixture(t)
+			owner, err := newValidatorUploadAdmissionState(t.Context(), fixture.chain, fixture.native.chain, validatorUploadRangeCacheTestLongConfig(fixture))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { owner.cancel(); owner.invalidate(errors.New("fixture closed")); owner.leases.Wait() })
+			owner.coldScanJitter = func() time.Duration { return 0 }
+			cutFrom := uint64(1001 + 20*6)
+			fixture.logGate = func(ctx context.Context, from, to uint64) error {
+				switch {
+				case from < cutFrom || from > 1198:
+					return nil
+				case from == cutFrom && cut == "failed read":
+					return errors.New("fixture refuses this range read")
+				}
+				<-ctx.Done()
+				return ctx.Err()
+			}
+			ctx := t.Context()
+			if cut == "deadline" {
+				var cancel context.CancelFunc
+				ctx, cancel = context.WithTimeout(ctx, 3*time.Second)
+				defer cancel()
+			}
+			if err := owner.refresh(ctx, fixture.now); err == nil {
+				t.Fatal("prerequisite: the cut refresh fails")
+			}
+			if len(owner.closedRanges) != 20 {
+				t.Fatalf("the cut scan kept %d ranges, not the 20 it completed", len(owner.closedRanges))
+			}
+			validatorUploadRangeCacheTestQueries(fixture)
+			fixture.logGate = nil
+			var want [][2]uint64
+			for index := uint64(20); index < 33; index++ {
+				want = append(want, [2]uint64{1001 + index*6, 1006 + index*6})
+			}
+			want = append(want, [2]uint64{1199, 1200})
+			if got := validatorUploadRangeCacheTestRanges(validatorUploadRangeCacheTestRefresh(t, fixture, owner)); !slices.Equal(got, want) {
+				t.Fatalf("the next refresh read %v, not the ranges left %v", got, want)
+			}
+			if err := validatorUploadDiscoveryTestBegin(t, fixture, owner, fixture.authority.Expected, fixture.now); err != nil {
+				t.Fatalf("the completed scan did not admit: %v", err)
+			}
+		})
+	}
+}
+
+// Only a process that keeps nothing delays a cold scan, and only a large one;
+// the delay is below 20 s.
+func TestValidatorUploadDiscoveryJittersOnlyLargeColdScans(t *testing.T) {
+	t.Parallel()
+	for range 1000 {
+		if delay := validatorUploadColdScanJitter(); delay < 0 || delay >= 20*time.Second {
+			t.Fatalf("cold scan delay %s is outside [0, 20s)", delay)
+		}
+	}
+	for _, test := range []struct {
+		name   string
+		config func(*validatorUploadAuthorityTestFixture) ValidatorUploadAdmissionConfig
+		delays []int
+	}{
+		{name: "34 ranges", config: validatorUploadRangeCacheTestLongConfig, delays: []int{1, 1}},
+		{name: "7 ranges", config: validatorUploadRangeCacheTestConfig, delays: []int{0, 0}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			fixture := newValidatorUploadAuthorityTestFixture(t)
+			owner, err := newValidatorUploadAdmissionState(t.Context(), fixture.chain, fixture.native.chain, test.config(fixture))
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { owner.cancel(); owner.invalidate(errors.New("fixture closed")); owner.leases.Wait() })
+			delays := 0
+			owner.coldScanJitter = func() time.Duration { delays++; return time.Millisecond }
+			for refresh, want := range test.delays {
+				validatorUploadRangeCacheTestRefresh(t, fixture, owner)
+				if delays != want {
+					t.Fatalf("refresh %d: %d cold scan delays, want %d", refresh, delays, want)
+				}
+			}
+		})
 	}
 }

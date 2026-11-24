@@ -156,6 +156,7 @@ type validatorUploadRefreshReport struct {
 	nativeHeadAge time.Duration
 	ranges        uint64
 	rangeReads    uint64
+	rangesKept    uint64
 	events        uint64
 	// Time in each phase. Runtime authentication happens inside the census
 	// and the eligibility reads, once per block hash and allowlist.
@@ -195,14 +196,16 @@ type ValidatorUploadAdmission struct {
 	closedRanges         map[uint64]*validatorUploadClosedRange
 	closedRangeRows      int
 	closedRangeRowBudget int
-	activationFailures   map[[32]byte]error
-	stateLock            sync.Mutex
-	entries              map[[32]byte]*validatorUploadAdmissionEntry
-	ownerSlots           map[ValidatorUploadOwner]*validatorUploadOwnerSlots
-	validUntil           time.Time
-	lastError            error
-	closed               bool
-	leases               sync.WaitGroup
+	// The start delay of a large cold scan.
+	coldScanJitter     func() time.Duration
+	activationFailures map[[32]byte]error
+	stateLock          sync.Mutex
+	entries            map[[32]byte]*validatorUploadAdmissionEntry
+	ownerSlots         map[ValidatorUploadOwner]*validatorUploadOwnerSlots
+	validUntil         time.Time
+	lastError          error
+	closed             bool
+	leases             sync.WaitGroup
 }
 
 // File custody and canonical context syntax precede the first RPC. The API
@@ -286,7 +289,7 @@ func newValidatorUploadAdmissionState(ctx context.Context, chain *ChainClient, n
 		discoveryDigests: digests, clock: time.Now, refreshReport: printValidatorUploadRefreshReport,
 		verifiedHistory: make(map[[32]byte]VerifiedReleaseActivationV2, len(digests)), activationFailures: make(map[[32]byte]error, len(digests)),
 		entries: make(map[[32]byte]*validatorUploadAdmissionEntry), ownerSlots: make(map[ValidatorUploadOwner]*validatorUploadOwnerSlots), lastError: errors.New("validator staging admission has not refreshed"),
-		closedRanges: make(map[uint64]*validatorUploadClosedRange), closedRangeRowBudget: maximumValidatorUploadKeptRows}
+		closedRanges: make(map[uint64]*validatorUploadClosedRange), closedRangeRowBudget: maximumValidatorUploadKeptRows, coldScanJitter: validatorUploadColdScanJitter}
 	if config.ProvisionalRetainedContextAuthority {
 		if err := owner.installProvisionalRetainedContextAuthority(retainedContexts); err != nil {
 			cancel()
@@ -670,12 +673,12 @@ func (self *ValidatorUploadAdmission) refresh(ctx context.Context, now time.Time
 		}
 	}
 	discoveryStarted := time.Now()
-	rangeEvents, rangeReads, err := self.discoverValidatorUploadRanges(ctx, ranges, permitted.hotkeys, observer)
+	rangeEvents, rangeReads, rangesKept, err := self.discoverValidatorUploadRanges(ctx, ranges, permitted.hotkeys, observer)
 	report.discoveryTook = time.Since(discoveryStarted)
 	if err != nil {
 		return err
 	}
-	report.rangeReads = uint64(rangeReads)
+	report.rangeReads, report.rangesKept = uint64(rangeReads), uint64(rangesKept)
 	for rangeIndex, scanned := range ranges {
 		start, end, events := scanned.from, scanned.to, rangeEvents[rangeIndex]
 		report.ranges++
@@ -1156,10 +1159,10 @@ func validatorUploadRefreshReportLine(report validatorUploadRefreshReport) strin
 		outcome = "failed: " + report.err.Error()
 	}
 	line := fmt.Sprintf("validator staging refresh %s; took %s, EVM head age %s, native head age %s, %d ranges (%d read), %d events, %d admitted, %d retained, valid until %s; "+
-		"phases: census %s, discovery %s, eligibility %s, runtime %s in %d authentications, %d reused, %d metadata fetches; not admitted [%s]",
+		"phases: census %s, discovery %s with %d ranges kept, eligibility %s, runtime %s in %d authentications, %d reused, %d metadata fetches; not admitted [%s]",
 		outcome, report.finished.Sub(report.started).Round(time.Millisecond), report.evmHeadAge.Round(time.Millisecond), report.nativeHeadAge.Round(time.Millisecond),
 		report.ranges, report.rangeReads, report.events, report.admitted, report.retained, report.validUntil.UTC().Format(time.RFC3339),
-		report.censusTook.Round(time.Millisecond), report.discoveryTook.Round(time.Millisecond), report.eligibilityTook.Round(time.Millisecond),
+		report.censusTook.Round(time.Millisecond), report.discoveryTook.Round(time.Millisecond), report.rangesKept, report.eligibilityTook.Round(time.Millisecond),
 		report.runtime.Took.Round(time.Millisecond), report.runtime.Authenticated, report.runtime.Reused, report.runtime.MetadataFetches, strings.Join(causes, "; "))
 	return strings.ReplaceAll(line, "\n", " | ")
 }

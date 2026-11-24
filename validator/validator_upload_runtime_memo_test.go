@@ -107,7 +107,7 @@ func TestValidatorUploadRefreshLineNamesItsPhases(t *testing.T) {
 	}
 	for index, report := range *reports {
 		line := validatorUploadRefreshReportLine(report)
-		for _, phase := range []string{"phases: census ", ", discovery ", ", eligibility ", ", runtime ", " authentications, ", " reused, ", " metadata fetches"} {
+		for _, phase := range []string{" ranges (", " read), ", "phases: census ", ", discovery ", " ranges kept, eligibility ", ", runtime ", " authentications, ", " reused, ", " metadata fetches"} {
 			if !strings.Contains(line, phase) {
 				t.Fatalf("refresh %d line lacks %q: %s", index, phase, line)
 			}
