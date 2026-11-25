@@ -287,9 +287,26 @@ activation with:
 - your host's egress IP addresses.
 
 The network operator provisions each validator's capacity for uploading its
-evidence. It also applies request limits that are keyed to addresses today.
-Ask us to confirm the plan for your validator's network as well. Measurement
+evidence. Its api limits requests per address. Once your activation is
+admitted, the validator also sends a short-lived validator class token with
+its client sign-in on each api request. The operator charges those requests
+to a validator rate class sized for a restart's replay. A
+`validator diagnostic:` line with `code=validator_class_ready` reports that
+the class was gained, and `code=validator_class_unavailable` that it was not;
+`cause=hard_error` there means the operator refused it. Without the class,
+requests are limited as they were before the class existed. Measurement
 traffic through providers is carried like any network's.
+
+The validator's measurement traffic is paid from its network's data balance,
+and an admitted validator gets a data grant for it. When the validator gains
+its class token, the operator grants the network it signed in with 350 GiB,
+valid for 30 days, unless its hotkey already holds a grant. The next grant
+comes in the last 2 days of the current one while the activation stays
+admitted, so a running validator does not run out between grants; what is
+left of the old grant stays usable until it ends. A grant is data only, costs
+nothing and is not Pro, and it shows in the network's data balance. A
+validator whose activation is not admitted gets no grant. The operator sets
+the amount and the period.
 
 We announce releases, runtime reviews and protocol changes to registered
 validators.
