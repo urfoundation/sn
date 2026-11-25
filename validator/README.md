@@ -297,6 +297,17 @@ the class was gained, and `code=validator_class_unavailable` that it was not;
 requests are limited as they were before the class existed. Measurement
 traffic through providers is carried like any network's.
 
+The validator's measurement traffic is paid from its network's data balance,
+and an admitted validator gets a data grant for it. When the validator gains
+its class token, the operator grants the network it signed in with 350 GiB,
+valid for 30 days, unless its hotkey already holds a grant. The next grant
+comes in the last 2 days of the current one while the activation stays
+admitted, so a running validator does not run out between grants; what is
+left of the old grant stays usable until it ends. A grant is data only, costs
+nothing and is not Pro, and it shows in the network's data balance. A
+validator whose activation is not admitted gets no grant. The operator sets
+the amount and the period.
+
 We announce releases, runtime reviews and protocol changes to registered
 validators.
 
