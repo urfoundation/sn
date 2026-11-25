@@ -2,10 +2,13 @@ package miner
 
 import (
 	"archive/tar"
+	"bytes"
 	"cmp"
 	"compress/gzip"
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -370,6 +373,10 @@ func installMinerRelease(ctx context.Context, release *minerRelease, executable 
 	if !ok || len(want) != 64 {
 		return fmt.Errorf("release %s lists no sha256 digest for %s, so it can't be checked", release.TagName, asset.Name)
 	}
+	signedSum, err := minerReleaseSignedSum(ctx, release, asset.Name)
+	if err != nil {
+		return err
+	}
 	dir := filepath.Dir(executable)
 	// a fresh name each time (O_EXCL), so nothing planted there is followed;
 	// Windows runs only a name that ends in .exe
@@ -417,6 +424,9 @@ func installMinerRelease(ctx context.Context, release *minerRelease, executable 
 	if got := hex.EncodeToString(hash.Sum(nil)); got != strings.ToLower(want) {
 		return fmt.Errorf("the download of %s doesn't match its sha256 digest; nothing was changed", asset.Name)
 	}
+	if signedSum != "" && hex.EncodeToString(hash.Sum(nil)) != signedSum {
+		return fmt.Errorf("the download of %s doesn't match its signed SHA256SUMS line; nothing was changed", asset.Name)
+	}
 	if !found {
 		return fmt.Errorf("%s has no provider for %s/%s", asset.Name, runtime.GOOS, runtime.GOARCH)
 	}
@@ -429,6 +439,88 @@ func installMinerRelease(ctx context.Context, release *minerRelease, executable 
 		return fmt.Errorf("the new binary says it is %q, not %s; nothing was changed", got, release.version())
 	}
 	return replaceMinerBinary(newPath, executable)
+}
+
+// minerUpdatePublicKey verifies SHA256SUMS.sig, an ed25519 signature over
+// the release's exact SHA256SUMS bytes. A package var so tests can sign.
+var minerUpdatePublicKey = mustMinerUpdatePublicKey("Qm4V/UTZcuIRMFJuAzDhxf2CK6ycwxF0HFOcFhXBIYQ=")
+
+// requireUpdateSignature refuses a release without SHA256SUMS.sig. Off
+// while signed releases roll out: an unsigned release warns and keeps the
+// digest check. A release that has the signature is always held to it.
+var requireUpdateSignature = false
+
+// minerUpdateWarn is where an unsigned release is reported.
+var minerUpdateWarn io.Writer = os.Stderr
+
+func mustMinerUpdatePublicKey(encoded string) ed25519.PublicKey {
+	key, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil || len(key) != ed25519.PublicKeySize {
+		panic("bad miner update public key")
+	}
+	return ed25519.PublicKey(key)
+}
+
+func (self *minerRelease) findAsset(name string) *minerReleaseAsset {
+	for i := range self.Assets {
+		if self.Assets[i].Name == name {
+			return &self.Assets[i]
+		}
+	}
+	return nil
+}
+
+func minerReadReleaseFile(ctx context.Context, release *minerRelease, asset *minerReleaseAsset) ([]byte, error) {
+	if _, test := minerUpdateSource(); !test && !minerTrustedDownload(asset.Url) {
+		return nil, fmt.Errorf("release %s points %s outside GitHub (%s); nothing was changed", release.TagName, asset.Name, minerHost(asset.Url))
+	}
+	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	body, err := minerOpen(ctx, asset.Url, release.base)
+	if err != nil {
+		return nil, err
+	}
+	defer body.Close()
+	return io.ReadAll(io.LimitReader(body, 1<<20))
+}
+
+// minerReleaseSignedSum is the sha256 (lower hex) that the release's signed
+// SHA256SUMS lists for name, or "" for an unsigned release that is allowed.
+// A signature that is present must verify, and must list name.
+func minerReleaseSignedSum(ctx context.Context, release *minerRelease, name string) (string, error) {
+	sigAsset := release.findAsset("SHA256SUMS.sig")
+	if sigAsset == nil {
+		if requireUpdateSignature {
+			return "", fmt.Errorf("release %s isn't signed (no SHA256SUMS.sig); nothing was changed", release.TagName)
+		}
+		fmt.Fprintf(minerUpdateWarn, "warning: release %s isn't signed (no SHA256SUMS.sig); checking only its sha256 digest\n", release.TagName)
+		return "", nil
+	}
+	sumsAsset := release.findAsset("SHA256SUMS")
+	if sumsAsset == nil {
+		return "", fmt.Errorf("release %s has SHA256SUMS.sig but no SHA256SUMS; nothing was changed", release.TagName)
+	}
+	sigText, err := minerReadReleaseFile(ctx, release, sigAsset)
+	if err != nil {
+		return "", err
+	}
+	sums, err := minerReadReleaseFile(ctx, release, sumsAsset)
+	if err != nil {
+		return "", err
+	}
+	sig, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(sigText)))
+	if err != nil || len(sig) != ed25519.SignatureSize || !ed25519.Verify(minerUpdatePublicKey, sums, sig) {
+		return "", fmt.Errorf("release %s has a SHA256SUMS signature that doesn't verify; nothing was changed", release.TagName)
+	}
+	for _, line := range bytes.Split(sums, []byte("\n")) {
+		sum, file, ok := strings.Cut(strings.TrimRight(string(line), "\r"), "  ")
+		if ok && file == name && len(sum) == 64 {
+			if _, err := hex.DecodeString(sum); err == nil {
+				return strings.ToLower(sum), nil
+			}
+		}
+	}
+	return "", fmt.Errorf("release %s's signed SHA256SUMS has no line for %s; nothing was changed", release.TagName, name)
 }
 
 func copyFile(from string, to string) error {
