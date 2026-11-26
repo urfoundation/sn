@@ -354,7 +354,7 @@ func updaterTestDevice(t *testing.T, connects func(version string) bool) (*updat
 
 	version := strings.TrimPrefix(updaterTestNewerTag, "v")
 	name := "urnetwork-provider-" + version + ".tar.gz"
-	location := "https://github.com/urnetwork/build/releases/download/" + updaterTestNewerTag + "/" + name
+	location := "https://github.com/urfoundation/sn/releases/download/" + updaterTestNewerTag + "/" + name
 	archive := updaterTestArchive(t, updaterTestNewerStamp)
 	transport := &updaterTestTransport{t: t, files: map[string][]byte{
 		minerUpdateDefaultSource: updaterTestFeed(updaterTestNewerTag, time.Now().Add(-48*time.Hour), name, location, archive),
