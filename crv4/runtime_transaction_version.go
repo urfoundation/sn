@@ -19,11 +19,17 @@ import "slices"
 // event and storage item the producer consumes keeps its index and encoding,
 // and the signed-extension set is unchanged. Pinned in
 // runtime495_metadata_test.go.
-// Any other identity, including a later spec at transaction version 2, stays
-// outside the family until its own review.
+// Runtime497 (subtensor v497, 24e1fc7b; Finney from block 9587045,
+// 2026-11-25) keeps transaction version 2 and changes only its spec version
+// from 495's: no call, event or storage item moves, and the signed-extension
+// set is unchanged. Pinned in runtime497_metadata_test.go.
+// Any other identity, including a later spec at transaction version 2 or the
+// proposed 496 that was never enacted, stays outside the family until its own
+// review.
 var reviewedRaisedTransactionVersions = []RuntimeVersionIdentity{
 	{SpecName: "node-subtensor", SpecVersion: 494, TransactionVersion: 2, StateVersion: 1},
 	{SpecName: "node-subtensor", SpecVersion: 495, TransactionVersion: 2, StateVersion: 1},
+	{SpecName: "node-subtensor", SpecVersion: 497, TransactionVersion: 2, StateVersion: 1},
 }
 
 // Reports whether this exact identity raised its transaction version above the
