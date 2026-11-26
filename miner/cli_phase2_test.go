@@ -561,13 +561,13 @@ func TestServiceFilesRoundTrip(t *testing.T) {
 
 func TestUpdateDownloadsOnlyFromGitHub(t *testing.T) {
 	for location, want := range map[string]bool{
-		"https://github.com/urnetwork/build/releases/download/v1/a.tar.gz": true,
+		"https://github.com/urfoundation/sn/releases/download/v1/a.tar.gz": true,
 		"https://objects.githubusercontent.com/x":                          true,
-		"http://github.com/x":                                              false,
-		"https://example.com/a.tar.gz":                                     false,
-		"https://github.com.evil.example/a":                                false,
-		"a.tar.gz":                                                         false,
-		"file:///tmp/a.tar.gz":                                             false,
+		"http://github.com/x":               false,
+		"https://example.com/a.tar.gz":      false,
+		"https://github.com.evil.example/a": false,
+		"a.tar.gz":                          false,
+		"file:///tmp/a.tar.gz":              false,
 	} {
 		if minerTrustedDownload(location) != want {
 			t.Errorf("%s: want %v", location, want)

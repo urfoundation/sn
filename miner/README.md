@@ -31,7 +31,7 @@ See [community-provider-warp-example/anyhost](community-provider-warp-example/an
 
 ## Pre-built binaries
 
-Currently we do not sign the provider binaries on the [releases page](https://github.com/urnetwork/build/releases). You will need to add a signing exemption for various platforms, to allow the binary to be run.
+Currently we do not sign the provider binaries on the [releases page](https://github.com/urfoundation/sn/releases). You will need to add a signing exemption for various platforms, to allow the binary to be run.
 
 **macOS**
 

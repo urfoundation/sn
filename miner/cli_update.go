@@ -30,7 +30,7 @@ import (
 )
 
 // provider update replaces this binary with the newest release of
-// urnetwork/build. Automatic updates (provider update --auto, run by the
+// urfoundation/sn. Automatic updates (provider update --auto, run by the
 // service's timer) are on unless turned off with provider update --off or
 // URNETWORK_AUTO_UPDATE=0. Each device waits its own share of a rollout
 // window after a release, so the whole fleet updates within a day without
@@ -38,11 +38,11 @@ import (
 // connected is rolled back and skipped.
 //
 // A download is checked against the sha256 digest the release lists for it.
-// Releases are not signed yet; when urnetwork/build publishes signed
-// checksums, they are checked here first.
+// Releases carry SHA256SUMS and SHA256SUMS.sig; while the signature
+// check is staged (requireUpdateSignature), an unsigned release still installs.
 
 const minerUpdateFileName = "miner-update.json"
-const minerUpdateDefaultSource = "https://api.github.com/repos/urnetwork/build/releases/latest"
+const minerUpdateDefaultSource = "https://api.github.com/repos/urfoundation/sn/releases/latest"
 
 // minerUpdateRollout spreads the fleet over this long after a release. With
 // the 6 hour (plus up to 1 hour random) check interval, every miner has the
@@ -176,7 +176,7 @@ func sameMinerVersion(a string, b string) bool {
 }
 
 // minerUpdateSource is the release feed: GitHub's latest release of
-// urnetwork/build, or the JSON file or URL URNETWORK_UPDATE_URL names (same
+// urfoundation/sn, or the JSON file or URL URNETWORK_UPDATE_URL names (same
 // shape), which is for testing an update before a release.
 func minerUpdateSource() (string, bool) {
 	if source := strings.TrimSpace(os.Getenv("URNETWORK_UPDATE_URL")); source != "" {
@@ -907,7 +907,7 @@ func printMinerUpdateStatus(stdout io.Writer, state minerUpdateState) {
 	if test {
 		row("Source", source+" (URNETWORK_UPDATE_URL)")
 	} else {
-		row("Source", "github.com/urnetwork/build releases")
+		row("Source", "github.com/urfoundation/sn releases")
 	}
 	if on {
 		row("Turn off", "provider update --off  (or URNETWORK_AUTO_UPDATE=0)")
@@ -956,7 +956,7 @@ func installerUpdateCmd(opts docopt.Opts, installer *minerInstaller, stdout io.W
 			row("Automatic updates", cliYellow(stdout, "off"))
 		}
 		row("Handled by", installer.display()+", which the URnetwork installer set up")
-		row("Source", "github.com/urnetwork/build releases")
+		row("Source", "github.com/urfoundation/sn releases")
 		if on {
 			row("Turn off", "provider update --off")
 		} else {

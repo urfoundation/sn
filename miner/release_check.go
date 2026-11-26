@@ -1,7 +1,7 @@
 package miner
 
 // The running miner's release check. A miner that nothing updates says so,
-// with the command that updates it, when the latest release of urnetwork/build
+// with the command that updates it, when the latest release of urfoundation/sn
 // (the feed provider update installs from, cli_update.go) is newer than this
 // build. Nothing updates a miner in a container: its binary is the image's,
 // and only a new image replaces it. Nothing updates a miner run by hand
