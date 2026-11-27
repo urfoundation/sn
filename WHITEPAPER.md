@@ -3088,7 +3088,10 @@ hotkey signature would let a miner **steal another provider's measured quality**
 - **Coordinator anchor:** each client member is inserted incrementally. The coordinator requires the
   mirrored commitment to match and be fresh, verifies client consent at `0x402`, hotkey authorization at
   `0x403`, and live UID resolution at `0x804`, then records the generation and epoch interval. Versions
-  cannot overlap; membership starts no earlier than the next epoch and is bounded in duration.
+  cannot overlap; membership starts no earlier than the next epoch and is bounded in duration. One
+  exception, for epoch 8 only: a binding signed from epoch 9 that landed in blocks 9,600,028 through
+  9,615,060 also counts for epoch 8 from its block, because the runtime 497 fleet authority was published
+  after epoch 8 began (`mainnet/notices/2026-11-27-epoch-8-late-binding.md`).
 
 **Identity ⊥ score.** The binding proves *ownership* only; `VALIDATOR.md` proves *routable-IP breadth*.
 They stay separate (as every comparable subnet does — Targon keeps the hotkey out of its TEE

@@ -1003,7 +1003,10 @@ which checks both signatures at `0x402`/`0x403`, freshness, non-overlapping gene
 and a live `(netuid,hotkey) → UID` at `0x804` before recording a future-effective member.
 Before crediting any score to a UID, the validator independently rechecks the canonical
 payload, commitment, active epoch interval and current UID. Any mismatch contributes
-zero head weight; it is never guessed.
+zero head weight; it is never guessed. For epoch 8 only, a binding signed from epoch 9
+that landed in blocks 9,600,028 through 9,615,060 is active for epoch 8 from its block,
+for the head census, trail hops and head exclusion alike
+(`mainnet/notices/2026-11-27-epoch-8-late-binding.md`).
 
 The coordinator checks that the binding's client key signed it, not that the key is the
 client's: any registered hotkey can bind any `client_id` under a key it holds, and a
