@@ -11,8 +11,8 @@ require a separately reviewed authority document and its approved SHA-256:
 The provider ships no mainnet genesis, runtime pin, or approval: the approved
 documents and their SHA-256 are published in
 [`mainnet/fleet-runtime-authority/`](../mainnet/fleet-runtime-authority/README.md#published)
-(runtime 491: [`runtime-491.json`](../mainnet/fleet-runtime-authority/runtime-491.json),
-SHA-256 `0d16e120c0b3575e1daf6c221374f12d3fc6de85f03b12693e3f1a42243b0df3`). An endpoint
+(runtime 497: [`runtime-497.json`](../mainnet/fleet-runtime-authority/runtime-497.json),
+SHA-256 `12ed60d088a9402ea5edfeeb023ffa8f916c4f9f0dd12d98366fa27fe5b2b9f1`). An endpoint
 observation, testnet release lock, testnet profile receipt, or successful dry
 run cannot supply approval. The digest argument is the operator's explicit
 selection of previously reviewed bytes; it is not a signature or a replacement

@@ -9,11 +9,12 @@ says how one comes to exist.
 | Runtime | Document | SHA-256 | Published |
 | --- | --- | --- | --- |
 | `node-subtensor` 491/1/1, `:code` `0x4201278656a17aff924ca24123c8e5866d569a84a7150bb0372bc7078fc6173c`, source `be3a11b1` | [`runtime-491.json`](runtime-491.json) | `0d16e120c0b3575e1daf6c221374f12d3fc6de85f03b12693e3f1a42243b0df3` | 2026-11-17 |
+| `node-subtensor` 497/2/1, `:code` `0x1ef826aebed0d77300b7da09d4e3b23ad507317d72c8c01d827537643dbf2c15`, source `24e1fc7b` | [`runtime-497.json`](runtime-497.json) | `12ed60d088a9402ea5edfeeb023ffa8f916c4f9f0dd12d98366fa27fe5b2b9f1` | 2026-11-27 |
 
-Fetch the exact bytes with
-`curl -fsSL -o fleet-runtime-authority.json https://raw.githubusercontent.com/urfoundation/sn/main/mainnet/fleet-runtime-authority/runtime-491.json`,
+Fetch the current document's exact bytes with
+`curl -fsSL -o fleet-runtime-authority.json https://raw.githubusercontent.com/urfoundation/sn/main/mainnet/fleet-runtime-authority/runtime-497.json`,
 check them with `shasum -a 256 fleet-runtime-authority.json`, and compare the digest with
-the one above and with the one on ur.xyz's miner docs and ur.io's Top 200 page. Only the
+its row above and with the one on ur.xyz's miner docs and ur.io's Top 200 page. Only the
 current chain runtime's document works: when Finney upgrades its runtime, mainnet fleet
 commands refuse until the next document is published here.
 
@@ -36,7 +37,7 @@ not the review.
 
 Each check prints `ok` or `FAIL`, or `NOT VERIFIED` when it could not run because
 upstream did not publish what it reads: the release, its tag, or an asset.
-Upstream published no `deployment.json` with v488 or v490. For such a release
+Upstream published no `deployment.json` with v488, v490, v491 or v497. For such a release
 `check.py` compares the release's `subtensor.wasm` with each endpoint's `:code`
 instead, and reports the spec version, commit and code hash it would have read
 from `deployment.json` as not verified, for the review to settle from the srtool
