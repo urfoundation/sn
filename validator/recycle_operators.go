@@ -223,11 +223,11 @@ func ObserveOwnerRecycleMeasurementOperators(ctx context.Context, authority *Own
 		verifyReleaseCtfPools(artifact, observed.ctfPools) != nil {
 		return nil, errors.New("owner-recycle measured operator, binding, pool, CTF pool or deposit census differs from chain")
 	}
-	for index, actual := range observed.bindings {
+	for index := range observed.bindings {
 		claimed := artifact.Bindings[index]
 		// Local API observations still require their own retained key authority.
 		claimed.LocalClientKey, claimed.ClientKeyObservationHash = releaseHex32([32]byte{}), ""
-		if claimed != actual {
+		if _, found := observed.recordedBinding(index, claimed); !found {
 			return nil, errors.New("owner-recycle measured provider binding differs from decision chain state")
 		}
 	}

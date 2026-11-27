@@ -186,7 +186,7 @@ func readV2Ctf(ctx context.Context, r *v2Reader, sources v2CtfSources, chainID *
 	}
 	// Each draw leaves out the head-bound candidates the validator's leaves
 	// out (v2_ctf_heads.go).
-	audit.heads = newV2CtfHeads(r, coordinator)
+	audit.heads = newV2CtfHeads(r, coordinator, chainID.Uint64())
 	in.Heads = audit.heads
 	return audit, nil
 }

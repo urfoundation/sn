@@ -442,6 +442,7 @@ func fleetBind(ctx context.Context, opts docopt.Opts, manifest *protocol.FleetMa
 	for _, log := range receipt.Logs {
 		if event, unpackErr := stCoordinator.UnpackFleetBoundEvent(log); unpackErr == nil {
 			fmt.Printf("fleet member binding finalized: client=0x%x fleet=0x%x hotkey=0x%x uid=%d generation=%d epochs=[%d,%d]\n", event.ClientId, event.FleetId, event.Hotkey, event.Uid, event.Generation, event.ValidFromEpoch, event.ValidToEpoch)
+			fmt.Println(fleetBindingCountsFrom(manifest, event.ValidFromEpoch, event.ValidToEpoch, log.BlockNumber))
 		}
 	}
 	return nil
@@ -493,6 +494,7 @@ func fleetStatus(ctx context.Context, opts docopt.Opts, manifest *protocol.Fleet
 		return err
 	}
 	fmt.Printf("fleet status\n  manifest_commitment: 0x%x\n  native_commitment: 0x%x (block %d, finalized %d via %s)\n  coordinator: %s via %s\n  client: 0x%x generation=%d epochs=[%d,%d] cleaned=%d uid=%d\n", want, native.Hash, native.CommitmentBlock, native.FinalizedAt, endpoint, common.Address(manifest.Coordinator), rpc, clientID, record.Generation, record.ValidFromEpoch, record.ValidToEpoch, record.CleanedAtEpoch, record.Uid)
+	fmt.Println("  " + fleetStatusCountsFrom(ctx, authority, manifest, fleetOpts(opts, "--rpc"), clientID, record))
 	if native.Hash != want || record.CommitmentHash != want || record.Hotkey != manifest.Hotkey || record.FleetId != manifest.FleetID {
 		return errors.New("fleet status does not match the canonical manifest")
 	}

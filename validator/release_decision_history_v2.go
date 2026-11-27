@@ -253,9 +253,12 @@ func (self *releaseEvidenceV2StartupHistory) readIntentDecisionSourcesV2(ctx con
 		claimed := artifact.Bindings[index]
 		claimed.LocalClientKey = releaseHex32([32]byte{})
 		claimed.ClientKeyObservationHash = ""
-		if claimed != actual {
+		matched, found := observed.recordedBinding(index, claimed)
+		if !found {
 			return result, errors.New("historical decision binding identity differs from actual chain state")
 		}
+		actual = matched
+		result.bindings[index] = actual
 		if actual.Active {
 			clientID, err := connect.ParseId(actual.ClientID)
 			if err != nil {

@@ -81,8 +81,12 @@ type releaseDecisionChainV2Observation struct {
 	sourceStartHash  [32]byte
 	sourceEndHash    [32]byte
 	hotkeyUIDs       map[[32]byte]uint16
-	bindings         []ReleaseBindingMeasurement
-	pools            []ReleasePoolMeasurement
+	// bindings have the epoch 8 late-binding window applied;
+	// coordinatorBindings are the same rows from the coordinator's own
+	// answers, which a decision made before the window was applied recorded.
+	bindings            []ReleaseBindingMeasurement
+	coordinatorBindings []ReleaseBindingMeasurement
+	pools               []ReleasePoolMeasurement
 	// ctfPools are the active operators' CTF pools that resolve at the decision
 	// (releaseCtfPoolsContext), whether or not capture the flag is in force.
 	ctfPools  []ReleasePoolMeasurement
@@ -121,26 +125,40 @@ func canonicalReleaseDecisionV2View(method string, encoded []byte) error {
 // The live collector and historical observer share the actual canonical ABI
 // reader. Neither can reinterpret an incomplete result as an inactive binding.
 // Callers reserve their provider arrays before invoking this bounded reader.
-func (self *ChainClient) readReleaseProviderBindingsV2Context(ctx context.Context, block uint64, hash [32]byte, providerIDs [][16]byte, epoch uint64, maximum uint64) (result []stabi.BindingAtOutput, resultErr error) {
+// The answers have the epoch 8 late-binding window applied.
+func (self *ChainClient) readReleaseProviderBindingsV2Context(ctx context.Context, block uint64, hash [32]byte, providerIDs [][16]byte, epoch uint64, maximum uint64) ([]stabi.BindingAtOutput, error) {
+	result, _, err := self.readReleaseProviderBindingsWindowV2Context(ctx, block, hash, providerIDs, epoch, maximum)
+	return result, err
+}
+
+// readReleaseProviderBindingsWindowV2Context returns the answers with the
+// epoch 8 late-binding window applied, and the coordinator's own answers. A
+// decision made before this validator applied the window recorded the
+// coordinator's own answers, which its history still matches.
+func (self *ChainClient) readReleaseProviderBindingsWindowV2Context(ctx context.Context, block uint64, hash [32]byte, providerIDs [][16]byte, epoch uint64, maximum uint64) (result []stabi.BindingAtOutput, coordinatorAnswers []stabi.BindingAtOutput, resultErr error) {
 	if ctx == nil || self == nil || self.coordinator == nil || maximum == 0 || uint64(len(providerIDs)) > maximum {
-		return nil, errors.New("decision provider binding census or bound is invalid")
+		return nil, nil, errors.New("decision provider binding census or bound is invalid")
 	}
 	defer func() {
 		resultErr = errors.Join(resultErr, ctx.Err())
 		if resultErr != nil {
-			result = nil
+			result, coordinatorAnswers = nil, nil
 		}
 	}()
 	if err := errors.Join(ctx.Err(), self.requireRelease()); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	coordinator, address := self.coordinator, self.contractAddr
+	var chainId *big.Int
+	if self.chainId != nil {
+		chainId = new(big.Int).Set(self.chainId)
+	}
 	// The caller retains lifecycle ownership; this private synchronous borrow
 	// prevents a header-read callback from replacing the later RPC transport.
-	chain := &ChainClient{client: self.client, coordinator: coordinator, contractAddr: address, release: true, readRetryHooks: self.readRetryHooks}
+	chain := &ChainClient{client: self.client, coordinator: coordinator, chainId: chainId, contractAddr: address, release: true, readRetryHooks: self.readRetryHooks}
 	for index, id := range providerIDs {
 		if id == ([16]byte{}) || index > 0 && bytes.Compare(providerIDs[index-1][:], id[:]) >= 0 {
-			return nil, errors.New("decision provider binding census is not canonical")
+			return nil, nil, errors.New("decision provider binding census is not canonical")
 		}
 	}
 	// Own the original ordered values before the first external RPC callback.
@@ -151,23 +169,26 @@ func (self *ChainClient) readReleaseProviderBindingsV2Context(ctx context.Contex
 	}
 	encoded, err := chain.batchCallsAtHashContext(ctx, block, hash, calls)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if len(encoded) != len(providerIDs) {
-		return nil, errors.New("decision provider binding response census differs")
+		return nil, nil, errors.New("decision provider binding response census differs")
 	}
-	result = make([]stabi.BindingAtOutput, len(encoded))
+	coordinatorAnswers = make([]stabi.BindingAtOutput, len(encoded))
 	for index, raw := range encoded {
 		if err := canonicalReleaseDecisionV2View("bindingAt", raw); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		binding, err := coordinator.UnpackBindingAt(raw)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		result[index] = binding
+		coordinatorAnswers[index] = binding
 	}
-	return result, ctx.Err()
+	if result, err = chain.releaseEpoch8Bindings(ctx, block, hash, providerIDs, epoch, coordinatorAnswers); err != nil {
+		return nil, nil, err
+	}
+	return result, coordinatorAnswers, ctx.Err()
 }
 
 // Complete native-UID coverage is read through the EVM metagraph at the same
@@ -450,7 +471,7 @@ func (self *ChainClient) readOwnedReleaseDecisionChainV2Context(ctx context.Cont
 		for index, id := range operator.providerIDs {
 			ids[index] = [16]byte(id)
 		}
-		bindings, err := chain.readReleaseProviderBindingsV2Context(ctx, block, hash, ids, query.boundary.SettlementEpoch, query.maxProviders)
+		bindings, coordinatorAnswers, err := chain.readReleaseProviderBindingsWindowV2Context(ctx, block, hash, ids, query.boundary.SettlementEpoch, query.maxProviders)
 		if err != nil {
 			return nil, err
 		}
@@ -460,6 +481,7 @@ func (self *ChainClient) readOwnedReleaseDecisionChainV2Context(ctx context.Cont
 				return nil, errors.New("decision active binding identity is incomplete or outside its epoch")
 			}
 			observed.bindings = append(observed.bindings, row)
+			observed.coordinatorBindings = append(observed.coordinatorBindings, releaseDecisionBindingV2Observation(operator.noID, operator.providerIDs[index], coordinatorAnswers[index], observed.hotkeyUIDs))
 		}
 	}
 	if len(observed.pools) < query.policy.Safety.MinimumHealthyNOCount {
