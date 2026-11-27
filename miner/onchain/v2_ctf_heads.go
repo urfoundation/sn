@@ -35,6 +35,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 
+	"github.com/urfoundation/sn/protocol"
 	"github.com/urfoundation/sn/stabi"
 )
 
@@ -56,6 +57,8 @@ var v2FleetBoundID = func() common.Hash {
 type v2FleetBinding struct {
 	client             [16]byte
 	validFrom, validTo uint64
+	// the block its FleetBound event is in
+	block uint64
 }
 
 // v2CtfHeads is the audit's ledger.HeadOracle, over the v1 coordinator of
@@ -71,6 +74,7 @@ type v2CtfHeads struct {
 	// where the scan began, and the FleetBound events through the finalized
 	// block.
 	scanned     bool
+	chainID     uint64
 	coordinator common.Address
 	from        uint64
 	bindings    []v2FleetBinding
@@ -79,8 +83,10 @@ type v2CtfHeads struct {
 	bound map[uint64]map[[16]byte]bool
 }
 
-func newV2CtfHeads(r *v2Reader, settlement common.Address) *v2CtfHeads {
-	return &v2CtfHeads{r: r, settlement: settlement, bound: map[uint64]map[[16]byte]bool{}}
+// chainID is the chain the reader's RPC answered, which decides whether the
+// epoch 8 late-binding window applies.
+func newV2CtfHeads(r *v2Reader, settlement common.Address, chainID uint64) *v2CtfHeads {
+	return &v2CtfHeads{r: r, settlement: settlement, chainID: chainID, bound: map[uint64]map[[16]byte]bool{}}
 }
 
 func (h *v2CtfHeads) HeadBindings(ctx context.Context, epoch uint64) (map[[16]byte]bool, error) {
@@ -141,11 +147,12 @@ func (h *v2CtfHeads) scan(ctx context.Context) error {
 
 // read reads epoch's head bindings: for each client with a FleetBound event
 // whose validity covers it, in first-bound order, bindingAt(client, epoch) at
-// the epoch's start and end blocks.
+// the epoch's start and end blocks. Coverage and the answers have the epoch 8
+// late-binding window applied, as the validator's do.
 func (h *v2CtfHeads) read(ctx context.Context, epoch uint64) (map[[16]byte]bool, error) {
 	var candidates [][16]byte
 	for _, binding := range h.bindings {
-		if binding.validFrom <= epoch && epoch <= binding.validTo && !slices.Contains(candidates, binding.client) {
+		if protocol.FleetBindingCoversEpoch(h.chainID, h.coordinator, binding.validFrom, binding.validTo, binding.block, epoch) && !slices.Contains(candidates, binding.client) {
 			candidates = append(candidates, binding.client)
 		}
 	}
@@ -164,22 +171,35 @@ func (h *v2CtfHeads) read(ctx context.Context, epoch uint64) (map[[16]byte]bool,
 	if head := h.r.block.Uint64(); first >= last || last > head {
 		return nil, fmt.Errorf("epoch %d boundaries [%d,%d] are not closed at the finalized block %d", epoch, first, last, head)
 	}
-	k := new(big.Int).SetUint64(epoch)
 	for _, block := range []uint64{first, last} {
-		at := new(big.Int).SetUint64(block)
-		for _, client := range candidates {
-			ret, err := ethCallAt(ctx, h.r.client, h.coordinator, stCoordinator.PackBindingAt(client, k), at)
-			var binding stabi.BindingAtOutput
-			if err == nil {
-				binding, err = stCoordinator.UnpackBindingAt(ret)
-			}
-			if err != nil {
-				return nil, fmt.Errorf("v1 coordinator %s bindingAt(0x%x,%d) at block %d: %w", h.coordinator.Hex(), client, epoch, block, err)
-			}
-			bound[client] = bound[client] || binding.Active
+		bindings, err := h.bindingsAt(ctx, block, candidates, epoch)
+		if err == nil {
+			bindings, err = stabi.Epoch8BindingsAt(ctx, h.chainID, h.coordinator, epoch, block, candidates, bindings, h.bindingsAt)
+		}
+		if err != nil {
+			return nil, err
+		}
+		for i, client := range candidates {
+			bound[client] = bound[client] || bindings[i].Active
 		}
 	}
 	return bound, nil
+}
+
+// bindingsAt reads bindingAt(client, epoch) at block for each client, in order.
+func (h *v2CtfHeads) bindingsAt(ctx context.Context, block uint64, clients [][16]byte, epoch uint64) ([]stabi.BindingAtOutput, error) {
+	at, k := new(big.Int).SetUint64(block), new(big.Int).SetUint64(epoch)
+	bindings := make([]stabi.BindingAtOutput, len(clients))
+	for i, client := range clients {
+		ret, err := ethCallAt(ctx, h.r.client, h.coordinator, stCoordinator.PackBindingAt(client, k), at)
+		if err == nil {
+			bindings[i], err = stCoordinator.UnpackBindingAt(ret)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("v1 coordinator %s bindingAt(0x%x,%d) at block %d: %w", h.coordinator.Hex(), client, epoch, block, err)
+		}
+	}
+	return bindings, nil
 }
 
 // boundary reads one of coordinator's epoch boundaries at the reader's block.
@@ -223,7 +243,7 @@ func readV2FleetBindings(ctx context.Context, r *v2Reader, coordinator common.Ad
 			if err != nil {
 				return nil, fmt.Errorf("v1 coordinator %s FleetBound log %d of block %d: %w", coordinator.Hex(), log.Index, log.BlockNumber, err)
 			}
-			bindings = append(bindings, v2FleetBinding{client: event.ClientId, validFrom: event.ValidFromEpoch, validTo: event.ValidToEpoch})
+			bindings = append(bindings, v2FleetBinding{client: event.ClientId, validFrom: event.ValidFromEpoch, validTo: event.ValidToEpoch, block: log.BlockNumber})
 		}
 		if end == to {
 			break

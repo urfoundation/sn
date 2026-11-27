@@ -424,6 +424,9 @@ func fleetRecoveryFinishEvm(ctx context.Context, store *fleetRecoveryStore, reco
 		return err
 	}
 	fmt.Printf("fleet %s finalized: %s (native %d, EVM %d)\n", record.Intent.Action, record.TxHash, mapping.Query.NativeNumber, mapping.Query.EVMNumber)
+	if record.Intent.Action == "bind" {
+		fmt.Println(fleetBindingCountsFrom(manifest, record.Intent.FromEpoch, record.Intent.ToEpoch, receipt.BlockNumber.Uint64()))
+	}
 	return nil
 }
 

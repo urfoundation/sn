@@ -448,10 +448,20 @@ func (self *chainAttemptBoundaryRPC) Hotkeys(ctx context.Context, boundary Attem
 	return self.chain.MetagraphHotkeysAtHashContext(ctx, boundary.EVMBlock, blockHash, self.netuid)
 }
 
+// The answer has the epoch 8 late-binding window applied, as the head census
+// does, so a trail hop records the binding the census credits.
 func (self *chainAttemptBoundaryRPC) Binding(ctx context.Context, boundary AttemptBoundary, clientID connect.Id) (stabi.BindingAtOutput, error) {
 	blockHash, err := canonicalAttemptHex32("attempt EVM boundary hash", boundary.EVMBlockHash, false)
 	if err != nil {
 		return stabi.BindingAtOutput{}, err
 	}
-	return chainViewAtHashContext(ctx, self.chain, boundary.EVMBlock, blockHash, self.chain.coordinator.PackBindingAt([16]byte(clientID), new(big.Int).SetUint64(boundary.SettlementEpoch)), self.chain.coordinator.UnpackBindingAt)
+	binding, err := chainViewAtHashContext(ctx, self.chain, boundary.EVMBlock, blockHash, self.chain.coordinator.PackBindingAt([16]byte(clientID), new(big.Int).SetUint64(boundary.SettlementEpoch)), self.chain.coordinator.UnpackBindingAt)
+	if err != nil {
+		return stabi.BindingAtOutput{}, err
+	}
+	windowed, err := self.chain.releaseEpoch8Bindings(ctx, boundary.EVMBlock, blockHash, [][16]byte{[16]byte(clientID)}, boundary.SettlementEpoch, []stabi.BindingAtOutput{binding})
+	if err != nil {
+		return stabi.BindingAtOutput{}, err
+	}
+	return windowed[0], nil
 }

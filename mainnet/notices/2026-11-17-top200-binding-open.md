@@ -77,7 +77,10 @@ doesn't measure earns no head score either, so it earns nothing.
   mirror and bind before that epoch's first block. A binding that lands later
   waits for the next epoch. Epoch 7 starts at block 9,549,628, so for a binding
   that starts with epoch 7, that window opens at block 9,528,028; epoch 8 starts
-  at block 9,600,028.
+  at block 9,600,028. Once, for epoch 8 only, a binding signed from epoch 9 that
+  lands by block 9,615,060 (before about November 29, 20:40) counts for epoch 8
+  from the block it lands in: see the
+  [notice of November 27](2026-11-27-epoch-8-late-binding.md).
 - **Publishing again.** A commitment older than 100,800 blocks (14 days) can't
   bind new devices, and commitments in the older, untagged format are not
   mirrored. A fleet that published in the older format, or more than 14 days

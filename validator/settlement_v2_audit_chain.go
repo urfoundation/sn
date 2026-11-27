@@ -25,6 +25,7 @@ import (
 	"github.com/holiman/uint256"
 
 	"github.com/urfoundation/sn/ledger"
+	"github.com/urfoundation/sn/protocol"
 	"github.com/urfoundation/sn/stabi"
 )
 
@@ -141,13 +142,18 @@ type settlementV2HeadOracle struct {
 // HeadBindings maps the epoch's candidates, the clients with a FleetBound
 // event whose validity covers it, to whether bindingAt(client, epoch) is
 // active at the epoch's start or end block. bindingAt reads live getUid, so
-// both are archive reads at those blocks, pinned by their hashes.
+// both are archive reads at those blocks, pinned by their hashes. Coverage
+// and the answers have the epoch 8 late-binding window applied.
 func (self *settlementV2HeadOracle) HeadBindings(ctx context.Context, epoch uint64) (map[[16]byte]bool, error) {
 	chain := self.reader.chain
 	if err := self.reader.fleet.extend(ctx, chain, self.reader.deployBlock, self.block, self.blockHash); err != nil {
 		return nil, err
 	}
-	candidates := self.reader.fleet.candidates(epoch)
+	var chainID uint64
+	if chain.chainId != nil && chain.chainId.IsUint64() {
+		chainID = chain.chainId.Uint64()
+	}
+	candidates := self.reader.fleet.candidates(chainID, chain.contractAddr, epoch)
 	bound := make(map[[16]byte]bool, len(candidates))
 	if len(candidates) == 0 {
 		return bound, nil
@@ -173,6 +179,9 @@ func (self *settlementV2HeadOracle) HeadBindings(ctx context.Context, epoch uint
 		if err != nil {
 			return nil, err
 		}
+		if bindings, err = chain.releaseEpoch8Bindings(ctx, boundary, hash, candidates, epoch, bindings); err != nil {
+			return nil, err
+		}
 		for i := range bindings {
 			bound[candidates[i]] = bound[candidates[i]] || bindings[i].Active
 		}
@@ -192,11 +201,13 @@ type settlementV2FleetIndex struct {
 type settlementV2FleetBinding struct {
 	clientID           [16]byte
 	validFrom, validTo uint64
+	// the block its FleetBound event is in
+	block uint64
 }
 
 // extend scans the coordinator's FleetBound events after scannedThrough, or
 // from the deploy block, through the pinned block. A binding that covers a
-// closed epoch was made before the epoch started, so the index holds it.
+// closed epoch was made before the epoch closed, so the index holds it.
 func (self *settlementV2FleetIndex) extend(ctx context.Context, chain *ChainClient, deployBlock, block uint64, blockHash [32]byte) error {
 	if self.scannedThrough >= block {
 		return nil
@@ -224,7 +235,7 @@ func (self *settlementV2FleetIndex) extend(ctx context.Context, chain *ChainClie
 			if err != nil {
 				return fmt.Errorf("FleetBound log %d of block %d: %w", logs[i].Index, logs[i].BlockNumber, err)
 			}
-			bindings = append(bindings, settlementV2FleetBinding{clientID: event.ClientId, validFrom: event.ValidFromEpoch, validTo: event.ValidToEpoch})
+			bindings = append(bindings, settlementV2FleetBinding{clientID: event.ClientId, validFrom: event.ValidFromEpoch, validTo: event.ValidToEpoch, block: logs[i].BlockNumber})
 		}
 	}
 	self.bindings, self.scannedThrough, self.scannedHash = bindings, block, blockHash
@@ -232,11 +243,11 @@ func (self *settlementV2FleetIndex) extend(ctx context.Context, chain *ChainClie
 }
 
 // candidates returns, in first-bound order, the clients with a binding whose
-// validity covers epoch.
-func (self *settlementV2FleetIndex) candidates(epoch uint64) [][16]byte {
+// validity, with the epoch 8 late-binding window applied, covers epoch.
+func (self *settlementV2FleetIndex) candidates(chainID uint64, coordinator common.Address, epoch uint64) [][16]byte {
 	var out [][16]byte
 	for _, binding := range self.bindings {
-		if binding.validFrom <= epoch && epoch <= binding.validTo && !slices.Contains(out, binding.clientID) {
+		if protocol.FleetBindingCoversEpoch(chainID, coordinator, binding.validFrom, binding.validTo, binding.block, epoch) && !slices.Contains(out, binding.clientID) {
 			out = append(out, binding.clientID)
 		}
 	}
