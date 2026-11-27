@@ -9,7 +9,7 @@ says how one comes to exist.
 | Runtime | Document | SHA-256 | Published |
 | --- | --- | --- | --- |
 | `node-subtensor` 491/1/1, `:code` `0x4201278656a17aff924ca24123c8e5866d569a84a7150bb0372bc7078fc6173c`, source `be3a11b1` | [`runtime-491.json`](runtime-491.json) | `0d16e120c0b3575e1daf6c221374f12d3fc6de85f03b12693e3f1a42243b0df3` | 2026-11-17 |
-| `node-subtensor` 497/2/1, `:code` `0x1ef826aebed0d77300b7da09d4e3b23ad507317d72c8c01d827537643dbf2c15`, source `24e1fc7b` | [`runtime-497.json`](runtime-497.json) | `PENDING_SHA256_OF_APPROVED_RUNTIME_497_DOCUMENT` | PENDING |
+| `node-subtensor` 497/2/1, `:code` `0x1ef826aebed0d77300b7da09d4e3b23ad507317d72c8c01d827537643dbf2c15`, source `24e1fc7b` | [`runtime-497.json`](runtime-497.json) | `12ed60d088a9402ea5edfeeb023ffa8f916c4f9f0dd12d98366fa27fe5b2b9f1` | 2026-11-27 |
 
 Fetch the current document's exact bytes with
 `curl -fsSL -o fleet-runtime-authority.json https://raw.githubusercontent.com/urfoundation/sn/main/mainnet/fleet-runtime-authority/runtime-497.json`,
