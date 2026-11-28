@@ -55,6 +55,9 @@ type providerRunSettings struct {
 	// of a state directory lost with its container, so the child writes its
 	// block only when it registered a new device
 	operatorChild bool
+	// --max-share-speed and --monthly-share-limit, split over the run's slots
+	// (provide_share.go)
+	shareFlags provideShareFlags
 }
 
 // This owner starts exactly one Serve goroutine after listener admission. Its
