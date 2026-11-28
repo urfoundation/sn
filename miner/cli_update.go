@@ -677,6 +677,11 @@ func minerUpdateAccessProblem(executable string, binary bool) string {
 func updateCmd(opts docopt.Opts, stdout io.Writer, stderr io.Writer) int {
 	executable, executableErr := minerUpdateTarget()
 	if executableErr == nil {
+		// a package manager's binary is only ever reported on, so no check
+		// about who may replace it applies
+		if manager := findMinerPackageManager(executable, runtime.GOOS); manager != nil {
+			return packageManagerUpdateCmd(opts, manager, stdout)
+		}
 		if problem := rootUpdateProblem(executable); problem != "" {
 			writeCliError(stderr, "Not run as root: "+problem+"\n  Root would run or replace files another user can change. Run it without sudo, as the user who owns that miner.")
 			return 1

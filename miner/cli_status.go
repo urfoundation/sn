@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -95,6 +96,9 @@ type minerUpdateReport struct {
 	Result    string `json:"last_result,omitempty"`
 	// By names the official installer's tool when it handles updates.
 	By string `json:"by,omitempty"`
+	// PackageManager is the command that updates a package-managed binary
+	// (cli_package_manager.go), which nothing here replaces.
+	PackageManager string `json:"package_manager,omitempty"`
 }
 
 func buildMinerStatusReport(now time.Time) (minerStatusReport, int) {
@@ -165,7 +169,9 @@ func buildMinerStatusReport(now time.Time) (minerStatusReport, int) {
 		report.Update.LastCheck = updateState.LastCheck.Format(time.RFC3339)
 	}
 	if executable, err := cliExecutable(); err == nil {
-		if installer := findMinerInstaller(executable); installer != nil {
+		if manager := findMinerPackageManager(executable, runtime.GOOS); manager != nil {
+			report.Update = minerUpdateReport{Auto: false, Why: "its package manager updates it", PackageManager: manager.command, Latest: report.Update.Latest}
+		} else if installer := findMinerInstaller(executable); installer != nil {
 			on, known := installer.autoUpdate()
 			report.Update = minerUpdateReport{Auto: on, By: installer.display()}
 			if !known {
@@ -500,6 +506,8 @@ func doctorCmd(opts docopt.Opts, stdout io.Writer) int {
 	// updates: can this binary replace itself?
 	if facts.container != "" {
 		w.row(nil, "Updates", "by a new image: this container's miner never updates itself")
+	} else if command := report.Update.PackageManager; command != "" {
+		w.row(true, "Updates", "by its package manager: "+command)
 	} else if by := report.Update.By; by != "" {
 		if report.Update.Auto {
 			w.row(true, "Updates", "automatic, by "+by)

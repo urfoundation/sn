@@ -40,6 +40,25 @@ xattr -d com.apple.quarantine provider
 ```
 
 
+## Package-manager installs
+
+The release packages install this binary as `urnetwork-provider` (the
+command is the same as `provider` below): a Homebrew formula, `.deb` and
+`.rpm` packages for the apt and dnf repositories, and winget and Chocolatey
+packages for Windows. A package manager that installed the binary also
+updates it, so `provider update` and the background service's automatic
+update never replace it. They print the package manager's command instead,
+`status`, `doctor` and the release check name it, and `update --on/--off`
+change nothing.
+
+A package marks its binary with `<prefix>/share/urnetwork-provider/managed-by`,
+where `<prefix>` is the parent of the binary's directory (`/usr` for
+`/usr/bin/urnetwork-provider`, the Homebrew keg, Chocolatey's package
+folder); its first non-empty line is the update command, which is printed and
+never run. A winget install is recognized by its folder,
+`...\WinGet\Packages\URnetwork.Provider_...`. A binary with neither updates
+itself as before.
+
 ## Mining every listed operator
 
 `provider provide --all-operators` mines every operator in the operator list
