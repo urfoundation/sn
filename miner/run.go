@@ -92,6 +92,7 @@ Usage:
         [--auto-register --hotkey_seed_file=<path> | --hotkey_seed_file=<path>]
         [--port=<port>] [--max-memory=<mem>] [--allow-client-registration]
         [--no-port-mapping]
+        [--max-share-speed=<mbps>] [--monthly-share-limit=<size>]
         [-v...]
     provider operators [--operators-url=<url>] [-v...]
     provider provide [--port=<port>]
@@ -108,6 +109,7 @@ Usage:
         [--wallet=<coldkey_ss58> [--provider-jwt=<path>] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]]
 		[--test-egress-source-ip=<source_ip>]
         [--max-memory=<mem>]
+        [--max-share-speed=<mbps>] [--monthly-share-limit=<size>]
         [--pprof=<addr>]
         [-v...]
     provider auth-provide ([<auth_code>] | --user_auth=<user_auth> [--password=<password>]) [-f]
@@ -124,6 +126,7 @@ Usage:
         [--wallet=<coldkey_ss58> [--provider-jwt=<path>] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--coldkey_seed_file=<path> | --message=<text> --signature=<hex>]]
 		[--test-egress-source-ip=<source_ip>]
         [--max-memory=<mem>]
+        [--max-share-speed=<mbps>] [--monthly-share-limit=<size>]
         [--pprof=<addr>]
         [-v...]
     provider wallet set <coldkey_ss58> [--provider-jwt=<path> | --legacy-network-wallet] [--wallet-from-epoch=<epoch> --wallet-through-epoch=<epoch>] [--coldkey_seed_file=<path> | (--message=<text> | --message-file=<path>) --signature=<hex>]
@@ -246,6 +249,15 @@ Options:
     				                 password anyways, if you don't specify it using this option.
     -p --port=<port>                 Status server port [default: 0].
     --max-memory=<mem>               Set the maximum amount of memory in bytes, or the suffixes b, kib, mib, gib may be used [This is a soft limit].
+    --max-share-speed=<mbps>         The fastest this host shares, in megabits per second, split evenly over the
+                                     run's provider slots (and over the operators with --all-operators); 0 removes
+                                     the cap. Kept in the state folder, so later runs and the service keep it.
+                                     A cap lowers how much this host shares, which can lower its reliability
+                                     ranking and its earnings.
+    --monthly-share-limit=<size>     The most data this host shares in a calendar month (UTC), in bytes or with
+                                     the suffixes b, kib, mib, gib, tib, split and kept as --max-share-speed is;
+                                     0 removes it. Providing to others pauses when the month's data reaches it
+                                     and resumes when the next month starts. The same cost as a speed cap.
     --pprof=<addr>                   Serve Go profiles at http://<addr>/debug/pprof/ (CPU profile, goroutine,
                                      heap and more) to diagnose CPU and memory use. Off by default. A bare port
                                      such as 6060 listens on 127.0.0.1 only; another host, such as 0.0.0.0:6060,
@@ -783,6 +795,11 @@ func provideWith(opts docopt.Opts, start bool) {
 		fmt.Fprintf(os.Stderr, "signed close evidence unavailable: %v\n", domainErr)
 	}
 	settings := providerRunSettings{apiUrl: apiUrl, connectUrl: connectUrl, port: port, proxySettings: allProxySettings, memoryPlan: memoryPlan, testEgressDialer: testEgressDialer, allowClientRegistration: allowClientRegistration, adoptLegacyProviderKey: adoptLegacyProviderKey, quarantineRejectedSignIn: quarantineRejectedSignIn}
+	settings.shareFlags, err = parseProvideShareFlags(opts)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
 	settings.wallet, _ = opts.String("--wallet")
 	if settings.wallet != "" {
 		settings.walletProof, err = snWalletProofFromOpts(opts)
@@ -1102,6 +1119,13 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 		settings.KeyMaterial = providerDeviceKeyMaterial(seed, certPem, keyPem, extenderKeySeed, extenderNode)
 		applyProviderMemoryTarget(settings, self.memoryPlan.DeviceMemoryTargetByteCount)
 		settings.ProviderDialContextSettings = self.testEgressDialer
+		// the slot's share limits and month's data outlive this run
+		// (provide_share.go); without the folder they last the run
+		if shareDir, err := providerShareStorageDir(proxySettings); err == nil {
+			settings.ProvideShareStorageDir = shareDir
+		} else {
+			fmt.Fprintf(os.Stderr, "provider %d share limits kept for this run only: %v\n", index, err)
+		}
 		if hooks, ok := proxyCtx.Value(providerRegistrationHooksKey{}).(providerRegistrationHooks); ok && hooks.beforeDevice != nil {
 			if err := hooks.beforeDevice(providerRegistrationSlot(proxySettings), settings); err != nil {
 				return err
@@ -1129,6 +1153,11 @@ func (self providerRunSettings) run(parent context.Context, writer io.Writer) (r
 			returnErr = errors.Join(returnErr, device.CloseAndWait(context.Background()))
 		}()
 
+		// the host's share limits, split over the slots, over what the slot
+		// keeps; a run without the flags keeps those (provide_share.go)
+		if self.shareFlags.set() {
+			device.SetProvideShareLimits(self.shareFlags.slotLimits(device.GetProvideShareLimits(), len(providers)))
+		}
 		// Always-on public mode includes network and friends/family service,
 		// matching the SDK's hierarchical provide contract.
 		device.SetProvideControlMode(sdk.ProvideControlModeAlways)

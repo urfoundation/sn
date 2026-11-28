@@ -111,6 +111,10 @@ type operatorSupervisorSettings struct {
 	verbosity               int
 	allowClientRegistration bool
 	port                    int
+	// --max-share-speed and --monthly-share-limit, divided evenly over the
+	// children as maxMemory is; a flag not given passes none, so each child
+	// keeps the limits its state folder holds (provide_share.go)
+	shareFlags provideShareFlags
 }
 
 // A started child: a real process, or a test's stand-in.
@@ -161,6 +165,9 @@ type operatorChildSpec struct {
 	connectUrl string
 	// "" passes no --max-memory
 	maxMemory string
+	// the child's share of the share limits as its flags, space separated;
+	// "" passes none
+	share string
 }
 
 // The loop's record of one operator. It outlives a delisting until the
@@ -552,16 +559,33 @@ func (self *operatorSupervisor) memoryShare() string {
 	if self.settings.maxMemory <= 0 {
 		return ""
 	}
+	count := self.childCount()
+	if count == 0 {
+		return ""
+	}
+	return formatMemoryShare(max(1, self.settings.maxMemory/connect.ByteCount(count)))
+}
+
+// The operators that run, or will once signed in, which the memory and the
+// share limits are divided over.
+func (self *operatorSupervisor) childCount() int {
 	count := 0
 	for _, state := range self.operators {
 		if state.listed && (state.credentialed || self.settings.autoRegister) {
 			count++
 		}
 	}
-	if count == 0 {
+	return count
+}
+
+// The children's share of --max-share-speed and --monthly-share-limit, as the
+// flags each child runs with, divided as the memory is.
+func (self *operatorSupervisor) shareArgs() string {
+	count := self.childCount()
+	if count == 0 || !self.settings.shareFlags.set() {
 		return ""
 	}
-	return formatMemoryShare(max(1, self.settings.maxMemory/connect.ByteCount(count)))
+	return strings.Join(self.settings.shareFlags.childArgs(count), " ")
 }
 
 // The largest unit that divides the count exactly, else bytes, so
@@ -583,7 +607,7 @@ func formatMemoryShare(byteCount connect.ByteCount) string {
 }
 
 func (self *operatorSupervisor) childSpec(state *operatorState, share string) operatorChildSpec {
-	return operatorChildSpec{apiUrl: state.operator.ApiUrl, connectUrl: state.operator.ConnectUrl, maxMemory: share}
+	return operatorChildSpec{apiUrl: state.operator.ApiUrl, connectUrl: state.operator.ConnectUrl, maxMemory: share, share: self.shareArgs()}
 }
 
 // A child never gets --all-operators. A new operator directory has no provider
@@ -593,6 +617,9 @@ func (self *operatorSupervisor) childArgs(spec operatorChildSpec) []string {
 	args := []string{"provide", "--api_url=" + spec.apiUrl, "--connect_url=" + spec.connectUrl, "--port=0"}
 	if spec.maxMemory != "" {
 		args = append(args, "--max-memory="+spec.maxMemory)
+	}
+	if spec.share != "" {
+		args = append(args, strings.Fields(spec.share)...)
 	}
 	if self.settings.allowClientRegistration || self.settings.autoRegister {
 		args = append(args, "--allow-client-registration")

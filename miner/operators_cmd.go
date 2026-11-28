@@ -168,6 +168,9 @@ func newOperatorSupervisorSettings(opts docopt.Opts) (operatorSupervisorSettings
 	if settings.port, err = opts.Int("--port"); err != nil {
 		return operatorSupervisorSettings{}, operatorlist.RefreshSettings{}, fmt.Errorf("--port: %w", err)
 	}
+	if settings.shareFlags, err = parseProvideShareFlags(opts); err != nil {
+		return operatorSupervisorSettings{}, operatorlist.RefreshSettings{}, err
+	}
 	settings.verbosity, _ = opts["-v"].(int)
 	settings.allowClientRegistration, _ = opts.Bool("--allow-client-registration")
 	settings.autoRegister, _ = opts.Bool("--auto-register")
