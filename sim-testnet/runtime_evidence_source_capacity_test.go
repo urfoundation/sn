@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 func runtimeEvidenceProvisionalSourceCapacityTest(t *testing.T) *ResolvedConfig {
