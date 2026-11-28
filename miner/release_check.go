@@ -17,6 +17,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand/v2"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -54,6 +55,8 @@ func defaultMinerReleaseCheckSettings() *minerReleaseCheckSettings {
 type minerUpdater struct {
 	// one of minerContainer*: only a new image updates a container's miner
 	container string
+	// the package manager that manages the binary, nil for none
+	packageManager *minerPackageManager
 	// the official installer that manages the binary, nil for none
 	installer *minerInstaller
 	// the installer's automatic update is on, or can't be read
@@ -72,6 +75,10 @@ func readMinerUpdater(container string) minerUpdater {
 		return updater
 	}
 	if executable, err := cliExecutable(); err == nil {
+		if manager := findMinerPackageManager(executable, runtime.GOOS); manager != nil {
+			updater.packageManager = manager
+			return updater
+		}
 		if installer := findMinerInstaller(executable); installer != nil {
 			on, known := installer.autoUpdate()
 			updater.installer, updater.installerAuto = installer, on || !known
@@ -122,6 +129,9 @@ func minerUpdateFinding(current string, release *minerRelease, updater minerUpda
 		finding.Fix = "With compose: " + tool + " compose pull && " + tool + " compose up -d\n" +
 			"Otherwise: " + tool + " pull " + image + ", then remove this container and start a new one with the same command and state volume (" + tool + " rm -f <container>, then the same " + tool + " run).\n" +
 			"Keep the state directory's volume, so the device keeps its identity."
+	case updater.packageManager != nil:
+		finding.Summary = "The package manager that installed this miner updates it; this miner never replaces itself."
+		finding.Fix = updater.packageManager.command
 	case updater.installer != nil && updater.installerAuto:
 		if !late {
 			return nil
