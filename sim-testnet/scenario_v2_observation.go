@@ -9,8 +9,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/urfoundation/sn/crv4"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/crv4"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 const scenarioNativeSourceScopeV2 = "signed-source-and-canonical-native-receipts"
