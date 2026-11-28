@@ -8,8 +8,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/urfoundation/sn/crv4"
-	validatorpkg "github.com/urfoundation/sn/validator"
+	"github.com/urfoundation/sn/v2026/crv4"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // Settlement and native clocks are independent. Every settlement endpoint is

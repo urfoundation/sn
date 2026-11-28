@@ -24,7 +24,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/urnetwork/server"
+	"github.com/urnetwork/server/v2026"
 	"gopkg.in/yaml.v3"
 )
 

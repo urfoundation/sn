@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	validatorpkg "github.com/urfoundation/sn/validator"
+	validatorpkg "github.com/urfoundation/sn/v2026/validator"
 )
 
 // The validator routing key and complete pair census precede any indexing.
